@@ -15,6 +15,7 @@ from app.routers.customers_ledger import router as customers_ledger_router
 from app.routers.suppliers_ledger import router as suppliers_ledger_router
 from app.routers.allocations import router as allocations_router
 from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
+from app.routers.whatsapp_send import router as whatsapp_send_router
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
 
@@ -40,3 +41,5 @@ app.include_router(customers_ledger_router)
 app.include_router(suppliers_ledger_router)
 app.include_router(allocations_router)
 app.include_router(whatsapp_webhook_router)
+app.include_router(whatsapp_send_router)
+
