@@ -1,21 +1,21 @@
 import os
 import requests
 
-WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-
 
 def send_whatsapp_text_message(to: str, body: str):
-    if not WHATSAPP_ACCESS_TOKEN:
+    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    if not whatsapp_access_token:
         raise ValueError("WHATSAPP_ACCESS_TOKEN manquant")
 
-    if not WHATSAPP_PHONE_NUMBER_ID:
+    if not whatsapp_phone_number_id:
         raise ValueError("WHATSAPP_PHONE_NUMBER_ID manquant")
 
-    url = f"https://graph.facebook.com/v22.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v22.0/{whatsapp_phone_number_id}/messages"
 
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {whatsapp_access_token}",
         "Content-Type": "application/json",
     }
 
@@ -29,5 +29,10 @@ def send_whatsapp_text_message(to: str, body: str):
     }
 
     response = requests.post(url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
+
+    if not response.ok:
+        raise ValueError(
+            f"WhatsApp API error {response.status_code}: {response.text}"
+        )
+
     return response.json()
