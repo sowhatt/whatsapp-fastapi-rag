@@ -17,3 +17,4 @@ def whatsapp_send_test(payload: WhatsAppSendPayload):
         return {"status": "sent", "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    

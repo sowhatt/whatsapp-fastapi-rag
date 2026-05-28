@@ -12,7 +12,7 @@ def send_whatsapp_text_message(to: str, body: str):
     if not whatsapp_phone_number_id:
         raise ValueError("WHATSAPP_PHONE_NUMBER_ID manquant")
 
-    url = f"https://graph.facebook.com/v22.0/{whatsapp_phone_number_id}/messages"
+    url = f"https://graph.facebook.com/v20.0/{whatsapp_phone_number_id}/messages"
 
     headers = {
         "Authorization": f"Bearer {whatsapp_access_token}",
@@ -23,16 +23,12 @@ def send_whatsapp_text_message(to: str, body: str):
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
-        "text": {
-            "body": body
-        },
+        "text": {"body": body},
     }
 
     response = requests.post(url, headers=headers, json=payload, timeout=30)
 
     if not response.ok:
-        raise ValueError(
-            f"WhatsApp API error {response.status_code}: {response.text}"
-        )
+        raise ValueError(f"WhatsApp API error {response.status_code}: {response.text}")
 
     return response.json()
