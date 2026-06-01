@@ -1,3 +1,4 @@
+import json
 import os
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -23,8 +24,18 @@ def verify_whatsapp_webhook(
 @router.post("/webhooks/whatsapp")
 async def receive_whatsapp_webhook(request: Request):
     try:
-        body = await request.json()
-        print("WHATSAPP WEBHOOK BODY:", body)
+        raw_body = await request.body()
+        print("WHATSAPP RAW BODY:", raw_body.decode("utf-8", errors="ignore"))
+
+        if not raw_body:
+            return {"status": "ignored", "reason": "empty_body"}
+
+        try:
+            body = json.loads(raw_body)
+        except json.JSONDecodeError:
+            return {"status": "ignored", "reason": "invalid_json"}
+
+        print("WHATSAPP JSON BODY:", body)
 
         entries = body.get("entry", [])
         if not entries:
@@ -34,7 +45,6 @@ async def receive_whatsapp_webhook(request: Request):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
 
-                # 1) statuts / templates / autres événements : on ignore proprement
                 statuses = value.get("statuses", [])
                 if statuses:
                     print("WHATSAPP STATUSES:", statuses)
