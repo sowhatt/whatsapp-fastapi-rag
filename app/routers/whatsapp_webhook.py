@@ -1,7 +1,10 @@
 import json
 import os
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
+from sqlalchemy.orm import Session
 
+from app.db.session import get_db
+from app.services.summary_service import get_daily_summary_data
 from app.services.whatsapp_sender import send_whatsapp_text_message
 
 router = APIRouter(tags=["whatsapp webhook"])
@@ -22,7 +25,7 @@ def verify_whatsapp_webhook(
 
 
 @router.post("/webhooks/whatsapp")
-async def receive_whatsapp_webhook(request: Request):
+async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     try:
         raw_body = await request.body()
         print("WHATSAPP RAW BODY:", raw_body.decode("utf-8", errors="ignore"))
@@ -78,11 +81,21 @@ async def receive_whatsapp_webhook(request: Request):
                             from_number,
                             "Bonjour 👋 Je suis Whatzabi.\nEnvoie par exemple :\n- Résumé du jour\n- Vends 1 sac de riz à Awa pour 24 000 cash\n- Awa a payé 10 000",
                         )
-                    elif text_body == "résumé du jour":
-                        send_whatsapp_text_message(
-                            from_number,
-                            "Résumé du jour bientôt branché au moteur métier ✅",
-                        )
+
+                    elif text_body in ["résumé du jour", "resume du jour"]:
+                        summary = get_daily_summary_data(db)
+
+                        response_text = (
+                            "📊 Résumé du jour\n"
+                            f"• Ventes : {summary['activity']['sales_total']:,} FCFA\n"
+                            f"• Achats : {summary['activity']['purchases_total']:,} FCFA\n"
+                            f"• Dépenses : {summary['manual_cashflow']['manual_expense']:,} FCFA\n"
+                            f"• Créances clients : {summary['activity']['customer_debt']:,} FCFA\n"
+                            f"• Dettes fournisseurs : {summary['activity']['supplier_debt']:,} FCFA"
+                        ).replace(",", " ")
+
+                        send_whatsapp_text_message(from_number, response_text)
+
                     else:
                         send_whatsapp_text_message(
                             from_number,
