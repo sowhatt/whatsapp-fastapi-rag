@@ -1,6 +1,7 @@
 import json
 import os
-from fastapi import APIRouter, HTTPException, Query, Request, Depends
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -48,6 +49,7 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
             for change in entry.get("changes", []):
                 value = change.get("value", {})
 
+                # Statuts WhatsApp / templates / livraisons
                 statuses = value.get("statuses", [])
                 if statuses:
                     print("WHATSAPP STATUSES:", statuses)
@@ -76,13 +78,31 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
                     if not text_body:
                         continue
 
+                    # 1. Salutation
                     if text_body in ["bonjour", "salut", "hello", "bjr"]:
                         send_whatsapp_text_message(
                             from_number,
-                            "Bonjour 👋 Je suis Whatzabi.\nEnvoie par exemple :\n- Résumé du jour\n- Vends 1 sac de riz à Awa pour 24 000 cash\n- Awa a payé 10 000",
+                            "Bonjour 👋 Je suis Whatzabi.\n"
+                            "Envoie par exemple :\n"
+                            "- Résumé du jour\n"
+                            "- Vends 1 sac de riz à Awa pour 24 000 cash\n"
+                            "- Awa a payé 10 000\n"
+                            "- Transport 2 500 cash",
                         )
 
-                    elif text_body in ["résumé du jour", "resume du jour"]:
+                    # 2. Résumé / bilan / total
+                    elif text_body in [
+                        "résumé",
+                        "resume",
+                        "résumé du jour",
+                        "resume du jour",
+                        "bilan",
+                        "bilan du jour",
+                        "total",
+                        "total du jour",
+                        "totaux",
+                        "totaux du jour",
+                    ]:
                         summary = get_daily_summary_data(db)
 
                         response_text = (
@@ -96,10 +116,15 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
 
                         send_whatsapp_text_message(from_number, response_text)
 
+                    # 3. Fallback simple
                     else:
                         send_whatsapp_text_message(
                             from_number,
-                            f"Message reçu : {text_body}",
+                            "Je n’ai pas encore compris cette demande.\n"
+                            "Essaie par exemple :\n"
+                            "- résumé du jour\n"
+                            "- total du jour\n"
+                            "- bonjour",
                         )
 
         return {"status": "received"}
