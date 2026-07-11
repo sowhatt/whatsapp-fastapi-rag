@@ -1,10 +1,11 @@
+import re
 from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.agents.intent_agent import IntentAgentError, detect_intent
 from app.services.expenses_service import create_expense_from_intent
-from app.services.intent_parser import parse_message
 from app.services.payments_service import create_payment_from_intent
 from app.services.purchases_service import create_purchase_from_intent
 from app.services.sales_service import create_sale_from_intent
@@ -29,20 +30,31 @@ def build_summary_response(db: Session) -> str:
     )
 
 
+def display_channel(value: str) -> str:
+    return {
+        "cash": "cash",
+        "credit": "crédit",
+        "moov_money": "Moov Money",
+        "mtn_momo": "MTN MoMo",
+        "bank": "banque",
+    }.get(value, value)
+
+
 def build_confirmation_message(action: dict[str, Any]) -> str:
     if action["type"] == "sale":
+        payment = display_channel(str(action["payment"]))
         if action["remaining"] > 0:
             return (
                 f"Vente : {action['customer']}, "
                 f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
                 f"{format_currency(action['amount'])} "
                 f"(reste dû {format_currency(action['remaining'])}) "
-                f"{action['payment']}. Confirmer ? Réponds oui ou non."
+                f"{payment}. Confirmer ? Réponds oui ou non."
             )
         return (
             f"Vente : {action['customer']}, "
             f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
-            f"{format_currency(action['amount'])} {action['payment']}. "
+            f"{format_currency(action['amount'])} {payment}. "
             "Confirmer ? Réponds oui ou non."
         )
     if action["type"] == "payment":
@@ -58,7 +70,7 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
     if action["type"] == "expense":
         return (
             f"Dépense : {action['label']}, {format_currency(action['amount'])}, "
-            f"{action['channel']}. Confirmer ? Réponds oui ou non."
+            f"{display_channel(str(action['channel']))}. Confirmer ? Réponds oui ou non."
         )
     return "Action détectée. Confirmer ? Réponds oui ou non."
 
@@ -68,7 +80,7 @@ def build_help_message() -> str:
         "Bonjour 👋 Je suis Whatzabi.\n"
         "Envoie un texte ou un vocal, par exemple :\n"
         "- Résumé du jour\n"
-        "- Vends 1 sac de riz à Awa pour 83 000 cash\n"
+        "- Vends un sac de riz à Awa pour 83 000 cash\n"
         "- Awa a payé 10 000\n"
         "- Transport 2 500 cash"
     )
@@ -85,6 +97,21 @@ def get_pending_action(sender_id: str) -> dict[str, Any] | None:
 
 def set_pending_action(sender_id: str, action: dict[str, Any]) -> None:
     pending_actions[sender_id] = action
+
+
+def normalize_payment_answer(text: str) -> str | None:
+    normalized = re.sub(r"[^a-zà-ÿ0-9]+", " ", text.lower()).strip()
+    if any(word in normalized for word in ("moov", "flooz")):
+        return "moov_money"
+    if any(word in normalized for word in ("mtn", "momo")):
+        return "mtn_momo"
+    if any(word in normalized for word in ("credit", "crédit", "dette", "apres", "après")):
+        return "credit"
+    if any(word in normalized for word in ("cash", "comptant", "comptan", "contant", "espece", "espèce", "cas", "kash")):
+        return "cash"
+    if "banque" in normalized or "virement" in normalized:
+        return "bank"
+    return None
 
 
 def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
@@ -113,6 +140,24 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
     raise ValueError("Type d'action non pris en charge.")
 
 
+def _missing_fields_reply(action: dict[str, Any]) -> str | None:
+    missing = list(action.get("_missing_fields") or [])
+    if not missing:
+        return None
+
+    labels = {
+        "customer": "le client",
+        "supplier": "le fournisseur",
+        "product": "le produit",
+        "unit": "l’unité",
+        "quantity": "la quantité",
+        "amount": "le montant",
+        "label": "le motif",
+    }
+    readable = ", ".join(labels.get(item, item) for item in missing)
+    return f"Il me manque : {readable}. Peux-tu reformuler la demande ?"
+
+
 def process_incoming_message(
     *,
     channel: str,
@@ -134,12 +179,34 @@ def process_incoming_message(
     if not text:
         return {"status": "ignored", "reply_text": None, "action": None}
 
-    lower = text.lower()
+    lower = text.lower().strip(" .!?\n\t")
     if lower in ["bonjour", "salut", "hello", "bjr"]:
         return {"status": "reply", "reply_text": build_help_message(), "action": None}
 
+    if lower in ["non", "annuler", "cancel"]:
+        return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
+
+    pending = get_pending_action(sender_id)
+    if pending and pending.get("_awaiting") == "sale_payment":
+        payment = normalize_payment_answer(text)
+        if payment is None:
+            return {
+                "status": "reply",
+                "reply_text": "Le paiement est-il en cash, crédit, Moov ou MTN ?",
+                "action": pending,
+            }
+
+        pending["payment"] = payment
+        pending["remaining"] = int(pending["amount"]) if payment == "credit" else 0
+        pending.pop("_awaiting", None)
+        set_pending_action(sender_id, pending)
+        return {
+            "status": "reply",
+            "reply_text": build_confirmation_message(pending),
+            "action": pending,
+        }
+
     if lower in ["oui", "ok", "confirmer", "valider"]:
-        pending = get_pending_action(sender_id)
         if not pending:
             return {"status": "reply", "reply_text": "Aucune action en attente.", "action": None}
         try:
@@ -154,10 +221,16 @@ def process_incoming_message(
         pending_actions.pop(sender_id, None)
         return {"status": "reply", "reply_text": reply_text, "action": None}
 
-    if lower in ["non", "annuler", "cancel"]:
-        return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
+    try:
+        action = detect_intent(text)
+    except IntentAgentError as exc:
+        print("INTENT AGENT ERROR:", str(exc))
+        return {
+            "status": "reply",
+            "reply_text": "Je n’arrive pas à analyser cette demande pour le moment. Réessaie avec une phrase plus simple.",
+            "action": None,
+        }
 
-    action = parse_message(text)
     if not action:
         return {
             "status": "reply",
@@ -166,13 +239,31 @@ def process_incoming_message(
                 "Essaie par exemple :\n"
                 "- résumé du jour\n"
                 "- total du jour\n"
-                "- Vends 1 sac de riz à Awa pour 83 000 cash"
+                "- Vends un sac de riz à Awa pour 83 000 cash"
             ),
             "action": None,
         }
 
     if action["type"] == "summary":
         return {"status": "reply", "reply_text": build_summary_response(db), "action": None}
+
+    missing_reply = _missing_fields_reply(action)
+    if missing_reply:
+        return {"status": "reply", "reply_text": missing_reply, "action": action}
+
+    if action["type"] == "sale" and action.get("payment") in {None, "unknown"}:
+        action["_awaiting"] = "sale_payment"
+        set_pending_action(sender_id, action)
+        return {
+            "status": "reply",
+            "reply_text": (
+                f"J’ai compris une vente de {action['quantity']} {action['unit'].lower()} "
+                f"de {action['product'].lower()} à {action['customer']} pour "
+                f"{format_currency(action['amount'])}.\n\n"
+                "Le paiement est-il en cash, crédit, Moov ou MTN ?"
+            ),
+            "action": action,
+        }
 
     set_pending_action(sender_id, action)
     return {"status": "reply", "reply_text": build_confirmation_message(action), "action": action}
