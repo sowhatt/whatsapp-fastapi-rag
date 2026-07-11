@@ -68,6 +68,24 @@ SUMMARY_KEYWORDS = {
     "totaux du jour",
 }
 
+NUMBER_WORDS = {
+    "un": 1,
+    "une": 1,
+    "deux": 2,
+    "trois": 3,
+    "quatre": 4,
+    "cinq": 5,
+    "six": 6,
+    "sept": 7,
+    "huit": 8,
+    "neuf": 9,
+    "dix": 10,
+    "vingt": 20,
+}
+
+UNITS_PATTERN = r"sacs?|cartons?|paquets?|bouteilles?|bo[iî]tes?|bassines?|bidons?"
+PAYMENT_PATTERN = r"cash|kash|comptant|comptan|contant|esp[eè]ces?|cr[eé]dit|dette|moov|flooz|mtn|momo|banque|virement"
+
 
 def normalize_spaces(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
@@ -76,6 +94,18 @@ def normalize_spaces(value: str) -> str:
 def parse_french_number(value: str) -> int:
     digits = re.sub(r"[^\d]", "", value)
     return int(digits) if digits else 0
+
+
+def parse_quantity(value: str) -> int:
+    normalized = value.lower().strip()
+    return int(normalized) if normalized.isdigit() else NUMBER_WORDS.get(normalized, 0)
+
+
+def singularize_unit(value: str) -> str:
+    lower = value.lower().strip()
+    if lower.endswith("s") and lower not in {"maïs"}:
+        lower = lower[:-1]
+    return capitalize_text(lower)
 
 
 def capitalize_text(value: str) -> str:
@@ -113,7 +143,6 @@ def parse_payment_message(text: str) -> PaymentIntent | None:
     match = re.match(r"^([A-Za-zÀ-ÿ'’ -]+)\s+a payé\s+([\d .]+)$", normalized, re.IGNORECASE)
     if not match:
         return None
-
     return {
         "type": "payment",
         "customer": capitalize_text(match.group(1).strip()),
@@ -126,7 +155,6 @@ def parse_supplier_payment_message(text: str) -> SupplierPaymentIntent | None:
     match = re.match(r"^paye\s+([A-Za-zÀ-ÿ'’ -]+)\s+([\d .]+)$", normalized, re.IGNORECASE)
     if not match:
         return None
-
     return {
         "type": "supplier_payment",
         "supplier": capitalize_text(match.group(1).strip()),
@@ -134,14 +162,44 @@ def parse_supplier_payment_message(text: str) -> SupplierPaymentIntent | None:
     }
 
 
+def parse_short_sale_message(text: str) -> SaleIntent | None:
+    """Parse une commande courte : '1 sac riz Awa 83 000 cash'."""
+    normalized = normalize_spaces(text).strip(" .!?")
+    quantity_pattern = r"\d+|" + "|".join(NUMBER_WORDS)
+    short_regex = re.compile(
+        rf"^(?:vente\s+)?({quantity_pattern})\s+({UNITS_PATTERN})\s+"
+        rf"([A-Za-zÀ-ÿ'’_-]+)\s+([A-Za-zÀ-ÿ'’_-]+)\s+"
+        rf"([\d][\d .]*?)(?:\s+({PAYMENT_PATTERN}))?$",
+        re.IGNORECASE,
+    )
+    match = short_regex.match(normalized)
+    if not match:
+        return None
+
+    quantity = parse_quantity(match.group(1))
+    amount = parse_french_number(match.group(5))
+    payment = normalize_channel(match.group(6) or "")
+    if quantity <= 0 or amount <= 0:
+        return None
+
+    return {
+        "type": "sale",
+        "customer": capitalize_text(match.group(4)),
+        "unit": singularize_unit(match.group(2)),
+        "product": capitalize_text(match.group(3)),
+        "quantity": quantity,
+        "amount": amount,
+        "payment": payment,
+        "remaining": amount if payment == "credit" else 0,
+    }
+
+
 def parse_sale_message(text: str) -> SaleIntent | None:
     normalized = normalize_spaces(text).strip(" .!?")
-
     sale_regex = re.compile(
         r"^(?:vends|vend|vente)\s+(\d+)\s*([A-Za-zÀ-ÿ'’ -]+?)s?\s+d(?:e\s+|['’])([A-Za-zÀ-ÿ'’ -]+?)\s+[àa]\s+([A-Za-zÀ-ÿ'’ -]+?)\s+pour\s+([\d .]+)(.*)$",
         re.IGNORECASE,
     )
-
     match = sale_regex.match(normalized)
     if not match:
         return None
@@ -151,10 +209,7 @@ def parse_sale_message(text: str) -> SaleIntent | None:
     product = capitalize_text(match.group(3).strip())
     customer = capitalize_text(match.group(4).strip())
     amount = parse_french_number(match.group(5))
-    tail = match.group(6)
-
-    payment = normalize_channel(tail)
-    remaining = amount if payment == "credit" else 0
+    payment = normalize_channel(match.group(6))
 
     return {
         "type": "sale",
@@ -164,22 +219,19 @@ def parse_sale_message(text: str) -> SaleIntent | None:
         "quantity": quantity,
         "amount": amount,
         "payment": payment,
-        "remaining": remaining,
+        "remaining": amount if payment == "credit" else 0,
     }
 
 
 def parse_purchase_message(text: str) -> PurchaseIntent | None:
     normalized = normalize_spaces(text).strip(" .!?")
-
     purchase_regex = re.compile(
         r"^achète\s+(\d+)\s*([A-Za-zÀ-ÿ'’ -]+?)s?\s+d(?:e\s+|['’])([A-Za-zÀ-ÿ'’ -]+?)\s+chez\s+([A-Za-zÀ-ÿ'’ -]+?)\s+pour\s+([\d .]+)$",
         re.IGNORECASE,
     )
-
     match = purchase_regex.match(normalized)
     if not match:
         return None
-
     return {
         "type": "purchase",
         "quantity": int(match.group(1)),
@@ -193,7 +245,6 @@ def parse_purchase_message(text: str) -> PurchaseIntent | None:
 def parse_expense_message(text: str) -> ExpenseIntent | None:
     normalized = normalize_spaces(text).strip(" .!?")
     lower = normalized.lower()
-
     if lower.startswith(("vends", "vend", "vente", "achète", "paye")):
         return None
 
@@ -204,7 +255,6 @@ def parse_expense_message(text: str) -> ExpenseIntent | None:
     )
     if not match:
         return None
-
     return {
         "type": "expense",
         "label": capitalize_text(match.group(1).strip()),
@@ -218,14 +268,13 @@ def parse_message(text: str) -> ParsedIntent | None:
         parse_summary_message,
         parse_payment_message,
         parse_supplier_payment_message,
+        parse_short_sale_message,
         parse_sale_message,
         parse_purchase_message,
         parse_expense_message,
     ]
-
     for parser in parsers:
         result = parser(text)
         if result:
             return result
-
     return None
