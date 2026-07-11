@@ -85,17 +85,21 @@ def capitalize_text(value: str) -> str:
 
 def normalize_channel(value: str) -> str:
     lower = value.lower()
-    if "moov" in lower:
+    if "moov" in lower or "flooz" in lower:
         return "moov_money"
-    if "mtn" in lower:
+    if "mtn" in lower or "momo" in lower:
         return "mtn_momo"
-    if "credit" in lower or "crédit" in lower:
+    if "credit" in lower or "crédit" in lower or "dette" in lower:
         return "credit"
-    return "cash"
+    if any(word in lower for word in ("cash", "comptant", "comptan", "contant", "kash", "espèce", "espece")):
+        return "cash"
+    if "banque" in lower or "virement" in lower:
+        return "bank"
+    return "unknown"
 
 
 def is_summary_message(text: str) -> bool:
-    return normalize_spaces(text).lower() in SUMMARY_KEYWORDS
+    return normalize_spaces(text).lower().strip(" .!?") in SUMMARY_KEYWORDS
 
 
 def parse_summary_message(text: str) -> SummaryIntent | None:
@@ -105,7 +109,7 @@ def parse_summary_message(text: str) -> SummaryIntent | None:
 
 
 def parse_payment_message(text: str) -> PaymentIntent | None:
-    normalized = normalize_spaces(text)
+    normalized = normalize_spaces(text).strip(" .!?")
     match = re.match(r"^([A-Za-zÀ-ÿ'’ -]+)\s+a payé\s+([\d .]+)$", normalized, re.IGNORECASE)
     if not match:
         return None
@@ -118,7 +122,7 @@ def parse_payment_message(text: str) -> PaymentIntent | None:
 
 
 def parse_supplier_payment_message(text: str) -> SupplierPaymentIntent | None:
-    normalized = normalize_spaces(text)
+    normalized = normalize_spaces(text).strip(" .!?")
     match = re.match(r"^paye\s+([A-Za-zÀ-ÿ'’ -]+)\s+([\d .]+)$", normalized, re.IGNORECASE)
     if not match:
         return None
@@ -131,10 +135,10 @@ def parse_supplier_payment_message(text: str) -> SupplierPaymentIntent | None:
 
 
 def parse_sale_message(text: str) -> SaleIntent | None:
-    normalized = normalize_spaces(text)
+    normalized = normalize_spaces(text).strip(" .!?")
 
     sale_regex = re.compile(
-        r"^(?:vends|vend|vente)\s+(\d+)\s*([A-Za-zÀ-ÿ'’ -]+?)s?\s+d(?:e\s+|['’])([A-Za-zÀ-ÿ'’ -]+?)\s+à\s+([A-Za-zÀ-ÿ'’ -]+?)\s+pour\s+([\d .]+)(.*)$",
+        r"^(?:vends|vend|vente)\s+(\d+)\s*([A-Za-zÀ-ÿ'’ -]+?)s?\s+d(?:e\s+|['’])([A-Za-zÀ-ÿ'’ -]+?)\s+[àa]\s+([A-Za-zÀ-ÿ'’ -]+?)\s+pour\s+([\d .]+)(.*)$",
         re.IGNORECASE,
     )
 
@@ -147,18 +151,10 @@ def parse_sale_message(text: str) -> SaleIntent | None:
     product = capitalize_text(match.group(3).strip())
     customer = capitalize_text(match.group(4).strip())
     amount = parse_french_number(match.group(5))
-    tail = match.group(6).lower()
+    tail = match.group(6)
 
-    payment = "cash"
-    remaining = 0
-
-    if "crédit" in tail or "credit" in tail:
-        payment = "credit"
-        remaining = amount
-    elif "moov" in tail:
-        payment = "moov_money"
-    elif "mtn" in tail:
-        payment = "mtn_momo"
+    payment = normalize_channel(tail)
+    remaining = amount if payment == "credit" else 0
 
     return {
         "type": "sale",
@@ -173,7 +169,7 @@ def parse_sale_message(text: str) -> SaleIntent | None:
 
 
 def parse_purchase_message(text: str) -> PurchaseIntent | None:
-    normalized = normalize_spaces(text)
+    normalized = normalize_spaces(text).strip(" .!?")
 
     purchase_regex = re.compile(
         r"^achète\s+(\d+)\s*([A-Za-zÀ-ÿ'’ -]+?)s?\s+d(?:e\s+|['’])([A-Za-zÀ-ÿ'’ -]+?)\s+chez\s+([A-Za-zÀ-ÿ'’ -]+?)\s+pour\s+([\d .]+)$",
@@ -195,13 +191,17 @@ def parse_purchase_message(text: str) -> PurchaseIntent | None:
 
 
 def parse_expense_message(text: str) -> ExpenseIntent | None:
-    normalized = normalize_spaces(text)
+    normalized = normalize_spaces(text).strip(" .!?")
     lower = normalized.lower()
 
     if lower.startswith(("vends", "vend", "vente", "achète", "paye")):
         return None
 
-    match = re.match(r"^(.+?)\s+([\d .]+)\s+(cash|moov|mtn)$", normalized, re.IGNORECASE)
+    match = re.match(
+        r"^(.+?)\s+([\d .]+)\s+(cash|kash|comptant|comptan|contant|moov|mtn)$",
+        normalized,
+        re.IGNORECASE,
+    )
     if not match:
         return None
 
