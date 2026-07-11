@@ -1,43 +1,53 @@
 import os
+
 import requests
 
 
-def get_whatsapp_media_url(media_id: str) -> str:
+class WhatsAppMediaError(Exception):
+    pass
+
+
+def _access_token() -> str:
     token = os.getenv("WHATSAPP_ACCESS_TOKEN")
     if not token:
-        raise ValueError("WHATSAPP_ACCESS_TOKEN manquant")
+        raise WhatsAppMediaError("WHATSAPP_ACCESS_TOKEN manquant")
+    return token
 
-    url = f"https://graph.facebook.com/v20.0/{media_id}"
 
+def get_whatsapp_media_url(media_id: str) -> str:
+    if not media_id:
+        raise WhatsAppMediaError("Identifiant média WhatsApp manquant")
+
+    version = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v23.0")
     response = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {token}"},
+        f"https://graph.facebook.com/{version}/{media_id}",
+        headers={"Authorization": f"Bearer {_access_token()}"},
         timeout=30,
     )
 
     if not response.ok:
-        raise ValueError(f"Erreur récupération média Meta {response.status_code}: {response.text}")
+        raise WhatsAppMediaError(
+            f"Erreur récupération média Meta {response.status_code}: {response.text}"
+        )
 
-    data = response.json()
-    media_url = data.get("url")
+    media_url = response.json().get("url")
     if not media_url:
-        raise ValueError("URL du média introuvable")
+        raise WhatsAppMediaError("URL du média introuvable")
 
     return media_url
 
 
-def download_whatsapp_media(media_url: str) -> bytes:
-    token = os.getenv("WHATSAPP_ACCESS_TOKEN")
-    if not token:
-        raise ValueError("WHATSAPP_ACCESS_TOKEN manquant")
-
+def download_whatsapp_media(media_url: str) -> tuple[bytes, str]:
     response = requests.get(
         media_url,
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {_access_token()}"},
         timeout=60,
     )
 
     if not response.ok:
-        raise ValueError(f"Erreur téléchargement média {response.status_code}: {response.text}")
+        raise WhatsAppMediaError(
+            f"Erreur téléchargement média {response.status_code}: {response.text}"
+        )
 
-    return response.content
+    content_type = response.headers.get("Content-Type", "audio/ogg").split(";")[0]
+    return response.content, content_type
