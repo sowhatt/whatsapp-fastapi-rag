@@ -37,26 +37,33 @@ def display_channel(value: str) -> str:
         "moov_money": "Moov Money",
         "mtn_momo": "MTN MoMo",
         "bank": "banque",
+        "unknown": "non précisé",
     }.get(value, value)
+
+
+def build_sale_summary(action: dict[str, Any], *, ask_confirmation: bool) -> str:
+    payment = display_channel(str(action.get("payment") or "unknown"))
+    lines = [
+        "J’ai compris :",
+        "",
+        f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
+        "",
+        f"Client : {action['customer']}",
+        "",
+        f"Montant : {format_currency(action['amount'])}",
+        "",
+        f"Paiement : {payment}",
+    ]
+    if action.get("remaining", 0) > 0:
+        lines.extend(["", f"Reste dû : {format_currency(action['remaining'])}"])
+    if ask_confirmation:
+        lines.extend(["", "Confirmer ? Réponds oui ou non."])
+    return "\n".join(lines)
 
 
 def build_confirmation_message(action: dict[str, Any]) -> str:
     if action["type"] == "sale":
-        payment = display_channel(str(action["payment"]))
-        if action["remaining"] > 0:
-            return (
-                f"Vente : {action['customer']}, "
-                f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
-                f"{format_currency(action['amount'])} "
-                f"(reste dû {format_currency(action['remaining'])}) "
-                f"{payment}. Confirmer ? Réponds oui ou non."
-            )
-        return (
-            f"Vente : {action['customer']}, "
-            f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
-            f"{format_currency(action['amount'])} {payment}. "
-            "Confirmer ? Réponds oui ou non."
-        )
+        return build_sale_summary(action, ask_confirmation=True)
     if action["type"] == "payment":
         return f"Encaissement : {action['customer']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
     if action["type"] == "purchase":
@@ -78,9 +85,10 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
 def build_help_message() -> str:
     return (
         "Bonjour 👋 Je suis Whatzabi.\n"
-        "Envoie un texte ou un vocal, par exemple :\n"
+        "Pour une vente, dis simplement :\n"
+        "« 1 sac riz Awa 83 000 cash »\n\n"
+        "Autres exemples :\n"
         "- Résumé du jour\n"
-        "- Vends un sac de riz à Awa pour 83 000 cash\n"
         "- Awa a payé 10 000\n"
         "- Transport 2 500 cash"
     )
@@ -192,7 +200,7 @@ def process_incoming_message(
         if payment is None:
             return {
                 "status": "reply",
-                "reply_text": "Le paiement est-il en cash, crédit, Moov ou MTN ?",
+                "reply_text": "Cash, crédit, Moov ou MTN ?",
                 "action": pending,
             }
 
@@ -236,10 +244,8 @@ def process_incoming_message(
             "status": "reply",
             "reply_text": (
                 "Je n’ai pas encore compris cette demande.\n"
-                "Essaie par exemple :\n"
-                "- résumé du jour\n"
-                "- total du jour\n"
-                "- Vends un sac de riz à Awa pour 83 000 cash"
+                "Pour une vente, dis simplement :\n"
+                "« 1 sac riz Awa 83 000 cash »"
             ),
             "action": None,
         }
@@ -256,12 +262,7 @@ def process_incoming_message(
         set_pending_action(sender_id, action)
         return {
             "status": "reply",
-            "reply_text": (
-                f"J’ai compris une vente de {action['quantity']} {action['unit'].lower()} "
-                f"de {action['product'].lower()} à {action['customer']} pour "
-                f"{format_currency(action['amount'])}.\n\n"
-                "Le paiement est-il en cash, crédit, Moov ou MTN ?"
-            ),
+            "reply_text": build_sale_summary(action, ask_confirmation=False) + "\n\nCash, crédit, Moov ou MTN ?",
             "action": action,
         }
 
