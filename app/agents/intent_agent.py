@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any, Literal
 
 from openai import OpenAI
@@ -59,20 +60,17 @@ Intentions possibles :
 
 Règles impératives :
 1. N'invente jamais un client, produit, fournisseur, montant ou canal.
-2. Convertis les nombres écrits ou prononcés en entiers :
-   "quatre-vingt-trois mille" -> 83000, "dix mil" -> 10000.
+2. Convertis les nombres écrits ou prononcés en entiers.
 3. Normalise les canaux : comptant/cash/espèces -> cash ; crédit/dette/après -> credit ;
    Moov -> moov_money ; MTN/MoMo -> mtn_momo.
-4. Pour une vente :
-   - amount = montant total de la vente ;
-   - paid_amount = montant déjà payé, seulement s'il est explicitement indiqué ;
-   - remaining = reste dû, seulement s'il est explicite ou calculable ;
-   - payment = unknown si le moyen de paiement n'est pas indiqué.
-5. Pour une vente entièrement à crédit : remaining = amount et payment = credit.
-6. Pour une vente cash/Moov/MTN entièrement réglée : remaining = 0.
-7. Mets dans missing_fields les informations nécessaires absentes.
-8. Utilise unknown si le texte est trop déformé pour identifier une opération avec confiance.
-9. Tu extrais seulement l'intention. Tu n'exécutes rien et tu ne confirmes rien.
+4. Une phrase qui décrit un produit vendu à une personne est une sale, jamais une expense.
+5. Pour « un sac », retourne quantity=1 et unit="sac".
+6. Pour « trois sacs », retourne quantity=3 et unit="sac".
+7. Pour une vente : amount est le montant total, payment vaut unknown si non indiqué.
+8. Pour une vente entièrement à crédit : remaining=amount et payment=credit.
+9. Pour une vente cash/Moov/MTN entièrement réglée : remaining=0.
+10. Mets dans missing_fields uniquement les informations réellement absentes.
+11. Tu extrais seulement l'intention. Tu n'exécutes rien et tu ne confirmes rien.
 """.strip()
 
 
@@ -128,15 +126,8 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         amount = int(data.get("amount") or 0)
         payment = data.get("payment") or "unknown"
         remaining = data.get("remaining")
-
         if remaining is None:
-            if payment == "credit":
-                remaining = amount
-            elif payment in {"cash", "moov_money", "mtn_momo", "bank"}:
-                remaining = 0
-            else:
-                remaining = 0
-
+            remaining = amount if payment == "credit" else 0
         action.update(
             customer=data.get("customer"),
             product=data.get("product"),
@@ -149,40 +140,69 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "payment":
-        action.update(
-            customer=data.get("customer"),
-            amount=int(data.get("amount") or 0),
-            channel=data.get("channel") or data.get("payment") or "unknown",
-        )
+        action.update(customer=data.get("customer"), amount=int(data.get("amount") or 0), channel=data.get("channel") or data.get("payment") or "unknown")
         return action
 
     if parsed.type == "purchase":
-        action.update(
-            supplier=data.get("supplier"),
-            product=data.get("product"),
-            unit=data.get("unit"),
-            quantity=int(data.get("quantity") or 0),
-            amount=int(data.get("amount") or 0),
-        )
+        action.update(supplier=data.get("supplier"), product=data.get("product"), unit=data.get("unit"), quantity=int(data.get("quantity") or 0), amount=int(data.get("amount") or 0))
         return action
 
     if parsed.type == "supplier_payment":
-        action.update(
-            supplier=data.get("supplier"),
-            amount=int(data.get("amount") or 0),
-            channel=data.get("channel") or data.get("payment") or "unknown",
-        )
+        action.update(supplier=data.get("supplier"), amount=int(data.get("amount") or 0), channel=data.get("channel") or data.get("payment") or "unknown")
         return action
 
     if parsed.type == "expense":
-        action.update(
-            label=data.get("label"),
-            amount=int(data.get("amount") or 0),
-            channel=data.get("channel") or data.get("payment") or "unknown",
-        )
+        action.update(label=data.get("label"), amount=int(data.get("amount") or 0), channel=data.get("channel") or data.get("payment") or "unknown")
         return action
 
     return None
+
+
+def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not action:
+        return None
+
+    lower = " ".join(text.lower().split())
+    sale_cue = any(token in lower for token in ("vends", "vend ", "vente", "sac de", "sacs de")) and " à " in lower
+
+    # Sécurité : une phrase de vente ne doit jamais devenir une dépense.
+    if action.get("type") == "expense" and sale_cue:
+        action["type"] = "sale"
+        action["customer"] = action.get("customer")
+        action["product"] = action.get("product")
+        action["unit"] = action.get("unit")
+        action["quantity"] = action.get("quantity") or 0
+        action["payment"] = action.get("channel") or "unknown"
+        action["remaining"] = 0
+
+    if action.get("type") != "sale":
+        return action
+
+    # Récupération déterministe de la quantité et de l'unité depuis le texte.
+    words_to_numbers = {"un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "dix": 10, "vingt": 20}
+    match = re.search(r"\b(\d+|un|une|deux|trois|quatre|cinq|dix|vingt)\s+(sacs?|cartons?|bo[iî]tes?|bouteilles?|paquets?)\b", lower)
+    if match:
+        raw_qty = match.group(1)
+        quantity = int(raw_qty) if raw_qty.isdigit() else words_to_numbers.get(raw_qty, 1)
+        unit = re.sub(r"s$", "", match.group(2))
+        action["quantity"] = quantity
+        action["unit"] = unit.capitalize()
+
+    # Produit et client simples pour les formulations courantes.
+    product_match = re.search(r"(?:sacs?|cartons?|bo[iî]tes?|bouteilles?|paquets?)\s+de\s+([a-zà-ÿ'’ -]+?)\s+à\s+([a-zà-ÿ'’ -]+?)\s+(?:pour|à)\s+", lower)
+    if product_match:
+        action["product"] = _clean_name(product_match.group(1))
+        action["customer"] = _clean_name(product_match.group(2))
+
+    missing = set(action.get("_missing_fields") or [])
+    for field in ("unit", "quantity", "product", "customer"):
+        value = action.get(field)
+        if value not in (None, "", 0):
+            missing.discard(field)
+    if action.get("payment") in {None, "unknown"}:
+        missing.discard("payment")
+    action["_missing_fields"] = sorted(missing)
+    return action
 
 
 def parse_with_ai(text: str) -> dict[str, Any] | None:
@@ -210,7 +230,7 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
     if parsed is None or parsed.confidence < minimum_confidence:
         return None
 
-    return _to_business_action(parsed)
+    return _normalize_sale_from_text(text, _to_business_action(parsed))
 
 
 def detect_intent(text: str) -> dict[str, Any] | None:
@@ -221,6 +241,5 @@ def detect_intent(text: str) -> dict[str, Any] | None:
         action["_source"] = "rules"
         action["_confidence"] = 1.0
         action["_missing_fields"] = []
-        return action
-
+        return _normalize_sale_from_text(text, action)
     return parse_with_ai(text)
