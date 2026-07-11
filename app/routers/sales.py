@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.payment import Payment
+from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
@@ -124,21 +125,37 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     db.add(sale)
     db.flush()
 
+    remaining_to_allocate = paid_amount
+    created_sale_items: list[SaleItem] = []
+
     for product, quantity, unit_price, line_total in resolved_items:
         product.stock -= quantity
 
-        db.add(
-            SaleItem(
-                sale_id=sale.id,
-                product_id=product.id,
-                quantity=quantity,
-                unit_price=unit_price,
-                line_total=line_total,
-                paid_amount=0,
-                remaining_amount=line_total,
-                status="credit",
-            )
+        allocated_amount = min(remaining_to_allocate, line_total)
+        line_remaining = line_total - allocated_amount
+
+        if line_remaining == 0:
+            line_status = "paid"
+        elif allocated_amount == 0:
+            line_status = "credit"
+        else:
+            line_status = "partial"
+
+        sale_item = SaleItem(
+            sale_id=sale.id,
+            product_id=product.id,
+            quantity=quantity,
+            unit_price=unit_price,
+            line_total=line_total,
+            paid_amount=allocated_amount,
+            remaining_amount=line_remaining,
+            status=line_status,
         )
+        db.add(sale_item)
+        db.flush()
+        created_sale_items.append(sale_item)
+
+        remaining_to_allocate -= allocated_amount
 
         add_stock_movement(
             db=db,
@@ -151,15 +168,25 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         )
 
     if paid_amount > 0:
-        db.add(
-            Payment(
-                sale_id=sale.id,
-                customer_id=customer.id,
-                amount=paid_amount,
-                channel=payload.payment_channel,
-                reference=None,
-            )
+        payment = Payment(
+            sale_id=sale.id,
+            customer_id=customer.id,
+            amount=paid_amount,
+            channel=payload.payment_channel,
+            reference=None,
         )
+        db.add(payment)
+        db.flush()
+
+        for sale_item in created_sale_items:
+            if sale_item.paid_amount > 0:
+                db.add(
+                    PaymentAllocation(
+                        payment_id=payment.id,
+                        sale_item_id=sale_item.id,
+                        allocated_amount=sale_item.paid_amount,
+                    )
+                )
 
     customer.debt += remaining_amount
 
