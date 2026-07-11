@@ -19,7 +19,6 @@ def format_currency(value: int | float) -> str:
 
 def build_summary_response(db: Session) -> str:
     summary = get_daily_summary_data(db)
-
     return (
         "📊 Résumé du jour\n"
         f"• Ventes : {format_currency(summary['activity']['sales_total'])}\n"
@@ -46,40 +45,28 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
             f"{format_currency(action['amount'])} {action['payment']}. "
             "Confirmer ? Réponds oui ou non."
         )
-
     if action["type"] == "payment":
-        return (
-            f"Encaissement : {action['customer']}, {format_currency(action['amount'])}. "
-            "Confirmer ? Réponds oui ou non."
-        )
-
+        return f"Encaissement : {action['customer']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
     if action["type"] == "purchase":
         return (
             f"Achat : {action['supplier']}, "
             f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
             f"{format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
         )
-
     if action["type"] == "supplier_payment":
-        return (
-            f"Paiement fournisseur : {action['supplier']}, "
-            f"{format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
-        )
-
+        return f"Paiement fournisseur : {action['supplier']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
     if action["type"] == "expense":
         return (
-            f"Dépense : {action['label']}, "
-            f"{format_currency(action['amount'])}, "
+            f"Dépense : {action['label']}, {format_currency(action['amount'])}, "
             f"{action['channel']}. Confirmer ? Réponds oui ou non."
         )
-
     return "Action détectée. Confirmer ? Réponds oui ou non."
 
 
 def build_help_message() -> str:
     return (
         "Bonjour 👋 Je suis Whatzabi.\n"
-        "Envoie par exemple :\n"
+        "Envoie un texte ou un vocal, par exemple :\n"
         "- Résumé du jour\n"
         "- Vends 1 sac de riz à Awa pour 83 000 cash\n"
         "- Awa a payé 10 000\n"
@@ -100,11 +87,7 @@ def set_pending_action(sender_id: str, action: dict[str, Any]) -> None:
     pending_actions[sender_id] = action
 
 
-def execute_confirmed_action(
-    action: dict[str, Any],
-    db: Session,
-) -> str:
-    # Imports différés pour éviter une dépendance circulaire au démarrage de FastAPI.
+def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
     from app.routers.financial_entries import create_financial_entry
     from app.routers.payments import create_payment
     from app.routers.purchases import create_purchase
@@ -112,31 +95,21 @@ def execute_confirmed_action(
     from app.routers.supplier_payments import create_supplier_payment
 
     action_type = action.get("type")
-
     if action_type == "sale":
         sale = create_sale_from_intent(action, db, create_sale)
         return f"✅ Vente enregistrée. Référence : vente n°{sale.id}."
-
     if action_type == "payment":
         payment = create_payment_from_intent(action, db, create_payment)
         return f"✅ Paiement client enregistré : {format_currency(payment.amount)}."
-
     if action_type == "purchase":
         purchase = create_purchase_from_intent(action, db, create_purchase)
         return f"✅ Achat enregistré. Référence : achat n°{purchase.id}."
-
     if action_type == "supplier_payment":
-        payment = create_supplier_payment_from_intent(
-            action,
-            db,
-            create_supplier_payment,
-        )
+        payment = create_supplier_payment_from_intent(action, db, create_supplier_payment)
         return f"✅ Paiement fournisseur enregistré : {format_currency(payment.amount)}."
-
     if action_type == "expense":
         entry = create_expense_from_intent(action, db, create_financial_entry)
         return f"✅ Dépense enregistrée : {format_currency(entry.amount)}."
-
     raise ValueError("Type d'action non pris en charge.")
 
 
@@ -150,74 +123,41 @@ def process_incoming_message(
 ) -> dict[str, Any]:
     _ = channel
 
-    if message_type != "text":
+    if message_type not in {"text", "audio"}:
         return {
             "status": "reply",
-            "reply_text": "Je peux traiter les messages texte pour le moment 😊",
+            "reply_text": "Je peux traiter les messages texte et vocaux pour le moment 😊",
             "action": None,
         }
 
     text = (text or "").strip()
-
     if not text:
-        return {
-            "status": "ignored",
-            "reply_text": None,
-            "action": None,
-        }
+        return {"status": "ignored", "reply_text": None, "action": None}
 
     lower = text.lower()
-
     if lower in ["bonjour", "salut", "hello", "bjr"]:
-        return {
-            "status": "reply",
-            "reply_text": build_help_message(),
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": build_help_message(), "action": None}
 
     if lower in ["oui", "ok", "confirmer", "valider"]:
         pending = get_pending_action(sender_id)
         if not pending:
-            return {
-                "status": "reply",
-                "reply_text": "Aucune action en attente.",
-                "action": None,
-            }
-
+            return {"status": "reply", "reply_text": "Aucune action en attente.", "action": None}
         try:
             reply_text = execute_confirmed_action(pending, db)
         except HTTPException as exc:
             db.rollback()
             detail = exc.detail if isinstance(exc.detail, str) else "Action impossible."
-            return {
-                "status": "reply",
-                "reply_text": f"❌ {detail}",
-                "action": pending,
-            }
+            return {"status": "reply", "reply_text": f"❌ {detail}", "action": pending}
         except Exception as exc:
             db.rollback()
-            return {
-                "status": "reply",
-                "reply_text": f"❌ Impossible d’enregistrer l’action : {exc}",
-                "action": pending,
-            }
-
+            return {"status": "reply", "reply_text": f"❌ Impossible d’enregistrer l’action : {exc}", "action": pending}
         pending_actions.pop(sender_id, None)
-        return {
-            "status": "reply",
-            "reply_text": reply_text,
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": reply_text, "action": None}
 
     if lower in ["non", "annuler", "cancel"]:
-        return {
-            "status": "reply",
-            "reply_text": cancel_pending_action(sender_id),
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
 
     action = parse_message(text)
-
     if not action:
         return {
             "status": "reply",
@@ -232,16 +172,7 @@ def process_incoming_message(
         }
 
     if action["type"] == "summary":
-        return {
-            "status": "reply",
-            "reply_text": build_summary_response(db),
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": build_summary_response(db), "action": None}
 
     set_pending_action(sender_id, action)
-
-    return {
-        "status": "reply",
-        "reply_text": build_confirmation_message(action),
-        "action": action,
-    }
+    return {"status": "reply", "reply_text": build_confirmation_message(action), "action": action}
