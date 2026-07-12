@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
+from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.products import router as products_router
+from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
 from app.routers.sales import router as sales_router
 from app.routers.payments import router as payments_router
@@ -21,6 +24,40 @@ from app.routers.admin import router as admin_router
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
 
+
+@app.on_event("startup")
+def ensure_catalog_schema() -> None:
+    """Migration légère et idempotente pour le catalogue existant."""
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS categories (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) UNIQUE NOT NULL
+        )
+        """,
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS variant VARCHAR(100) NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging VARCHAR(100) NULL",
+        "CREATE INDEX IF NOT EXISTS ix_products_category_id ON products(category_id)",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category_id'
+            ) THEN
+                ALTER TABLE products
+                ADD CONSTRAINT fk_products_category_id
+                FOREIGN KEY (category_id) REFERENCES categories(id);
+            END IF;
+        END $$
+        """,
+    ]
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,6 +67,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(categories_router)
 app.include_router(products_router)
 app.include_router(customers_router)
 app.include_router(sales_router)
@@ -46,4 +84,3 @@ app.include_router(whatsapp_webhook_router)
 app.include_router(whatsapp_send_router)
 app.include_router(debug_env_router)
 app.include_router(admin_router)
-
