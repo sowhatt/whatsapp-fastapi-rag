@@ -45,20 +45,15 @@ def build_summary_response(db: Session) -> str:
 
 def display_channel(value: str) -> str:
     return {
-        "cash": "cash",
-        "credit": "crédit",
-        "moov_money": "Moov Money",
-        "mtn_momo": "MTN MoMo",
-        "bank": "banque",
-        "unknown": "non précisé",
+        "cash": "cash", "credit": "crédit", "moov_money": "Moov Money",
+        "mtn_momo": "MTN MoMo", "bank": "banque", "unknown": "non précisé",
     }.get(value, value)
 
 
 def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
     if action["type"] == "sale":
         lines = [
-            "J’ai compris :",
-            "",
+            "J’ai compris :", "",
             f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
             f"Client : {action['customer']}",
             f"Montant : {format_currency(action['amount'])}",
@@ -68,8 +63,7 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
     elif action["type"] == "purchase":
         lines = [
-            "J’ai compris :",
-            "",
+            "J’ai compris :", "",
             f"Achat : {action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
             f"Fournisseur : {action['supplier']}",
             f"Montant : {format_currency(action['amount'])}",
@@ -185,6 +179,26 @@ def advance_workflow(sender_id: str, action: dict[str, Any], db: Session, prefix
     return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + build_confirmation_message(action), "action": action}
 
 
+def _looks_like_complete_operation(text: str) -> bool:
+    lower = " ".join(text.lower().split())
+    has_operation = bool(re.search(r"\b(vente|vends?|vendu|achat|ach[eè]te|acheter|achet[eé])\b", lower))
+    has_unit = bool(re.search(r"\b(sacs?|cartons?|bidons?|paquets?|bouteilles?|bo[iî]tes?)\b", lower))
+    has_amount = bool(re.search(r"\d{3,}", lower.replace(" ", "")))
+    return has_operation and has_unit and has_amount
+
+
+def _detect_new_operation(text: str, db: Session) -> dict[str, Any] | None:
+    if not _looks_like_complete_operation(text):
+        return None
+    try:
+        action = detect_intent(text, db)
+    except IntentAgentError:
+        return None
+    if action and action.get("type") in {"sale", "purchase"}:
+        return action
+    return None
+
+
 def process_incoming_message(*, channel: str, sender_id: str, message_type: str, text: str | None, db: Session) -> dict[str, Any]:
     _ = channel
     if message_type not in {"text", "audio"}:
@@ -200,6 +214,13 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
 
     pending = get_pending_action(sender_id)
+
+    # Une nouvelle commande complète remplace proprement un ancien dialogue bloqué.
+    if pending:
+        replacement = _detect_new_operation(text, db)
+        if replacement:
+            pending_actions.pop(sender_id, None)
+            return advance_workflow(sender_id, replacement, db, "Nouvelle opération détectée.")
 
     if pending and pending.get("_awaiting") == "operation_type":
         if lower in {"vente", "vends", "vend"}:
