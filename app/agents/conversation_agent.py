@@ -28,6 +28,20 @@ FIELD_QUESTIONS = {
     "label": "Quel est le motif de la dépense ?",
 }
 
+NUMBER_WORDS = {
+    "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4,
+    "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9,
+    "dix": 10, "vingt": 20,
+}
+UNIT_ALIASES = {
+    "sac": "Sac", "sacs": "Sac",
+    "carton": "Carton", "cartons": "Carton",
+    "bidon": "Bidon", "bidons": "Bidon",
+    "paquet": "Paquet", "paquets": "Paquet",
+    "bouteille": "Bouteille", "bouteilles": "Bouteille",
+    "boite": "Boîte", "boites": "Boîte", "boîte": "Boîte", "boîtes": "Boîte",
+}
+
 
 def prepare_missing_field_workflow(action: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     missing = list(action.get("_missing_fields") or [])
@@ -39,19 +53,38 @@ def prepare_missing_field_workflow(action: dict[str, Any]) -> tuple[dict[str, An
     return action, FIELD_QUESTIONS.get(field, f"Quelle est la valeur de {field} ?")
 
 
+def _parse_number_answer(value: str) -> int:
+    digits = re.sub(r"[^0-9]", "", value)
+    if digits:
+        return int(digits)
+    words = re.findall(r"[a-zà-ÿ]+", value.lower())
+    for word in words:
+        if word in NUMBER_WORDS:
+            return NUMBER_WORDS[word]
+    raise ValueError("Réponds avec un nombre, par exemple : 2.")
+
+
+def _parse_unit_answer(value: str) -> str:
+    words = re.findall(r"[a-zà-ÿ]+", value.lower())
+    for word in words:
+        if word in UNIT_ALIASES:
+            return UNIT_ALIASES[word]
+    if len(words) == 1:
+        return words[0].capitalize()
+    raise ValueError("Dis seulement l’unité, par exemple : sac.")
+
+
 def apply_field_answer(action: dict[str, Any], text: str) -> dict[str, Any]:
     field = str(action.get("_awaiting_field") or "")
     value = " ".join(text.split()).strip(" .!?\n\t")
     if field in {"quantity", "amount"}:
-        digits = re.sub(r"[^0-9]", "", value)
-        if not digits:
-            raise ValueError("Réponds avec un nombre.")
-        action[field] = int(digits)
+        action[field] = _parse_number_answer(value)
+    elif field == "unit":
+        action[field] = _parse_unit_answer(value)
     else:
         action[field] = value[:1].upper() + value[1:] if value else value
 
-    missing = [item for item in action.get("_missing_fields", []) if item != field]
-    action["_missing_fields"] = missing
+    action["_missing_fields"] = [item for item in action.get("_missing_fields", []) if item != field]
     action.pop("_awaiting", None)
     action.pop("_awaiting_field", None)
     return action
