@@ -4,7 +4,9 @@ from typing import Any, Literal
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.agents.normalization_agent import normalize_transcription
 from app.services.intent_parser import parse_message
 
 
@@ -165,7 +167,6 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
     lower = " ".join(text.lower().split())
     sale_cue = any(token in lower for token in ("vends", "vend ", "vente", "sac de", "sacs de")) and " à " in lower
 
-    # Sécurité : une phrase de vente ne doit jamais devenir une dépense.
     if action.get("type") == "expense" and sale_cue:
         action["type"] = "sale"
         action["customer"] = action.get("customer")
@@ -178,7 +179,6 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
     if action.get("type") != "sale":
         return action
 
-    # Récupération déterministe de la quantité et de l'unité depuis le texte.
     words_to_numbers = {"un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "dix": 10, "vingt": 20}
     match = re.search(r"\b(\d+|un|une|deux|trois|quatre|cinq|dix|vingt)\s+(sacs?|cartons?|bo[iî]tes?|bouteilles?|paquets?)\b", lower)
     if match:
@@ -188,7 +188,6 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
         action["quantity"] = quantity
         action["unit"] = unit.capitalize()
 
-    # Produit et client simples pour les formulations courantes.
     product_match = re.search(r"(?:sacs?|cartons?|bo[iî]tes?|bouteilles?|paquets?)\s+de\s+([a-zà-ÿ'’ -]+?)\s+à\s+([a-zà-ÿ'’ -]+?)\s+(?:pour|à)\s+", lower)
     if product_match:
         action["product"] = _clean_name(product_match.group(1))
@@ -233,13 +232,23 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
     return _normalize_sale_from_text(text, _to_business_action(parsed))
 
 
-def detect_intent(text: str) -> dict[str, Any] | None:
-    """Règles rapides d'abord, IA seulement en secours."""
-    rule_action = parse_message(text)
+def detect_intent(text: str, db: Session | None = None) -> dict[str, Any] | None:
+    """Normalisation métier, règles rapides, puis IA en dernier recours."""
+    normalization = normalize_transcription(text, db)
+    normalized_text = normalization.normalized_text
+
+    rule_action = parse_message(normalized_text)
     if rule_action:
         action = dict(rule_action)
         action["_source"] = "rules"
         action["_confidence"] = 1.0
         action["_missing_fields"] = []
-        return _normalize_sale_from_text(text, action)
-    return parse_with_ai(text)
+    else:
+        action = parse_with_ai(normalized_text)
+
+    if action:
+        action["_original_text"] = normalization.original_text
+        action["_normalized_text"] = normalized_text
+        action["_normalization_corrections"] = normalization.corrections
+
+    return action
