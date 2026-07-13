@@ -4,6 +4,11 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.agents.conversation_agent import (
+    create_missing_entity,
+    prepare_catalog_workflow,
+    resume_action_after_entity_creation,
+)
 from app.agents.intent_agent import IntentAgentError, detect_intent
 from app.services.expenses_service import create_expense_from_intent
 from app.services.payments_service import create_payment_from_intent
@@ -47,15 +52,12 @@ def build_sale_summary(action: dict[str, Any], *, ask_confirmation: bool) -> str
         "J’ai compris :",
         "",
         f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
-        "",
         f"Client : {action['customer']}",
-        "",
         f"Montant : {format_currency(action['amount'])}",
-        "",
         f"Paiement : {payment}",
     ]
     if action.get("remaining", 0) > 0:
-        lines.extend(["", f"Reste dû : {format_currency(action['remaining'])}"])
+        lines.append(f"Reste dû : {format_currency(action['remaining'])}")
     if ask_confirmation:
         lines.extend(["", "Confirmer ? Réponds oui ou non."])
     return "\n".join(lines)
@@ -68,9 +70,11 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
         return f"Encaissement : {action['customer']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
     if action["type"] == "purchase":
         return (
-            f"Achat : {action['supplier']}, "
-            f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}, "
-            f"{format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
+            "J’ai compris :\n\n"
+            f"Achat : {action['quantity']} {action['unit'].lower()} de {action['product'].lower()}\n"
+            f"Fournisseur : {action['supplier']}\n"
+            f"Montant : {format_currency(action['amount'])}\n\n"
+            "Confirmer ? Réponds oui ou non."
         )
     if action["type"] == "supplier_payment":
         return f"Paiement fournisseur : {action['supplier']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
@@ -85,12 +89,9 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
 def build_help_message() -> str:
     return (
         "Bonjour 👋 Je suis Whatzabi.\n"
-        "Pour une vente, dis simplement :\n"
-        "« 1 sac riz Awa 83 000 cash »\n\n"
-        "Autres exemples :\n"
-        "- Résumé du jour\n"
-        "- Awa a payé 10 000\n"
-        "- Transport 2 500 cash"
+        "Pour une vente : « Vente 1 sac riz Awa 83 000 cash »\n"
+        "Pour un achat : « Achat 5 sacs riz Soglo 350 000 »\n"
+        "Autres exemples : Résumé du jour, Awa a payé 10 000."
     )
 
 
@@ -152,7 +153,6 @@ def _missing_fields_reply(action: dict[str, Any]) -> str | None:
     missing = list(action.get("_missing_fields") or [])
     if not missing:
         return None
-
     labels = {
         "customer": "le client",
         "supplier": "le fournisseur",
@@ -166,6 +166,30 @@ def _missing_fields_reply(action: dict[str, Any]) -> str | None:
     return f"Il me manque : {readable}. Peux-tu reformuler la demande ?"
 
 
+def _continue_action_after_catalog_creation(
+    sender_id: str,
+    action: dict[str, Any],
+    creation_message: str,
+) -> dict[str, Any]:
+    action = resume_action_after_entity_creation(action)
+
+    if action["type"] == "sale" and action.get("payment") in {None, "unknown"}:
+        action["_awaiting"] = "sale_payment"
+        set_pending_action(sender_id, action)
+        return {
+            "status": "reply",
+            "reply_text": creation_message + "\n\nJe reprends la vente.\n\n" + build_sale_summary(action, ask_confirmation=False) + "\n\nCash, crédit, Moov ou MTN ?",
+            "action": action,
+        }
+
+    set_pending_action(sender_id, action)
+    return {
+        "status": "reply",
+        "reply_text": creation_message + "\n\nJe reprends l’opération.\n\n" + build_confirmation_message(action),
+        "action": action,
+    }
+
+
 def process_incoming_message(
     *,
     channel: str,
@@ -175,13 +199,8 @@ def process_incoming_message(
     db: Session,
 ) -> dict[str, Any]:
     _ = channel
-
     if message_type not in {"text", "audio"}:
-        return {
-            "status": "reply",
-            "reply_text": "Je peux traiter les messages texte et vocaux pour le moment 😊",
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": "Je peux traiter les messages texte et vocaux pour le moment 😊", "action": None}
 
     text = (text or "").strip()
     if not text:
@@ -191,32 +210,33 @@ def process_incoming_message(
     if lower in ["bonjour", "salut", "hello", "bjr"]:
         return {"status": "reply", "reply_text": build_help_message(), "action": None}
 
+    pending = get_pending_action(sender_id)
+
     if lower in ["non", "annuler", "cancel"]:
         return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
 
-    pending = get_pending_action(sender_id)
     if pending and pending.get("_awaiting") == "sale_payment":
         payment = normalize_payment_answer(text)
         if payment is None:
-            return {
-                "status": "reply",
-                "reply_text": "Cash, crédit, Moov ou MTN ?",
-                "action": pending,
-            }
-
+            return {"status": "reply", "reply_text": "Cash, crédit, Moov ou MTN ?", "action": pending}
         pending["payment"] = payment
         pending["remaining"] = int(pending["amount"]) if payment == "credit" else 0
         pending.pop("_awaiting", None)
         set_pending_action(sender_id, pending)
-        return {
-            "status": "reply",
-            "reply_text": build_confirmation_message(pending),
-            "action": pending,
-        }
+        return {"status": "reply", "reply_text": build_confirmation_message(pending), "action": pending}
 
     if lower in ["oui", "ok", "confirmer", "valider"]:
         if not pending:
             return {"status": "reply", "reply_text": "Aucune action en attente.", "action": None}
+
+        if pending.get("_awaiting") in {"create_customer_confirmation", "create_supplier_confirmation"}:
+            try:
+                creation_message = create_missing_entity(pending, db)
+            except Exception as exc:
+                db.rollback()
+                return {"status": "reply", "reply_text": f"❌ Impossible de créer l’entité : {exc}", "action": pending}
+            return _continue_action_after_catalog_creation(sender_id, pending, creation_message)
+
         try:
             reply_text = execute_confirmed_action(pending, db)
         except HTTPException as exc:
@@ -230,25 +250,13 @@ def process_incoming_message(
         return {"status": "reply", "reply_text": reply_text, "action": None}
 
     try:
-        action = detect_intent(text)
+        action = detect_intent(text, db)
     except IntentAgentError as exc:
         print("INTENT AGENT ERROR:", str(exc))
-        return {
-            "status": "reply",
-            "reply_text": "Je n’arrive pas à analyser cette demande pour le moment. Réessaie avec une phrase plus simple.",
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": "Je n’arrive pas à analyser cette demande pour le moment. Réessaie avec une phrase plus simple.", "action": None}
 
     if not action:
-        return {
-            "status": "reply",
-            "reply_text": (
-                "Je n’ai pas encore compris cette demande.\n"
-                "Pour une vente, dis simplement :\n"
-                "« 1 sac riz Awa 83 000 cash »"
-            ),
-            "action": None,
-        }
+        return {"status": "reply", "reply_text": "Je n’ai pas compris. Précise d’abord Vente ou Achat.", "action": None}
 
     if action["type"] == "summary":
         return {"status": "reply", "reply_text": build_summary_response(db), "action": None}
@@ -256,6 +264,11 @@ def process_incoming_message(
     missing_reply = _missing_fields_reply(action)
     if missing_reply:
         return {"status": "reply", "reply_text": missing_reply, "action": action}
+
+    action, workflow_reply = prepare_catalog_workflow(action, db)
+    if workflow_reply:
+        set_pending_action(sender_id, action)
+        return {"status": "reply", "reply_text": workflow_reply, "action": action}
 
     if action["type"] == "sale" and action.get("payment") in {None, "unknown"}:
         action["_awaiting"] = "sale_payment"
