@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session
 
+from app.db.session import SessionLocal
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.product import Product
@@ -26,7 +27,6 @@ STATIC_REPLACEMENTS = {
     "francs cfa": "FCFA",
 }
 
-# Erreurs fréquentes observées dans les transcriptions vocales.
 COMMON_ENTITY_ALIASES = {
     "avoir": "Awa",
     "à voir": "Awa",
@@ -103,8 +103,6 @@ def _apply_fuzzy_catalog(
     normalized = text
     phrases = _candidate_phrases(normalized)
 
-    # Les noms exacts restent prioritaires. Une correction floue ne s'applique
-    # qu'aux candidats très proches et de longueur comparable.
     for kind, values in catalog.items():
         for target in sorted(values, key=len, reverse=True):
             if re.search(rf"(?<!\w){re.escape(target)}(?!\w)", normalized, re.IGNORECASE):
@@ -148,10 +146,22 @@ def normalize_transcription(
     corrections: list[dict[str, str | float]] = []
     normalized = _apply_static_replacements(original, corrections)
 
-    if db is not None:
-        catalog = _catalog_values(db)
+    owned_db: Session | None = None
+    active_db = db
+    try:
+        if active_db is None:
+            owned_db = SessionLocal()
+            active_db = owned_db
+
+        catalog = _catalog_values(active_db)
         normalized = _apply_known_aliases(normalized, catalog, corrections)
         normalized = _apply_fuzzy_catalog(normalized, catalog, corrections, fuzzy_threshold)
+    except Exception as exc:
+        # La normalisation ne doit jamais bloquer un message WhatsApp.
+        print("NORMALIZATION AGENT ERROR:", str(exc))
+    finally:
+        if owned_db is not None:
+            owned_db.close()
 
     return NormalizationResult(
         original_text=original,
