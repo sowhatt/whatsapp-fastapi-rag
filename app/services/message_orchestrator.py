@@ -12,6 +12,12 @@ from app.agents.conversation_agent import (
     resume_action_after_entity_creation,
 )
 from app.agents.intent_agent import IntentAgentError, detect_intent
+from app.agents.validation_agent import (
+    format_partial_operation,
+    parse_partial_operation,
+    validate_before_confirmation,
+    validate_entity_answer,
+)
 from app.services.expenses_service import create_expense_from_intent
 from app.services.payments_service import create_payment_from_intent
 from app.services.purchases_service import create_purchase_from_intent
@@ -38,16 +44,37 @@ def build_summary_response(db: Session) -> str:
 
 
 def display_channel(value: str) -> str:
-    return {"cash": "cash", "credit": "crédit", "moov_money": "Moov Money", "mtn_momo": "MTN MoMo", "bank": "banque", "unknown": "non précisé"}.get(value, value)
+    return {
+        "cash": "cash",
+        "credit": "crédit",
+        "moov_money": "Moov Money",
+        "mtn_momo": "MTN MoMo",
+        "bank": "banque",
+        "unknown": "non précisé",
+    }.get(value, value)
 
 
 def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
     if action["type"] == "sale":
-        lines = ["J’ai compris :", "", f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}", f"Client : {action['customer']}", f"Montant : {format_currency(action['amount'])}", f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}"]
+        lines = [
+            "J’ai compris :",
+            "",
+            f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
+            f"Client : {action['customer']}",
+            f"Montant : {format_currency(action['amount'])}",
+            f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
+        ]
         if action.get("remaining", 0) > 0:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
     elif action["type"] == "purchase":
-        lines = ["J’ai compris :", "", f"Achat : {action['quantity']} {action['unit'].lower()} de {action['product'].lower()}", f"Fournisseur : {action['supplier']}", f"Montant : {format_currency(action['amount'])}", f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}"]
+        lines = [
+            "J’ai compris :",
+            "",
+            f"Achat : {action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
+            f"Fournisseur : {action['supplier']}",
+            f"Montant : {format_currency(action['amount'])}",
+            f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
+        ]
     else:
         return "Action détectée. Confirmer ? Réponds oui ou non."
     if confirm:
@@ -68,7 +95,12 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
 
 
 def build_help_message() -> str:
-    return "Bonjour 👋 Je suis Whatzabi.\nVente : « Vente 1 sac riz Awa 83 000 cash »\nAchat : « Achat 5 sacs riz Soglo 350 000 crédit »\nAutres : Résumé du jour, Awa a payé 10 000."
+    return (
+        "Bonjour 👋 Je suis Whatzabi.\n"
+        "Vente : « Vente 1 sac riz Awa 83 000 cash »\n"
+        "Achat : « Achat 5 sacs riz Soglo 350 000 crédit »\n"
+        "Autres : Résumé du jour, Awa a payé 10 000."
+    )
 
 
 def get_pending_action(sender_id: str) -> dict[str, Any] | None:
@@ -135,10 +167,19 @@ def advance_workflow(sender_id: str, action: dict[str, Any], db: Session, prefix
         set_pending_action(sender_id, action)
         return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + question, "action": action}
 
+    validation_message = validate_before_confirmation(action, db)
+    if validation_message:
+        set_pending_action(sender_id, action)
+        return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + validation_message, "action": action}
+
     if action["type"] in {"sale", "purchase"} and action.get("payment") in {None, "unknown"}:
         action["_awaiting"] = "operation_payment"
         set_pending_action(sender_id, action)
-        return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + build_operation_summary(action, confirm=False) + "\n\nCash, crédit, Moov ou MTN ?", "action": action}
+        return {
+            "status": "reply",
+            "reply_text": (prefix + "\n\n" if prefix else "") + build_operation_summary(action, confirm=False) + "\n\nCash, crédit, Moov ou MTN ?",
+            "action": action,
+        }
 
     set_pending_action(sender_id, action)
     return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + build_confirmation_message(action), "action": action}
@@ -159,11 +200,43 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
 
     pending = get_pending_action(sender_id)
+
+    if pending and pending.get("_awaiting") == "operation_type":
+        if lower in {"vente", "vends", "vend"}:
+            pending["type"] = "sale"
+            pending["customer"] = None
+            pending["_missing_fields"] = ["customer"]
+        elif lower in {"achat", "achète", "acheter"}:
+            pending["type"] = "purchase"
+            pending["supplier"] = None
+            pending["_missing_fields"] = ["supplier"]
+        else:
+            return {"status": "reply", "reply_text": "Réponds seulement Vente ou Achat.", "action": pending}
+        pending.pop("_awaiting", None)
+        return advance_workflow(sender_id, pending, db)
+
     if pending and pending.get("_awaiting_field"):
+        field = str(pending.get("_awaiting_field"))
+        entity_error = validate_entity_answer(field, text)
+        if entity_error:
+            return {"status": "reply", "reply_text": entity_error, "action": pending}
         try:
             pending = apply_field_answer(pending, text)
         except ValueError as exc:
             return {"status": "reply", "reply_text": str(exc), "action": pending}
+        return advance_workflow(sender_id, pending, db)
+
+    if pending and pending.get("_awaiting") == "confirm_small_amount":
+        if lower in {"oui", "ok", "confirmer", "valider"}:
+            pending["amount"] = int(pending.pop("_suggested_amount"))
+            pending.pop("_awaiting", None)
+            return advance_workflow(sender_id, pending, db)
+        digits = re.sub(r"\D", "", text)
+        if not digits:
+            return {"status": "reply", "reply_text": "Réponds oui ou donne le montant exact.", "action": pending}
+        pending["amount"] = int(digits)
+        pending.pop("_suggested_amount", None)
+        pending.pop("_awaiting", None)
         return advance_workflow(sender_id, pending, db)
 
     if pending and pending.get("_awaiting") == "operation_payment":
@@ -203,7 +276,12 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     except IntentAgentError as exc:
         print("INTENT AGENT ERROR:", str(exc))
         return {"status": "reply", "reply_text": "Je n’arrive pas à analyser cette demande. Réessaie plus simplement.", "action": None}
+
     if not action:
+        partial = parse_partial_operation(text)
+        if partial:
+            set_pending_action(sender_id, partial)
+            return {"status": "reply", "reply_text": format_partial_operation(partial), "action": partial}
         return {"status": "reply", "reply_text": "Je n’ai pas compris. Précise d’abord Vente ou Achat.", "action": None}
     if action["type"] == "summary":
         return {"status": "reply", "reply_text": build_summary_response(db), "action": None}
