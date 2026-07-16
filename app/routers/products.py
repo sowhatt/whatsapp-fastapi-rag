@@ -26,6 +26,8 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     name = " ".join(payload.name.split()).strip()
     if not name:
         raise HTTPException(status_code=400, detail="Le nom du produit est obligatoire")
+    if payload.price < 0 or payload.purchase_price < 0:
+        raise HTTPException(status_code=400, detail="Les prix doivent être positifs")
 
     existing = db.query(Product).filter(func.lower(Product.name) == name.lower()).first()
     if existing:
@@ -37,11 +39,13 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     product = Product(
         category_id=payload.category_id,
         name=name[:1].upper() + name[1:],
+        product_type=payload.product_type,
         brand=payload.brand,
         variant=payload.variant,
         packaging=payload.packaging,
         unit=payload.unit,
         stock=payload.stock,
+        purchase_price=payload.purchase_price,
         price=payload.price,
         threshold=payload.threshold,
     )
@@ -61,6 +65,10 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
     if "category_id" in changes and changes["category_id"] is not None:
         if not db.get(Category, changes["category_id"]):
             raise HTTPException(status_code=404, detail="Catégorie introuvable")
+
+    for price_field in ("price", "purchase_price"):
+        if price_field in changes and changes[price_field] is not None and changes[price_field] < 0:
+            raise HTTPException(status_code=400, detail="Les prix doivent être positifs")
 
     if "name" in changes and changes["name"]:
         new_name = " ".join(changes["name"].split()).strip()
