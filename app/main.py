@@ -36,10 +36,13 @@ def ensure_catalog_schema() -> None:
         )
         """,
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS variant VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging VARCHAR(100) NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_price INTEGER NOT NULL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS ix_products_category_id ON products(category_id)",
+        "CREATE INDEX IF NOT EXISTS ix_products_product_type ON products(product_type)",
         """
         DO $$
         BEGIN
