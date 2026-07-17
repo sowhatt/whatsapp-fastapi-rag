@@ -18,6 +18,11 @@ from app.agents.validation_agent import (
     validate_before_confirmation,
     validate_entity_answer,
 )
+from app.business.assistant import (
+    BUSINESS_MENU,
+    detect_business_intent,
+    is_menu_request,
+)
 from app.services.expenses_service import create_expense_from_intent
 from app.services.payments_service import create_payment_from_intent
 from app.services.purchases_service import create_purchase_from_intent
@@ -187,15 +192,21 @@ def _looks_like_complete_operation(text: str) -> bool:
     return has_operation and has_unit and has_amount
 
 
-def _detect_new_operation(text: str, db: Session) -> dict[str, Any] | None:
+def _detect_new_operation(
+    text: str,
+    db: Session,
+) -> dict[str, Any] | None:
     if not _looks_like_complete_operation(text):
         return None
+
     try:
         action = detect_intent(text, db)
     except IntentAgentError:
         return None
+
     if action and action.get("type") in {"sale", "purchase"}:
         return action
+
     return None
 
 
@@ -208,8 +219,8 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "ignored", "reply_text": None, "action": None}
 
     lower = text.lower().strip(" .!?\n\t")
-    if lower in {"bonjour", "salut", "hello", "bjr"}:
-        return {"status": "reply", "reply_text": build_help_message(), "action": None}
+    if is_menu_request(text):
+        return {"status": "reply", "reply_text": BUSINESS_MENU, "action": None}
     if lower in {"non", "annuler", "cancel"}:
         return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
 
@@ -291,6 +302,58 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             return {"status": "reply", "reply_text": f"❌ Impossible d’enregistrer l’action : {exc}", "action": pending}
         pending_actions.pop(sender_id, None)
         return {"status": "reply", "reply_text": reply, "action": None}
+
+    business_intent = detect_business_intent(text)
+
+    if business_intent == "daily_summary":
+        return {
+            "status": "reply",
+            "reply_text": build_summary_response(db),
+            "action": None,
+        }
+
+    if business_intent == "sale_create":
+        return {
+            "status": "reply",
+            "reply_text": (
+                "🛒 Décris ta vente.\n\n"
+                "Exemple : « Vente 2 sacs de riz à Awa, 83 000 cash »"
+            ),
+            "action": None,
+        }
+
+    if business_intent == "purchase_create":
+        return {
+            "status": "reply",
+            "reply_text": (
+                "📦 Décris ton achat.\n\n"
+                "Exemple : « Achat 5 sacs de riz chez Soglo, 350 000 crédit »"
+            ),
+            "action": None,
+        }
+
+    business_messages = {
+        "merchant_create": (
+            "🏪 Création du commerce\n\n"
+            "Le workflow d'inscription du commerce sera activé "
+            "dans la prochaine étape."
+        ),
+        "catalog_manage": (
+            "📚 Gestion du catalogue\n\n"
+            "Tu pourras créer des catégories et ajouter tes produits."
+        ),
+        "customer_manage": "👥 Gestion des clients bientôt disponible.",
+        "supplier_manage": "🚚 Gestion des fournisseurs bientôt disponible.",
+        "stock_view": "📦 Consultation du stock bientôt disponible.",
+        "settings": "⚙️ Paramètres du commerce bientôt disponibles.",
+    }
+
+    if business_intent in business_messages:
+        return {
+            "status": "reply",
+            "reply_text": business_messages[business_intent],
+            "action": None,
+        }
 
     try:
         action = detect_intent(text, db)

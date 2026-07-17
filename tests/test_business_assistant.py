@@ -51,3 +51,49 @@ def test_router_handles_next_message() -> None:
     assert state.payload["name"] == "Boutique Awa"
     assert state.step == "confirmation"
     assert reply == "Confirmer Boutique Awa ?"
+
+from app.services.message_orchestrator import process_incoming_message
+
+
+class FakeDB:
+    pass
+
+
+def test_message_orchestrator_displays_business_menu():
+    result = process_incoming_message(
+        channel="whatsapp",
+        sender_id="test-menu",
+        message_type="text",
+        text="Bonjour",
+        db=FakeDB(),
+    )
+
+    assert result["status"] == "reply"
+    assert "Bienvenue sur Whatzabi" in result["reply_text"]
+    assert "1️⃣ Créer mon commerce" in result["reply_text"]
+
+
+def test_message_orchestrator_routes_sale_menu_choice():
+    result = process_incoming_message(
+        channel="whatsapp",
+        sender_id="test-sale",
+        message_type="text",
+        text="5",
+        db=FakeDB(),
+    )
+
+    assert result["status"] == "reply"
+    assert "Décris ta vente" in result["reply_text"]
+
+
+def test_message_orchestrator_routes_purchase_menu_choice():
+    result = process_incoming_message(
+        channel="whatsapp",
+        sender_id="test-purchase",
+        message_type="text",
+        text="6",
+        db=FakeDB(),
+    )
+
+    assert result["status"] == "reply"
+    assert "Décris ton achat" in result["reply_text"]
