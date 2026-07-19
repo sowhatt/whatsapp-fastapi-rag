@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.message_orchestrator import process_incoming_message
-from app.services.voice_transcriber import VoiceTranscriptionError, transcribe_audio_bytes
+from app.services.voice_transcriber import (
+    VoiceTranscriptionError,
+    transcribe_audio_bytes,
+)
 from app.services.whatsapp_media import (
     WhatsAppMediaError,
     download_whatsapp_media,
@@ -24,21 +27,36 @@ def verify_whatsapp_webhook(
     hub_challenge: str = Query(alias="hub.challenge"),
 ):
     verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN")
+
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
         return int(hub_challenge)
-    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+    raise HTTPException(
+        status_code=403,
+        detail="Webhook verification failed",
+    )
 
 
 @router.post("/webhooks/whatsapp")
-async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+async def receive_whatsapp_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     raw_body = await request.body()
+
     if not raw_body:
-        return {"status": "ignored", "reason": "empty_body"}
+        return {
+            "status": "ignored",
+            "reason": "empty_body",
+        }
 
     try:
         body = json.loads(raw_body)
     except json.JSONDecodeError:
-        return {"status": "ignored", "reason": "invalid_json"}
+        return {
+            "status": "ignored",
+            "reason": "invalid_json",
+        }
 
     try:
         for entry in body.get("entry", []):
@@ -46,30 +64,99 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
                 value = change.get("value", {})
 
                 if value.get("statuses"):
-                    print("WHATSAPP STATUSES:", value["statuses"])
+                    print(
+                        "WHATSAPP STATUSES:",
+                        value["statuses"],
+                    )
                     continue
 
                 for message in value.get("messages", []):
                     from_number = message.get("from")
                     message_type = message.get("type")
+
                     if not from_number:
                         continue
 
                     text_body = None
 
                     if message_type == "text":
-                        text_body = message.get("text", {}).get("body", "").strip()
+                        text_body = (
+                            message
+                            .get("text", {})
+                            .get("body", "")
+                            .strip()
+                        )
 
                     elif message_type == "audio":
-                        audio_id = message.get("audio", {}).get("id")
+                        audio_id = (
+                            message
+                            .get("audio", {})
+                            .get("id")
+                        )
+
                         if not audio_id:
-                            send_whatsapp_text_message(from_number, "Je n’ai pas pu lire ce vocal.")
+                            send_whatsapp_text_message(
+                                from_number,
+                                "🎙️ Je n’ai pas pu lire ce vocal.",
+                            )
                             continue
 
-                        media_url = get_whatsapp_media_url(audio_id)
-                        audio_bytes, content_type = download_whatsapp_media(media_url)
-                        text_body = transcribe_audio_bytes(audio_bytes, content_type)
-                        print("WHATSAPP VOICE TRANSCRIPT:", text_body)
+                        try:
+                            media_url = get_whatsapp_media_url(
+                                audio_id,
+                            )
+
+                            audio_bytes, content_type = (
+                                download_whatsapp_media(
+                                    media_url,
+                                )
+                            )
+
+                            text_body = transcribe_audio_bytes(
+                                audio_bytes,
+                                content_type,
+                            )
+
+                            print(
+                                "WHATSAPP VOICE TRANSCRIPT:",
+                                text_body,
+                            )
+
+                        except VoiceTranscriptionError as exc:
+                            print(
+                                "WHATSAPP VOICE "
+                                "TRANSCRIPTION REJECTED:",
+                                str(exc),
+                            )
+
+                            send_whatsapp_text_message(
+                                from_number,
+                                "🎙️ Je n’ai détecté aucune "
+                                "parole claire.\n"
+                                "Réessaie en parlant près "
+                                "du téléphone.",
+                            )
+                            continue
+
+                        except WhatsAppMediaError as exc:
+                            print(
+                                "WHATSAPP MEDIA ERROR:",
+                                str(exc),
+                            )
+
+                            send_whatsapp_text_message(
+                                from_number,
+                                "🎙️ Je n’ai pas pu télécharger "
+                                "ce vocal.\n"
+                                "Réessaie dans quelques instants.",
+                            )
+                            continue
+
+                    else:
+                        continue
+
+                    if not text_body:
+                        continue
 
                     result = process_incoming_message(
                         channel="whatsapp",
@@ -80,16 +167,35 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
                     )
 
                     reply_text = result.get("reply_text")
-                    if result.get("status") == "reply" and reply_text:
-                        if message_type == "audio" and text_body:
-                            reply_text = f"🎙️ J’ai compris :\n{text_body}\n\n{reply_text}"
-                        send_whatsapp_text_message(from_number, reply_text)
+
+                    if (
+                        result.get("status") == "reply"
+                        and reply_text
+                    ):
+                        if (
+                            message_type == "audio"
+                            and text_body
+                        ):
+                            reply_text = (
+                                "🎙️ J’ai compris :\n"
+                                f"{text_body}\n\n"
+                                f"{reply_text}"
+                            )
+
+                        send_whatsapp_text_message(
+                            from_number,
+                            reply_text,
+                        )
 
         return {"status": "received"}
 
-    except (WhatsAppMediaError, VoiceTranscriptionError) as exc:
-        print("WHATSAPP VOICE ERROR:", str(exc))
-        return {"status": "received_with_error", "detail": str(exc)}
     except Exception as exc:
-        print("WHATSAPP WEBHOOK ERROR:", str(exc))
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        print(
+            "WHATSAPP WEBHOOK ERROR:",
+            str(exc),
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
