@@ -233,18 +233,30 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
 
 
 def detect_intent(text: str, db: Session | None = None) -> dict[str, Any] | None:
-    """Normalisation métier, règles rapides, puis IA en dernier recours."""
+    """
+    Détecte une intention métier.
+
+    L'agent IA est la source principale de compréhension.
+    Le parser à règles reste uniquement un mécanisme de repli.
+    """
     normalization = normalize_transcription(text, db)
     normalized_text = normalization.normalized_text
 
-    rule_action = parse_message(normalized_text)
-    if rule_action:
-        action = dict(rule_action)
-        action["_source"] = "rules"
-        action["_confidence"] = 1.0
-        action["_missing_fields"] = []
-    else:
+    action: dict[str, Any] | None = None
+
+    try:
         action = parse_with_ai(normalized_text)
+    except IntentAgentError:
+        # Une indisponibilité de l'IA ne doit pas bloquer les commandes simples.
+        action = None
+
+    if not action:
+        rule_action = parse_message(normalized_text)
+        if rule_action:
+            action = dict(rule_action)
+            action["_source"] = "rules_fallback"
+            action["_confidence"] = 0.80
+            action.setdefault("_missing_fields", [])
 
     if action:
         action["_original_text"] = normalization.original_text

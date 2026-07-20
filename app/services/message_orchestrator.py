@@ -23,6 +23,8 @@ from app.business.assistant import (
     detect_business_intent,
     is_menu_request,
 )
+from app.business.commands import SaleCommand
+from app.business.parser.sale_parser import parse_sale
 from app.services.expenses_service import create_expense_from_intent
 from app.services.payments_service import create_payment_from_intent
 from app.services.purchases_service import create_purchase_from_intent
@@ -184,6 +186,58 @@ def advance_workflow(sender_id: str, action: dict[str, Any], db: Session, prefix
     return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + build_confirmation_message(action), "action": action}
 
 
+def _sale_command_to_action(command: SaleCommand) -> dict[str, Any]:
+    product_text = " ".join(command.product.split()).strip()
+
+    unit_aliases = {
+        "sac": "Sac",
+        "sacs": "Sac",
+        "carton": "Carton",
+        "cartons": "Carton",
+        "bidon": "Bidon",
+        "bidons": "Bidon",
+        "paquet": "Paquet",
+        "paquets": "Paquet",
+        "bouteille": "Bouteille",
+        "bouteilles": "Bouteille",
+        "boite": "Boîte",
+        "boites": "Boîte",
+        "boîte": "Boîte",
+        "boîtes": "Boîte",
+        "kg": "Kg",
+        "kilo": "Kg",
+        "kilos": "Kg",
+    }
+
+    parts = product_text.split(maxsplit=1)
+    first_word = parts[0].lower() if parts else ""
+    unit = unit_aliases.get(first_word, "Unité")
+
+    product = parts[1] if len(parts) == 2 else product_text
+    product = re.sub(r"^(?:de\s+|d['’])", "", product, flags=re.IGNORECASE)
+    product = product.strip()
+
+    amount = int(command.total) if command.total is not None else None
+
+    missing_fields: list[str] = []
+    if not command.customer:
+        missing_fields.append("customer")
+    if amount is None:
+        missing_fields.append("amount")
+
+    return {
+        "type": "sale",
+        "quantity": int(command.quantity),
+        "unit": unit,
+        "product": product,
+        "customer": command.customer,
+        "amount": amount,
+        "payment": command.payment_method or "unknown",
+        "remaining": 0,
+        "_missing_fields": missing_fields,
+    }
+
+
 def _looks_like_complete_operation(text: str) -> bool:
     lower = " ".join(text.lower().split())
     has_operation = bool(re.search(r"\b(vente|vends?|vendu|achat|ach[eè]te|acheter|achet[eé])\b", lower))
@@ -196,18 +250,30 @@ def _detect_new_operation(
     text: str,
     db: Session,
 ) -> dict[str, Any] | None:
-    if not _looks_like_complete_operation(text):
-        return None
+    """
+    Demande à IntentAgent si le message décrit une nouvelle opération.
 
+    Cette fonction ne tente plus d'extraire elle-même la quantité,
+    le produit, le client ou le montant.
+    """
     try:
         action = detect_intent(text, db)
     except IntentAgentError:
         return None
 
-    if action and action.get("type") in {"sale", "purchase"}:
-        return action
+    if not action:
+        return None
 
-    return None
+    if action.get("type") not in {"sale", "purchase"}:
+        return None
+
+    confidence = float(action.get("_confidence") or 0.0)
+    source = str(action.get("_source") or "")
+
+    if source == "ai" and confidence < 0.65:
+        return None
+
+    return action
 
 
 def process_incoming_message(*, channel: str, sender_id: str, message_type: str, text: str | None, db: Session) -> dict[str, Any]:
@@ -219,12 +285,25 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "ignored", "reply_text": None, "action": None}
 
     lower = text.lower().strip(" .!?\n\t")
-    if is_menu_request(text):
-        return {"status": "reply", "reply_text": BUSINESS_MENU, "action": None}
-    if lower in {"non", "annuler", "cancel"}:
-        return {"status": "reply", "reply_text": cancel_pending_action(sender_id), "action": None}
-
     pending = get_pending_action(sender_id)
+
+    # Revenir au menu abandonne explicitement l'ancien workflow.
+    # Sinon les choix 1 à 9 seraient interprétés comme des réponses
+    # à une opération précédente restée en attente.
+    if is_menu_request(text):
+        pending_actions.pop(sender_id, None)
+        return {
+            "status": "reply",
+            "reply_text": BUSINESS_MENU,
+            "action": None,
+        }
+
+    if lower in {"non", "annuler", "cancel"}:
+        return {
+            "status": "reply",
+            "reply_text": cancel_pending_action(sender_id),
+            "action": None,
+        }
 
     # Une nouvelle commande complète remplace proprement un ancien dialogue bloqué.
     if pending:
@@ -313,11 +392,33 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         }
 
     if business_intent == "sale_create":
+        # Un choix de menu ou une commande courte ouvre le formulaire.
+        if lower in {"5", "vente", "vendre", "faire une vente"}:
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "🛒 Décris ta vente.\n\n"
+                    "Exemple : « Vente 2 sacs de riz à Awa, 83 000 cash »"
+                ),
+                "action": None,
+            }
+
+        # Une phrase complète est comprise par IntentAgent.
+        try:
+            action = detect_intent(text, db)
+        except IntentAgentError as exc:
+            print("INTENT AGENT ERROR:", str(exc))
+            action = None
+
+        if action and action.get("type") == "sale":
+            return advance_workflow(sender_id, action, db)
+
         return {
             "status": "reply",
             "reply_text": (
-                "🛒 Décris ta vente.\n\n"
-                "Exemple : « Vente 2 sacs de riz à Awa, 83 000 cash »"
+                "Je reconnais une vente, mais certaines informations "
+                "ne sont pas suffisamment claires.\n\n"
+                "Exemple : « Vente 2 sacs de riz à Awa pour 83 000 »"
             ),
             "action": None,
         }

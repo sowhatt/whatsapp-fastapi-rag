@@ -97,3 +97,174 @@ def test_message_orchestrator_routes_purchase_menu_choice():
 
     assert result["status"] == "reply"
     assert "Décris ton achat" in result["reply_text"]
+
+
+def test_new_sale_replaces_pending_sale(monkeypatch):
+    from app.services import message_orchestrator
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-replace-sale"
+
+    pending_actions[sender_id] = {
+        "type": "sale",
+        "customer": "Awa",
+        "product": "Riz",
+        "unit": "Sac",
+        "quantity": 20,
+        "amount": 250000,
+        "payment": "unknown",
+        "remaining": 0,
+        "_awaiting": "operation_payment",
+        "_missing_fields": [],
+    }
+
+    new_sale = {
+        "type": "sale",
+        "customer": "Pierre",
+        "product": "Poisson",
+        "unit": "Kilo",
+        "quantity": 5,
+        "amount": 250000,
+        "payment": "unknown",
+        "remaining": 0,
+        "_source": "ai",
+        "_confidence": 0.99,
+        "_missing_fields": [],
+    }
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "_detect_new_operation",
+        lambda text, db: new_sale.copy(),
+    )
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "prepare_catalog_workflow",
+        lambda action, db: (action, None),
+    )
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "validate_before_confirmation",
+        lambda action, db: None,
+    )
+
+    result = message_orchestrator.process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="audio",
+        text="Vends cinq kilos de poisson à Pierre pour deux cent cinquante mille.",
+        db=FakeDB(),
+    )
+
+    assert result["action"]["product"] == "Poisson"
+    assert result["action"]["customer"] == "Pierre"
+    assert result["action"]["quantity"] == 5
+    assert pending_actions[sender_id]["product"] == "Poisson"
+    assert pending_actions[sender_id]["product"] != "Riz"
+
+    pending_actions.pop(sender_id, None)
+
+
+def test_new_sale_replaces_pending_sale(monkeypatch):
+    from app.services import message_orchestrator
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-replace-sale"
+
+    pending_actions[sender_id] = {
+        "type": "sale",
+        "customer": "Awa",
+        "product": "Riz",
+        "unit": "Sac",
+        "quantity": 20,
+        "amount": 250000,
+        "payment": "unknown",
+        "remaining": 0,
+        "_awaiting": "operation_payment",
+        "_missing_fields": [],
+    }
+
+    new_sale = {
+        "type": "sale",
+        "customer": "Pierre",
+        "product": "Poisson",
+        "unit": "Kilo",
+        "quantity": 5,
+        "amount": 250000,
+        "payment": "unknown",
+        "remaining": 0,
+        "_source": "ai",
+        "_confidence": 0.99,
+        "_missing_fields": [],
+    }
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "_detect_new_operation",
+        lambda text, db: new_sale.copy(),
+    )
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "prepare_catalog_workflow",
+        lambda action, db: (action, None),
+    )
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "validate_before_confirmation",
+        lambda action, db: None,
+    )
+
+    result = message_orchestrator.process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="audio",
+        text="Vends cinq kilos de poisson à Pierre pour deux cent cinquante mille.",
+        db=FakeDB(),
+    )
+
+    assert result["action"]["product"] == "Poisson"
+    assert result["action"]["customer"] == "Pierre"
+    assert result["action"]["quantity"] == 5
+    assert pending_actions[sender_id]["product"] == "Poisson"
+    assert pending_actions[sender_id]["product"] != "Riz"
+
+    pending_actions.pop(sender_id, None)
+
+
+def test_menu_request_clears_previous_pending_action():
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-menu-reset"
+    pending_actions[sender_id] = {
+        "type": "sale",
+        "product": "Riz",
+        "unit": "Sac",
+        "quantity": 5,
+        "amount": 10000,
+        "_awaiting_field": "quantity",
+    }
+
+    menu_result = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="Bonjour",
+        db=FakeDB(),
+    )
+
+    assert menu_result["status"] == "reply"
+    assert sender_id not in pending_actions
+
+    sale_result = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="5",
+        db=FakeDB(),
+    )
+
+    assert "Décris ta vente" in sale_result["reply_text"]
