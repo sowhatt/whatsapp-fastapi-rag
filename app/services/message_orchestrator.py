@@ -333,7 +333,11 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
     # Une nouvelle commande ne remplace le workflow actif que si le message
     # ressemble explicitement à une opération complète.
-    if pending and _looks_like_complete_operation(text):
+    if (
+        pending
+        and not pending.get("_awaiting_field")
+        and _looks_like_complete_operation(text)
+    ):
         replacement = _detect_new_operation(text, db)
         if replacement:
             pending_actions.pop(sender_id, None)
