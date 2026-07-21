@@ -240,9 +240,32 @@ def _sale_command_to_action(command: SaleCommand) -> dict[str, Any]:
 
 def _looks_like_complete_operation(text: str) -> bool:
     lower = " ".join(text.lower().split())
-    has_operation = bool(re.search(r"\b(vente|vends?|vendu|achat|ach[eè]te|acheter|achet[eé])\b", lower))
-    has_unit = bool(re.search(r"\b(sacs?|cartons?|bidons?|paquets?|bouteilles?|bo[iî]tes?)\b", lower))
-    has_amount = bool(re.search(r"\d{3,}", lower.replace(" ", "")))
+
+    # Une réponse comme « vingt sacs » ne suffit pas :
+    # il faut un verbe explicite de vente ou d'achat.
+    has_operation = bool(
+        re.search(
+            r"\b(vente|vends?|vendu|achat|ach[eè]te|acheter|achet[eé])\b",
+            lower,
+        )
+    )
+
+    has_unit = bool(
+        re.search(
+            r"\b("
+            r"sacs?|cartons?|bidons?|paquets?|bouteilles?|"
+            r"bo[iî]tes?|kg|kilos?|unit[eé]s?"
+            r")\b",
+            lower,
+        )
+    )
+
+    # Le montant peut être écrit en chiffres ou en lettres après « pour ».
+    has_amount = bool(
+        re.search(r"\d{3,}", lower.replace(" ", ""))
+        or re.search(r"\bpour\b", lower)
+    )
+
     return has_operation and has_unit and has_amount
 
 
@@ -305,12 +328,18 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "action": None,
         }
 
-    # Une nouvelle commande complète remplace proprement un ancien dialogue bloqué.
-    if pending:
+    # Une nouvelle commande ne remplace le workflow actif que si le message
+    # ressemble explicitement à une opération complète.
+    if pending and _looks_like_complete_operation(text):
         replacement = _detect_new_operation(text, db)
         if replacement:
             pending_actions.pop(sender_id, None)
-            return advance_workflow(sender_id, replacement, db, "Nouvelle opération détectée.")
+            return advance_workflow(
+                sender_id,
+                replacement,
+                db,
+                "Nouvelle opération détectée.",
+            )
 
     if pending and pending.get("_awaiting") == "operation_type":
         if lower in {"vente", "vends", "vend"}:

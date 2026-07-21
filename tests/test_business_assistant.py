@@ -99,7 +99,7 @@ def test_message_orchestrator_routes_purchase_menu_choice():
     assert "Décris ton achat" in result["reply_text"]
 
 
-def test_new_sale_replaces_pending_sale(monkeypatch):
+def test_new_sale_replaces_pending_sale_first_scenario(monkeypatch):
     from app.services import message_orchestrator
     from app.state.pending_actions import pending_actions
 
@@ -167,7 +167,7 @@ def test_new_sale_replaces_pending_sale(monkeypatch):
     pending_actions.pop(sender_id, None)
 
 
-def test_new_sale_replaces_pending_sale(monkeypatch):
+def test_new_sale_replaces_pending_sale_second_scenario(monkeypatch):
     from app.services import message_orchestrator
     from app.state.pending_actions import pending_actions
 
@@ -268,3 +268,107 @@ def test_menu_request_clears_previous_pending_action():
     )
 
     assert "Décris ta vente" in sale_result["reply_text"]
+
+
+def test_pending_quantity_answer_is_not_detected_as_new_operation(monkeypatch):
+    from app.services import message_orchestrator as orchestrator
+
+    sender_id = "whatsapp-quantity-regression"
+
+    orchestrator.pending_actions[sender_id] = {
+        "type": "sale",
+        "product": "Riz",
+        "unit": "Sac",
+        "quantity": None,
+        "customer": "Awa",
+        "amount": 83000,
+        "payment": "cash",
+        "remaining": 0,
+        "_awaiting_field": "quantity",
+        "_missing_fields": ["quantity"],
+    }
+
+    def forbidden_detect_intent(*args, **kwargs):
+        raise AssertionError(
+            "IntentAgent ne doit pas être appelé pour une réponse de quantité."
+        )
+
+    monkeypatch.setattr(orchestrator, "detect_intent", forbidden_detect_intent)
+
+    def fake_advance_workflow(sender_id, action, db, prefix=""):
+        return {
+            "status": "reply",
+            "reply_text": "Workflow poursuivi.",
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        orchestrator,
+        "advance_workflow",
+        fake_advance_workflow,
+    )
+
+    class FakeDb:
+        pass
+
+    result = orchestrator.process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="vingt sacs",
+        db=FakeDb(),
+    )
+
+    assert "Nouvelle opération détectée" not in result["reply_text"]
+
+
+def test_pending_quantity_answer_is_not_detected_as_new_operation(monkeypatch):
+    from app.services import message_orchestrator as orchestrator
+
+    sender_id = "whatsapp-quantity-regression"
+
+    orchestrator.pending_actions[sender_id] = {
+        "type": "sale",
+        "product": "Riz",
+        "unit": "Sac",
+        "quantity": None,
+        "customer": "Awa",
+        "amount": 83000,
+        "payment": "cash",
+        "remaining": 0,
+        "_awaiting_field": "quantity",
+        "_missing_fields": ["quantity"],
+    }
+
+    def forbidden_detect_intent(*args, **kwargs):
+        raise AssertionError(
+            "IntentAgent ne doit pas être appelé pour une réponse de quantité."
+        )
+
+    monkeypatch.setattr(orchestrator, "detect_intent", forbidden_detect_intent)
+
+    def fake_advance_workflow(sender_id, action, db, prefix=""):
+        return {
+            "status": "reply",
+            "reply_text": "Workflow poursuivi.",
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        orchestrator,
+        "advance_workflow",
+        fake_advance_workflow,
+    )
+
+    class FakeDb:
+        pass
+
+    result = orchestrator.process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="vingt sacs",
+        db=FakeDb(),
+    )
+
+    assert "Nouvelle opération détectée" not in result["reply_text"]
