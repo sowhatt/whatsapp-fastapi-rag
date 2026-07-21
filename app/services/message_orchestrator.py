@@ -263,7 +263,10 @@ def _looks_like_complete_operation(text: str) -> bool:
     # Le montant peut être écrit en chiffres ou en lettres après « pour ».
     has_amount = bool(
         re.search(r"\d{3,}", lower.replace(" ", ""))
-        or re.search(r"\bpour\b", lower)
+        or re.search(
+            r"\b(pour|mille|million|millions|fcfa|franc|francs)\b",
+            lower,
+        )
     )
 
     return has_operation and has_unit and has_amount
