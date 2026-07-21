@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
 from app.models.supplier import Supplier
+from app.business.parser.number_parser import parse_french_number
 
 
 FIELD_STATES = {
@@ -28,11 +29,6 @@ FIELD_QUESTIONS = {
     "label": "Quel est le motif de la dépense ?",
 }
 
-NUMBER_WORDS = {
-    "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4,
-    "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9,
-    "dix": 10, "vingt": 20,
-}
 UNIT_ALIASES = {
     "sac": "Sac", "sacs": "Sac",
     "carton": "Carton", "cartons": "Carton",
@@ -54,14 +50,10 @@ def prepare_missing_field_workflow(action: dict[str, Any]) -> tuple[dict[str, An
 
 
 def _parse_number_answer(value: str) -> int:
-    digits = re.sub(r"[^0-9]", "", value)
-    if digits:
-        return int(digits)
-    words = re.findall(r"[a-zà-ÿ]+", value.lower())
-    for word in words:
-        if word in NUMBER_WORDS:
-            return NUMBER_WORDS[word]
-    raise ValueError("Réponds avec un nombre, par exemple : 2.")
+    parsed = parse_french_number(value)
+    if parsed is None or parsed <= 0 or parsed != parsed.to_integral_value():
+        raise ValueError("Réponds avec un nombre entier positif, par exemple : 22.")
+    return int(parsed)
 
 
 def _parse_unit_answer(value: str) -> str:
