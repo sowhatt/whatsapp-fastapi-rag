@@ -52,15 +52,50 @@ def validate_before_confirmation(action: dict[str, Any], db: Session) -> str | N
     if action.get("type") == "sale":
         product_name = str(action.get("product") or "").strip()
         product = db.query(Product).filter(Product.name.ilike(product_name)).first()
-        if product and product.stock < quantity:
-            action["_awaiting"] = "awaiting_quantity"
-            action["_awaiting_field"] = "quantity"
-            return (
-                f"Stock insuffisant pour {product.name}.\n\n"
-                f"Stock disponible : {product.stock} {product.unit}\n"
-                f"Quantité demandée : {quantity} {product.unit}\n\n"
-                "Donne une nouvelle quantité ou réponds annuler."
-            )
+
+        if product:
+            requested_unit = str(action.get("unit") or "").strip().lower()
+            catalog_unit = str(product.unit or "").strip().lower()
+
+            unit_aliases = {
+                "sacs": "sac",
+                "kg": "kilo",
+                "kilos": "kilo",
+                "cartons": "carton",
+                "bidons": "bidon",
+                "paquets": "paquet",
+                "bouteilles": "bouteille",
+                "boîtes": "boîte",
+                "boites": "boîte",
+                "unités": "unité",
+                "unites": "unité",
+            }
+
+            requested_unit = unit_aliases.get(requested_unit, requested_unit)
+            catalog_unit = unit_aliases.get(catalog_unit, catalog_unit)
+
+            if requested_unit and catalog_unit and requested_unit != catalog_unit:
+                action["_awaiting"] = "awaiting_quantity"
+                action["_awaiting_field"] = "quantity"
+                action["unit"] = product.unit
+
+                return (
+                    f"Le produit {product.name} est géré en {product.unit} "
+                    "dans ton catalogue.\n\n"
+                    f"Donne la quantité en {product.unit} ou réponds annuler."
+                )
+
+            if product.stock < quantity:
+                action["_awaiting"] = "awaiting_quantity"
+                action["_awaiting_field"] = "quantity"
+                action["unit"] = product.unit
+
+                return (
+                    f"Stock insuffisant pour {product.name}.\n\n"
+                    f"Stock disponible : {product.stock} {product.unit}\n"
+                    f"Quantité demandée : {quantity} {product.unit}\n\n"
+                    "Donne une nouvelle quantité ou réponds annuler."
+                )
 
     if amount < 1000 and action.get("type") in {"sale", "purchase"}:
         action["_awaiting"] = "confirm_small_amount"
