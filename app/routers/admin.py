@@ -4,6 +4,17 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 
+import os
+
+from fastapi import Header, HTTPException
+
+
+def _verifier_token_admin(x_admin_token: str) -> None:
+    expected = os.getenv("ADMIN_TOKEN", "")
+    if not expected or x_admin_token != expected:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+
 router = APIRouter(tags=["admin"])
 
 
