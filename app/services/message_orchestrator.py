@@ -101,6 +101,8 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         ]
     else:
         return "Action détectée. Confirmer ? Réponds oui ou non."
+    for warning in action.get("_price_warnings") or []:
+        lines.extend(["", warning])
     if confirm:
         lines.extend(["", "Confirmer ? Réponds oui ou non."])
     return "\n".join(lines)

@@ -36,9 +36,93 @@ def validate_entity_answer(field: str, text: str) -> str | None:
     return None
 
 
+PRICE_ANOMALY_THRESHOLD = 0.20  # 20 % : au-delà, ce n'est plus une négociation
+
+
+def _price_anomaly_warning(
+    product_name: Any,
+    quantity: Any,
+    line_total: Any,
+    db: Session,
+) -> str | None:
+    """
+    Compare le prix implicite d'une ligne au prix de référence du
+    catalogue. Un écart au-delà du seuil signale soit une négociation
+    hors norme, soit une quantité ou un montant mal transcrit
+    (« deux » entendu « dix »).
+    """
+    try:
+        quantity = int(quantity or 0)
+        line_total = int(line_total or 0)
+    except (TypeError, ValueError):
+        return None
+    if not product_name or quantity <= 0 or line_total <= 0:
+        return None
+    product = (
+        db.query(Product)
+        .filter(Product.name.ilike(str(product_name)))
+        .first()
+    )
+    if not product or not product.price:
+        return None
+    implied = line_total / quantity
+    deviation = abs(implied - product.price) / product.price
+    if deviation <= PRICE_ANOMALY_THRESHOLD:
+        return None
+    unit = str(product.unit or "unité").lower()
+    return (
+        f"⚠️ Prix inhabituel : {quantity} {unit} de {product.name.lower()} "
+        f"pour {line_total:,} FCFA, soit {int(round(implied)):,}/{unit} "
+        f"(référence : {int(product.price):,})."
+    ).replace(",", " ")
+
+
 def validate_before_confirmation(action: dict[str, Any], db: Session) -> str | None:
     amount = int(action.get("amount") or 0)
     quantity = int(action.get("quantity") or 0)
+
+    items = [
+        entry
+        for entry in (action.get("items") or [])
+        if entry.get("product")
+    ]
+    if action.get("type") == "sale" and len(items) > 1:
+        item_amounts = [entry.get("amount") for entry in items]
+        if all(value for value in item_amounts):
+            items_sum = sum(int(value) for value in item_amounts)
+            if amount and items_sum != amount:
+                action["_awaiting"] = "awaiting_amount"
+                action["_awaiting_field"] = "amount"
+                return (
+                    f"Les montants par produit font {items_sum:,} FCFA "
+                    f"mais le total annoncé est {amount:,} FCFA.\n\n"
+                    "Quel est le bon montant total ?"
+                ).replace(",", " ")
+
+        warnings = [
+            warning
+            for entry in items
+            if (
+                warning := _price_anomaly_warning(
+                    entry.get("product"),
+                    entry.get("quantity"),
+                    entry.get("amount"),
+                    db,
+                )
+            )
+        ]
+        if warnings:
+            action["_price_warnings"] = warnings
+        else:
+            action.pop("_price_warnings", None)
+    elif action.get("type") == "sale":
+        warning = _price_anomaly_warning(
+            action.get("product"), quantity, amount, db
+        )
+        if warning:
+            action["_price_warnings"] = [warning]
+        else:
+            action.pop("_price_warnings", None)
 
     if amount <= 0:
         action["_awaiting"] = "awaiting_amount"

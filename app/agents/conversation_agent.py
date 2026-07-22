@@ -27,6 +27,7 @@ FIELD_QUESTIONS = {
     "quantity": "Quelle est la quantité ?",
     "amount": "Quel est le montant total ?",
     "label": "Quel est le motif de la dépense ?",
+    "payment": "Cash, crédit, Moov ou MTN ?",
 }
 
 UNIT_ALIASES = {

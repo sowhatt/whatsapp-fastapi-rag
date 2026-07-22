@@ -89,6 +89,10 @@ Règles impératives :
     items[i].amount et mets leur somme dans amount.
 14. Si un seul montant global couvre plusieurs produits, mets-le dans amount
     et laisse items[i].amount vide.
+15. Une énumération de produits avec quantités, suivie d'un nom de personne
+    et d'un montant, est une vente (type=sale) même sans verbe comme
+    « vends » ou « vente ». Exemple : « Deux sacs de riz et trois cartons
+    de tomates à Awa pour 150 000 » est une vente.
 """.strip()
 
 
@@ -191,6 +195,9 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
                 missing.discard("quantity")
             if int(action.get("amount") or 0) > 0:
                 missing.discard("amount")
+            # Le paiement est demandé par le flux dédié
+            # (« Cash, crédit, Moov ou MTN ? »), jamais comme champ brut.
+            missing.discard("payment")
             action["_missing_fields"] = sorted(missing)
         return action
 

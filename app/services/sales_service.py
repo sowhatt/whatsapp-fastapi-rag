@@ -63,11 +63,58 @@ def find_customer_by_name(name: str, db: Session) -> Customer:
     return customer
 
 
+def _product_tokens(value: str) -> set[str]:
+    import re as _re
+
+    return set(_re.findall(r"[a-zà-ÿ]+", str(value).lower()))
+
+
+def find_product_candidates(name: str, db: Session) -> list[Product]:
+    """
+    Résolution en trois niveaux :
+    1. correspondance exacte (« Riz parfumé » -> Riz parfumé) ;
+    2. le nom dit est contenu dans un nom du catalogue
+       (« riz » -> Riz parfumé, Riz ordinaire) ;
+    3. un nom du catalogue est contenu dans le nom dit
+       (« riz parfumé de Thaïlande » -> Riz parfumé).
+    """
+    cleaned = " ".join(str(name).split()).strip()
+    if not cleaned:
+        return []
+
+    exact = db.query(Product).filter(Product.name.ilike(cleaned)).first()
+    if exact:
+        return [exact]
+
+    escaped = cleaned.replace("%", "\\%").replace("_", "\\_")
+    partial = (
+        db.query(Product)
+        .filter(Product.name.ilike(f"%{escaped}%"))
+        .order_by(Product.name)
+        .all()
+    )
+    if partial:
+        return partial
+
+    spoken_tokens = _product_tokens(cleaned)
+    return [
+        product
+        for product in db.query(Product).order_by(Product.name).all()
+        if _product_tokens(product.name) and _product_tokens(product.name) <= spoken_tokens
+    ]
+
+
 def find_product_by_name(name: str, db: Session) -> Product:
-    product = db.query(Product).filter(Product.name.ilike(name)).first()
-    if not product:
-        raise SaleServiceError(f"Produit introuvable : {name}")
-    return product
+    candidates = find_product_candidates(name, db)
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        options = ", ".join(product.name for product in candidates[:5])
+        raise SaleServiceError(
+            f"Plusieurs produits correspondent à « {name} » : {options}. "
+            "Précise le produit."
+        )
+    raise SaleServiceError(f"Produit introuvable : {name}")
 
 
 def _allocate_total(weights: list[int], total: int) -> list[int]:
