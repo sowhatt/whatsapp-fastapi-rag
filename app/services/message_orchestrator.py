@@ -1,3 +1,5 @@
+import os
+import time
 import re
 from typing import Any
 
@@ -105,10 +107,19 @@ def build_help_message() -> str:
 
 
 def get_pending_action(sender_id: str) -> dict[str, Any] | None:
-    return pending_actions.get(sender_id)
+    action = pending_actions.get(sender_id)
+    if action is None:
+        return None
+    ttl_minutes = float(os.getenv("PENDING_ACTION_TTL_MINUTES", "15"))
+    touched = action.get("_touched_at")
+    if touched is not None and time.time() - touched > ttl_minutes * 60:
+        pending_actions.pop(sender_id, None)
+        return None
+    return action
 
 
 def set_pending_action(sender_id: str, action: dict[str, Any]) -> None:
+    action["_touched_at"] = time.time()
     pending_actions[sender_id] = action
 
 
