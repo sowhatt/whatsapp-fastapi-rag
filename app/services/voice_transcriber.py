@@ -64,9 +64,48 @@ def _average_confidence(logprobs: list[object]) -> float:
     return math.exp(average_logprob)
 
 
+def build_transcription_prompt(vocabulary: list[str] | None) -> str:
+    """
+    Amorce la transcription avec le vocabulaire métier du commerce.
+
+    Le modèle privilégie alors les noms réels du catalogue (clients,
+    produits, fournisseurs) plutôt que des homophones génériques
+    (« Awa » au lieu d'« avoir »). Plafonné car l'API ne prend en
+    compte qu'environ 200 tokens de prompt.
+    """
+    base_terms = [
+        "vente", "achat", "crédit", "cash", "FCFA",
+        "Moov Money", "MTN MoMo",
+        "sac", "carton", "bidon", "paquet", "bouteille",
+    ]
+
+    seen: set[str] = set()
+    terms: list[str] = []
+    for term in base_terms + list(vocabulary or []):
+        cleaned = " ".join(str(term).split()).strip()
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        terms.append(cleaned)
+
+    prompt = "Gestion de commerce au Bénin. Vocabulaire : "
+    max_length = 600
+
+    included: list[str] = []
+    for term in terms:
+        candidate = prompt + ", ".join(included + [term]) + "."
+        if len(candidate) > max_length:
+            break
+        included.append(term)
+
+    return prompt + ", ".join(included) + "."
+
+
 def transcribe_audio_bytes(
     audio_bytes: bytes,
     content_type: str = "audio/ogg",
+    vocabulary: list[str] | None = None,
 ) -> str:
     if not audio_bytes:
         raise VoiceTranscriptionError("Fichier audio vide")
@@ -88,6 +127,7 @@ def transcribe_audio_bytes(
             response_format="json",
             language="fr",
             temperature=0,
+            prompt=build_transcription_prompt(vocabulary),
             include=["logprobs"],
         )
     except Exception as exc:

@@ -112,9 +112,21 @@ async def receive_whatsapp_webhook(
                                 )
                             )
 
+                            from app.agents.normalization_agent import (
+                                _catalog_values,
+                            )
+
+                            catalog = _catalog_values(db)
+                            vocabulary = [
+                                name
+                                for values in catalog.values()
+                                for name in values
+                            ]
+
                             text_body = transcribe_audio_bytes(
                                 audio_bytes,
                                 content_type,
+                                vocabulary=vocabulary,
                             )
 
                             print(
