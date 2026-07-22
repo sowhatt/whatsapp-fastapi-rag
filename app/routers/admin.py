@@ -19,7 +19,11 @@ router = APIRouter(tags=["admin"])
 
 
 @router.post("/admin/truncate-db")
-def truncate_db(db: Session = Depends(get_db)):
+def truncate_db(
+    db: Session = Depends(get_db),
+    x_admin_token: str = Header(default=""),
+):
+    _verifier_token_admin(x_admin_token)
     try:
         db.execute(
             text("""
