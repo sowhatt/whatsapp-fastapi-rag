@@ -30,6 +30,13 @@ PaymentChannel = Literal[
 ]
 
 
+class AIIntentItem(BaseModel):
+    product: str | None = None
+    unit: str | None = None
+    quantity: int | None = None
+    amount: int | None = None
+
+
 class AIIntent(BaseModel):
     type: IntentType
     customer: str | None = None
@@ -43,6 +50,7 @@ class AIIntent(BaseModel):
     remaining: int | None = None
     payment: PaymentChannel = "unknown"
     channel: PaymentChannel = "unknown"
+    items: list[AIIntentItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     missing_fields: list[str] = Field(default_factory=list)
 
@@ -73,6 +81,14 @@ Règles impératives :
 9. Pour une vente cash/Moov/MTN entièrement réglée : remaining=0.
 10. Mets dans missing_fields uniquement les informations réellement absentes.
 11. Tu extrais seulement l'intention. Tu n'exécutes rien et tu ne confirmes rien.
+12. Si plusieurs produits sont vendus ou achetés dans la même phrase, remplis
+    items avec une entrée par produit (product, unit, quantity, et amount si
+    un prix est annoncé pour ce produit précis). Renseigne aussi product,
+    unit et quantity avec le premier produit.
+13. Si un montant est annoncé produit par produit, mets chaque montant dans
+    items[i].amount et mets leur somme dans amount.
+14. Si un seul montant global couvre plusieurs produits, mets-le dans amount
+    et laisse items[i].amount vide.
 """.strip()
 
 
@@ -139,6 +155,43 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
             payment=payment,
             remaining=int(remaining or 0),
         )
+        items: list[dict[str, Any]] = []
+        for item in parsed.items:
+            product_name = _clean_name(item.product)
+            if not product_name:
+                continue
+            items.append(
+                {
+                    "product": product_name,
+                    "unit": _clean_name(item.unit) or data.get("unit"),
+                    "quantity": int(item.quantity or 0),
+                    "amount": int(item.amount) if item.amount else None,
+                }
+            )
+        if items:
+            action["items"] = items
+            first = items[0]
+            action["product"] = action.get("product") or first["product"]
+            action["unit"] = action.get("unit") or first["unit"]
+            if not action.get("quantity"):
+                action["quantity"] = first["quantity"]
+            item_amounts = [entry["amount"] for entry in items]
+            if all(value is not None for value in item_amounts):
+                items_total = sum(item_amounts)
+                if not action.get("amount"):
+                    action["amount"] = items_total
+                if action.get("payment") == "credit" and not action.get("remaining"):
+                    action["remaining"] = action["amount"]
+            missing = set(action["_missing_fields"])
+            if all(entry["product"] for entry in items):
+                missing.discard("product")
+            if all(entry["unit"] for entry in items):
+                missing.discard("unit")
+            if all(entry["quantity"] > 0 for entry in items):
+                missing.discard("quantity")
+            if int(action.get("amount") or 0) > 0:
+                missing.discard("amount")
+            action["_missing_fields"] = sorted(missing)
         return action
 
     if parsed.type == "payment":
@@ -177,6 +230,12 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
         action["remaining"] = 0
 
     if action.get("type") != "sale":
+        return action
+
+    # Les ventes multi-produits sont entièrement portées par l'IA :
+    # les surcharges par expressions régulières (pensées pour une seule
+    # ligne) corrompraient les items.
+    if len(action.get("items") or []) > 1:
         return action
 
     words_to_numbers = {"un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "dix": 10, "vingt": 20}

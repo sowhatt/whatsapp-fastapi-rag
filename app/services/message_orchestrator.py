@@ -60,7 +60,28 @@ def display_channel(value: str) -> str:
 
 
 def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
-    if action["type"] == "sale":
+    items = action.get("items") or []
+    if action["type"] == "sale" and len(items) > 1:
+        lines = ["J’ai compris :", ""]
+        for item in items:
+            unit_label = str(item.get("unit") or "").lower()
+            description = (
+                f"{item['quantity']} {unit_label} de "
+                f"{str(item['product']).lower()}"
+            ).replace("  ", " ")
+            if item.get("amount"):
+                description += f" ({format_currency(item['amount'])})"
+            lines.append(f"• {description}")
+        lines.extend(
+            [
+                f"Client : {action['customer']}",
+                f"Montant total : {format_currency(action['amount'])}",
+                f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
+            ]
+        )
+        if action.get("remaining", 0) > 0:
+            lines.append(f"Reste dû : {format_currency(action['remaining'])}")
+    elif action["type"] == "sale":
         lines = [
             "J’ai compris :", "",
             f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",

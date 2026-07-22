@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -13,6 +13,13 @@ class SaleServiceError(Exception):
 
 
 @dataclass
+class ResolvedSaleLine:
+    product: Product
+    quantity: int
+    line_total: int
+
+
+@dataclass
 class ResolvedSale:
     customer: Customer
     product: Product
@@ -21,6 +28,17 @@ class ResolvedSale:
     paid_amount: int
     remaining_amount: int
     payment_channel: str
+    lines: list[ResolvedSaleLine] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.lines:
+            self.lines = [
+                ResolvedSaleLine(
+                    product=self.product,
+                    quantity=self.quantity,
+                    line_total=self.total_amount,
+                )
+            ]
 
     @property
     def unit_price(self) -> int:
@@ -52,6 +70,24 @@ def find_product_by_name(name: str, db: Session) -> Product:
     return product
 
 
+def _allocate_total(weights: list[int], total: int) -> list[int]:
+    """
+    Ventile un montant global sur plusieurs lignes au prorata des poids
+    (valeur catalogue de chaque ligne). Si aucun poids n'est exploitable,
+    la répartition est égale. Le reliquat d'arrondi va sur la dernière
+    ligne pour que la somme retombe exactement sur le total.
+    """
+    if not weights:
+        return []
+    weight_sum = sum(weights)
+    if weight_sum <= 0:
+        weights = [1] * len(weights)
+        weight_sum = len(weights)
+    allocated = [total * weight // weight_sum for weight in weights]
+    allocated[-1] += total - sum(allocated)
+    return allocated
+
+
 def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
     if intent.get("type") != "sale":
         raise SaleServiceError("L'intention fournie n'est pas une vente.")
@@ -71,6 +107,74 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
         raise SaleServiceError("Le reste dû ne peut pas dépasser le montant total.")
 
     customer = find_customer_by_name(str(intent["customer"]), db)
+
+    raw_items = [
+        dict(entry)
+        for entry in (intent.get("items") or [])
+        if entry.get("product")
+    ]
+    if len(raw_items) > 1:
+        resolved_products: list[tuple[Product, int, int | None]] = []
+        for entry in raw_items:
+            entry_quantity = int(entry.get("quantity") or 0)
+            if entry_quantity <= 0:
+                raise SaleServiceError(
+                    f"Quantité invalide pour {entry['product']}."
+                )
+            entry_product = find_product_by_name(str(entry["product"]), db)
+            if entry_product.stock < entry_quantity:
+                raise SaleServiceError(
+                    f"Stock insuffisant pour {entry_product.name} : "
+                    f"stock {entry_product.stock}, demandé {entry_quantity}"
+                )
+            entry_amount = entry.get("amount")
+            resolved_products.append(
+                (
+                    entry_product,
+                    entry_quantity,
+                    int(entry_amount) if entry_amount else None,
+                )
+            )
+
+        item_amounts = [amount for (_, _, amount) in resolved_products]
+        if all(amount is not None and amount > 0 for amount in item_amounts):
+            line_totals = [int(amount) for amount in item_amounts]
+            items_sum = sum(line_totals)
+            if total_amount and total_amount != items_sum:
+                raise SaleServiceError(
+                    f"Les montants par produit ({items_sum} FCFA) ne "
+                    f"correspondent pas au total annoncé ({total_amount} FCFA)."
+                )
+            total_amount = items_sum
+        else:
+            weights = [
+                line_product.price * line_quantity
+                for (line_product, line_quantity, _) in resolved_products
+            ]
+            line_totals = _allocate_total(weights, total_amount)
+
+        lines = [
+            ResolvedSaleLine(
+                product=line_product,
+                quantity=line_quantity,
+                line_total=line_total,
+            )
+            for (line_product, line_quantity, _), line_total in zip(
+                resolved_products, line_totals
+            )
+        ]
+        paid_amount = max(0, total_amount - remaining_amount)
+        return ResolvedSale(
+            customer=customer,
+            product=lines[0].product,
+            quantity=lines[0].quantity,
+            total_amount=total_amount,
+            paid_amount=paid_amount,
+            remaining_amount=remaining_amount,
+            payment_channel=payment_channel,
+            lines=lines,
+        )
+
     product = find_product_by_name(str(intent["product"]), db)
 
     if product.stock < quantity:
@@ -96,9 +200,16 @@ def build_sale_create_payload(resolved: ResolvedSale) -> SaleCreate:
         customer_id=resolved.customer.id,
         items=[
             SaleItemCreate(
-                product_id=resolved.product.id,
-                quantity=resolved.quantity,
+                product_id=line.product.id,
+                quantity=line.quantity,
+                unit_price=(
+                    round(line.line_total / line.quantity)
+                    if line.quantity
+                    else 0
+                ),
+                line_total=line.line_total,
             )
+            for line in resolved.lines
         ],
         paid_amount=resolved.paid_amount,
         payment_channel=resolved.payment_channel,

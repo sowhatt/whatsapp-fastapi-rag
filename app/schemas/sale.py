@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class SaleItemCreate(BaseModel):
     product_id: int
     quantity: int
+    unit_price: int | None = None
+    line_total: int | None = None
 
 
 class SaleCreate(BaseModel):

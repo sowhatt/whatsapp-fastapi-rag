@@ -92,9 +92,16 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
                 detail=f"Stock insuffisant pour le produit {product.name}",
             )
 
-        line_total = product.price * item.quantity
+        unit_price = (
+            item.unit_price if item.unit_price is not None else product.price
+        )
+        line_total = (
+            item.line_total
+            if item.line_total is not None
+            else unit_price * item.quantity
+        )
         total_amount += line_total
-        resolved_items.append((product, item.quantity, product.price, line_total))
+        resolved_items.append((product, item.quantity, unit_price, line_total))
 
     paid_amount = payload.paid_amount
     if paid_amount < 0:
