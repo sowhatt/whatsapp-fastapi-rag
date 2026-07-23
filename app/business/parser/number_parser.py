@@ -100,38 +100,46 @@ def parse_french_number(value: str) -> Decimal | None:
         return None
 
     total = 0
+    group = 0
     current: list[str] = []
 
+    def _flush_current() -> bool:
+        nonlocal group
+        if current:
+            parsed = _parse_under_hundred(current)
+            if parsed is None:
+                return False
+            group += parsed
+            current.clear()
+        return True
+
     for token in tokens:
-        if token == "mille":
+        if token in {"cent", "cents"}:
+            # « cent » multiplie ce qui précède et reste dans le groupe
+            # courant, pour que « mille » puisse multiplier l'ensemble :
+            # « deux cent cinquante mille » = (2×100 + 50) × 1000.
             if current:
                 parsed = _parse_under_hundred(current)
                 if parsed is None:
                     return None
-                total += parsed * 1000
-                current = []
+                current.clear()
+                group += parsed * 100
             else:
-                total += 1000
+                group += 100
 
-        elif token in {"cent", "cents"}:
-            multiplier = 1
-
-            if current:
-                parsed = _parse_under_hundred(current)
-                if parsed is None:
-                    return None
-                multiplier = parsed
-                current = []
-
-            total += multiplier * 100
+        elif token == "mille":
+            if not _flush_current():
+                return None
+            if group == 0:
+                group = 1
+            total += group * 1000
+            group = 0
 
         else:
             current.append(token)
 
-    if current:
-        parsed = _parse_under_hundred(current)
-        if parsed is None:
-            return None
-        total += parsed
+    if not _flush_current():
+        return None
+    total += group
 
     return Decimal(total)
