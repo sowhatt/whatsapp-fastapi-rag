@@ -31,7 +31,12 @@ from app.services.expenses_service import create_expense_from_intent
 from app.services.payments_service import create_payment_from_intent
 from app.services.purchases_service import create_purchase_from_intent
 from app.services.sales_service import create_sale_from_intent
-from app.services.summary_service import get_daily_summary_data
+from app.services.summary_service import (
+    get_daily_summary_data,
+    get_period_summary_data,
+    render_period_summary,
+)
+from app.services.receipt_service import handle_receipt_request, is_receipt_request
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
 from app.state.pending_actions import pending_actions
 
@@ -347,6 +352,15 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     lower = text.lower().strip(" .!?\n\t")
     pending = get_pending_action(sender_id)
 
+    # Le reçu est une simple lecture : il n'abandonne pas le workflow
+    # en cours et ne nécessite aucune confirmation.
+    if is_receipt_request(text):
+        return {
+            "status": "reply",
+            "reply_text": handle_receipt_request(text, db),
+            "action": None,
+        }
+
     # Revenir au menu abandonne explicitement l'ancien workflow.
     # Sinon les choix 1 à 9 seraient interprétés comme des réponses
     # à une opération précédente restée en attente.
@@ -451,9 +465,17 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     business_intent = detect_business_intent(text)
 
     if business_intent == "daily_summary":
+        lower_period = text.lower()
+        if "mois" in lower_period:
+            period = "month"
+        elif "semaine" in lower_period or "hebdo" in lower_period:
+            period = "week"
+        else:
+            period = "day"
+        summary_reply = render_period_summary(get_period_summary_data(db, period=period))
         return {
             "status": "reply",
-            "reply_text": build_summary_response(db),
+            "reply_text": summary_reply,
             "action": None,
         }
 
@@ -535,5 +557,13 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             return {"status": "reply", "reply_text": format_partial_operation(partial), "action": partial}
         return {"status": "reply", "reply_text": "Je n’ai pas compris. Précise d’abord Vente ou Achat.", "action": None}
     if action["type"] == "summary":
-        return {"status": "reply", "reply_text": build_summary_response(db), "action": None}
+        lower_period = text.lower()
+        if "mois" in lower_period:
+            period = "month"
+        elif "semaine" in lower_period or "hebdo" in lower_period:
+            period = "week"
+        else:
+            period = "day"
+        summary_reply = render_period_summary(get_period_summary_data(db, period=period))
+        return {"status": "reply", "reply_text": summary_reply, "action": None}
     return advance_workflow(sender_id, action, db)

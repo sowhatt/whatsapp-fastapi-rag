@@ -50,6 +50,7 @@ class AIIntent(BaseModel):
     remaining: int | None = None
     payment: PaymentChannel = "unknown"
     channel: PaymentChannel = "unknown"
+    category: str | None = None
     items: list[AIIntentItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     missing_fields: list[str] = Field(default_factory=list)
@@ -93,6 +94,11 @@ Règles impératives :
     et d'un montant, est une vente (type=sale) même sans verbe comme
     « vends » ou « vente ». Exemple : « Deux sacs de riz et trois cartons
     de tomates à Awa pour 150 000 » est une vente.
+16. Pour une expense, déduis category parmi : marchandises, transport,
+    livraison, loyer, electricite, eau, salaire, autre. Exemples :
+    « j'ai payé 5 000 de taxi » -> transport ; « 3 000 pour livrer la
+    commande » -> livraison ; « facture CEB 12 000 » -> electricite.
+    En cas de doute mets autre.
 """.strip()
 
 
@@ -214,7 +220,22 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "expense":
-        action.update(label=data.get("label"), amount=int(data.get("amount") or 0), channel=data.get("channel") or data.get("payment") or "unknown")
+        allowed = {
+            "marchandises", "transport", "livraison", "loyer",
+            "electricite", "eau", "salaire", "autre",
+        }
+        category = str(parsed.category or "autre").strip().lower()
+        category = (
+            category.replace("é", "e").replace("è", "e").replace("ê", "e")
+        )
+        if category not in allowed:
+            category = "autre"
+        action.update(
+            label=data.get("label"),
+            amount=int(data.get("amount") or 0),
+            channel=data.get("channel") or data.get("payment") or "unknown",
+            category=category,
+        )
         return action
 
     return None

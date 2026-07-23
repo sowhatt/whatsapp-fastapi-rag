@@ -12,6 +12,7 @@ class FinancialEntry(Base):
     amount: Mapped[int] = mapped_column(Integer, default=0)
     channel: Mapped[str] = mapped_column(String(30), default="cash")  # cash, moov_money, mtn_momo, bank
     label: Mapped[str] = mapped_column(String(100))
+    category: Mapped[str | None] = mapped_column(String(30), nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     origin_kind: Mapped[str] = mapped_column(String(20), default="manual")  # manual, linked

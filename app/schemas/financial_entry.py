@@ -6,6 +6,7 @@ class FinancialEntryCreate(BaseModel):
     amount: int
     channel: str = "cash"
     label: str
+    category: str | None = None
     note: str | None = None
 
 
@@ -15,6 +16,7 @@ class FinancialEntryRead(BaseModel):
     amount: int
     channel: str
     label: str
+    category: str | None = None
     note: str | None = None
     origin_kind: str
     reference_type: str | None = None

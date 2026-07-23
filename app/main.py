@@ -36,6 +36,7 @@ def ensure_catalog_schema() -> None:
         )
         """,
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER NULL",
+        "ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS category VARCHAR(30) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS variant VARCHAR(100) NULL",

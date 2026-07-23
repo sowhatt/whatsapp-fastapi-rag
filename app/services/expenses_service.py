@@ -15,6 +15,7 @@ class ResolvedExpense:
     label: str
     amount: int
     channel: str
+    category: str = "autre"
     note: str = "Saisie WhatsApp"
 
 
@@ -49,6 +50,7 @@ def resolve_expense_intent(intent: dict[str, Any], db: Session) -> ResolvedExpen
         label=label,
         amount=amount,
         channel=channel,
+        category=str(intent.get("category") or "autre"),
     )
 
 
@@ -58,6 +60,7 @@ def build_expense_create_payload(resolved: ResolvedExpense) -> FinancialEntryCre
         amount=resolved.amount,
         channel=resolved.channel,
         label=resolved.label,
+        category=resolved.category,
         note=resolved.note,
     )
 

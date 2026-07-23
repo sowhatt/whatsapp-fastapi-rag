@@ -86,6 +86,7 @@ def create_financial_entry(payload: FinancialEntryCreate, db: Session = Depends(
         amount=payload.amount,
         channel=payload.channel,
         label=payload.label,
+        category=payload.category,
         note=payload.note,
         origin_kind="manual",
         reference_type="manual",
