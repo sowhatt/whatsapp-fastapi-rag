@@ -24,6 +24,7 @@ from app.business.assistant import (
     BUSINESS_MENU,
     detect_business_intent,
     is_menu_request,
+    is_summary_keyword_request,
 )
 from app.business.commands import SaleCommand
 from app.business.parser.sale_parser import parse_sale
@@ -358,6 +359,26 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {
             "status": "reply",
             "reply_text": handle_receipt_request(text, db),
+            "action": None,
+        }
+
+    # Le bilan est aussi une simple lecture : consultable à tout moment,
+    # même en plein milieu d'un autre workflow (par exemple pendant
+    # qu'une question de paiement est en attente), sans abandonner
+    # l'opération en cours. Seul le mot-clé naturel déclenche ce
+    # raccourci ici — jamais le chiffre "8" du menu, qui pourrait être
+    # la réponse légitime à une question de quantité ou de montant.
+    if is_summary_keyword_request(text):
+        lower_period = text.lower()
+        if "mois" in lower_period:
+            period = "month"
+        elif "semaine" in lower_period or "hebdo" in lower_period:
+            period = "week"
+        else:
+            period = "day"
+        return {
+            "status": "reply",
+            "reply_text": render_period_summary(get_period_summary_data(db, period=period)),
             "action": None,
         }
 

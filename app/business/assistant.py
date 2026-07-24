@@ -47,6 +47,23 @@ NATURAL_PATTERNS = [
 ]
 
 
+_DAILY_SUMMARY_KEYWORD_PATTERN = r"\b(r[eé]sum[eé]|bilan|total du jour)\b"
+
+
+def is_summary_keyword_request(text: str) -> bool:
+    """
+    Vrai uniquement si le texte contient le mot-clé naturel
+    (« résumé », « bilan »...), jamais pour le raccourci numérique
+    du menu. Utilisé pour laisser consulter le bilan à tout moment,
+    même au milieu d'un autre workflow, sans risquer qu'un simple
+    chiffre de réponse (quantité, montant...) soit mal interprété.
+    """
+    import re as _re
+
+    normalized = " ".join(text.lower().split()).strip(" .!?")
+    return bool(_re.search(_DAILY_SUMMARY_KEYWORD_PATTERN, normalized, _re.IGNORECASE))
+
+
 def is_menu_request(text: str) -> bool:
     normalized = text.lower().strip(" .!?\n\t")
     return normalized in {"bonjour", "salut", "hello", "bjr", "menu", "aide", "help"}
