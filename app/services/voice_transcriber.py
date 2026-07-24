@@ -74,7 +74,7 @@ def build_transcription_prompt(vocabulary: list[str] | None) -> str:
     compte qu'environ 200 tokens de prompt.
     """
     base_terms = [
-        "vente", "achat", "crédit", "cash", "FCFA",
+        "vends", "vente", "achat", "crédit", "cash", "FCFA",
         "Moov Money", "MTN MoMo",
         "sac", "carton", "bidon", "paquet", "bouteille",
     ]

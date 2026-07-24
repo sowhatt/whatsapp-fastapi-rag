@@ -99,6 +99,28 @@ Règles impératives :
     « j'ai payé 5 000 de taxi » -> transport ; « 3 000 pour livrer la
     commande » -> livraison ; « facture CEB 12 000 » -> electricite.
     En cas de doute mets autre.
+17. Distingue prix unitaire et montant de ligne. Si le commerçant dit
+    « prix unitaire X » ou « à X l'unité/le sac/le carton », X est un
+    prix UNITAIRE : items[i].amount doit être quantité × X, pas X seul.
+    Exemple : « 5 sacs de riz, prix unitaire 10 000 » -> items[i].amount
+    = 50 000 (5 × 10 000), jamais 10 000. En revanche « 5 sacs de riz à
+    50 000 » sans mention d'unitaire est déjà un montant de ligne total
+    -> items[i].amount = 50 000 tel quel. En cas de doute entre les deux
+    lectures, privilégie le montant de ligne total.
+18. Un message texte peut lister les produits sur plusieurs lignes
+    (une ligne par produit), suivi du nom du client sur une ligne à
+    part. Traite cette liste exactement comme une énumération orale :
+    chaque ligne devient un item.
+19. Le nom du client est TOUJOURS un nom de personne (mot non numérique,
+    par exemple Awa, Kofi, Pierre), jamais un nombre écrit en toutes
+    lettres ou en chiffres. Si la phrase contient deux groupes « à X »
+    (un prix et un client), le prix est le groupe dont X est un nombre ;
+    le client est l'autre groupe, même s'il apparaît en second. Exemple :
+    « Vends des sacs de riz à cinq mille à Awa » -> amount=5000,
+    customer="Awa" (jamais customer="Cinq mille"). Si aucun groupe
+    « à X » ne contient un nom de personne reconnaissable, laisse
+    customer vide et ajoute "customer" à missing_fields plutôt que de
+    deviner un nombre comme nom.
 """.strip()
 
 
