@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.agents.normalization_agent import normalize_transcription
+from app.business.parser.number_parser import parse_french_number
 from app.services.intent_parser import parse_message
 
 
@@ -155,6 +156,24 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
     data = parsed.model_dump()
     for key in ("customer", "supplier", "product", "unit", "label"):
         data[key] = _clean_name(data.get(key))
+
+    # Garde-fou déterministe : un nom de client/fournisseur qui se
+    # révèle être un nombre écrit en toutes lettres (« Cinq mille »)
+    # signale que l'IA a confondu un prix avec un nom propre — par
+    # exemple sur « ... à cinq mille à Awa » où deux groupes « à X »
+    # se suivent. On invalide alors le champ au lieu d'enregistrer un
+    # faux client, et on utilise le nombre pour combler amount s'il
+    # est manquant.
+    for name_field in ("customer", "supplier"):
+        raw_name = data.get(name_field)
+        if raw_name is None:
+            continue
+        parsed_as_number = parse_french_number(raw_name)
+        if parsed_as_number is None:
+            continue
+        if not data.get("amount"):
+            data["amount"] = int(parsed_as_number)
+        data[name_field] = None
 
     missing = set(parsed.missing_fields)
     for field_name in _required_fields(parsed.type):
