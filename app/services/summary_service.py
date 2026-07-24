@@ -95,16 +95,23 @@ def get_period_summary_data(db: Session, period: str = "day") -> dict:
         encashed_by_channel[channel] = int(total)
 
     expenses_by_category: dict[str, int] = {}
+    # Important : on construit l'expression une seule fois et on la
+    # réutilise en SELECT et en GROUP BY. PostgreSQL exige que les deux
+    # clauses portent exactement la même expression ; deux appels
+    # séparés à func.coalesce(...) génèrent deux paramètres liés
+    # distincts (même si la valeur "autre" est identique), et Postgres
+    # refuse alors la requête avec un GroupingError.
+    category_expr = func.coalesce(FinancialEntry.category, "autre")
     for category, total in (
         db.query(
-            func.coalesce(FinancialEntry.category, "autre"),
+            category_expr,
             func.coalesce(func.sum(FinancialEntry.amount), 0),
         )
         .filter(
             FinancialEntry.entry_type == "expense",
             FinancialEntry.created_at >= since,
         )
-        .group_by(func.coalesce(FinancialEntry.category, "autre"))
+        .group_by(category_expr)
         .all()
     ):
         expenses_by_category[category] = int(total)
