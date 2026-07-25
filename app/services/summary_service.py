@@ -7,6 +7,7 @@ face au prix réellement encaissé sur chaque ligne de vente
 (SaleItem.line_total), pas le prix catalogue théorique — cohérent
 avec le fait que les prix se négocient sur le marché.
 """
+import re
 from datetime import datetime, timedelta
 
 from sqlalchemy import func
@@ -49,22 +50,77 @@ def _period_start(period: str, now: datetime | None = None) -> datetime:
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def get_period_summary_data(db: Session, period: str = "day") -> dict:
-    since = _period_start(period)
+def resolve_period_from_text(text: str, now: datetime | None = None) -> tuple[datetime, datetime | None, str]:
+    """
+    Détermine la plage de dates et le libellé humain d'une demande de
+    bilan à partir du texte brut. Gère, dans cet ordre de priorité :
+    une date explicite (JJ/MM/AAAA ou JJ-MM-AAAA), « hier »,
+    « avant-hier », puis les périodes relatives habituelles
+    (jour / semaine / mois). `until` vaut None pour une période encore
+    en cours (jour/semaine/mois courants) et une date précise pour un
+    jour clos (hier, avant-hier, date explicite) — auquel cas la borne
+    supérieure exclut tout ce qui est arrivé après ce jour-là.
+    """
+    now = now or datetime.utcnow()
+    lower = text.lower()
+
+    match = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", text)
+    if match:
+        day, month, year = (int(part) for part in match.groups())
+        try:
+            since = datetime(year, month, day)
+        except ValueError:
+            since = None
+        if since is not None:
+            return since, since + timedelta(days=1), f"du {since.strftime('%d/%m/%Y')}"
+
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if "avant-hier" in lower:
+        since = start_of_today - timedelta(days=2)
+        return since, since + timedelta(days=1), "d'avant-hier"
+
+    if "hier" in lower:
+        since = start_of_today - timedelta(days=1)
+        return since, since + timedelta(days=1), "d'hier"
+
+    if "mois" in lower:
+        return _period_start("month", now), None, PERIOD_LABELS["month"]
+    if "semaine" in lower or "hebdo" in lower:
+        return _period_start("week", now), None, PERIOD_LABELS["week"]
+    return _period_start("day", now), None, PERIOD_LABELS["day"]
+
+
+def _date_conditions(column, since: datetime, until: datetime | None):
+    conditions = [column >= since]
+    if until is not None:
+        conditions.append(column < until)
+    return conditions
+
+
+def get_period_summary_data(
+    db: Session,
+    period: str = "day",
+    since: datetime | None = None,
+    until: datetime | None = None,
+    label: str | None = None,
+) -> dict:
+    if since is None:
+        since = _period_start(period)
 
     sales_total = (
         db.query(func.coalesce(func.sum(Sale.total_amount), 0))
-        .filter(Sale.status != "cancelled", Sale.created_at >= since)
+        .filter(Sale.status != "cancelled", *_date_conditions(Sale.created_at, since, until))
         .scalar()
     )
     sales_count = (
         db.query(func.count(Sale.id))
-        .filter(Sale.status != "cancelled", Sale.created_at >= since)
+        .filter(Sale.status != "cancelled", *_date_conditions(Sale.created_at, since, until))
         .scalar()
     )
     purchases_total = (
         db.query(func.coalesce(func.sum(Purchase.total_amount), 0))
-        .filter(Purchase.status != "cancelled", Purchase.created_at >= since)
+        .filter(Purchase.status != "cancelled", *_date_conditions(Purchase.created_at, since, until))
         .scalar()
     )
 
@@ -74,7 +130,7 @@ def get_period_summary_data(db: Session, period: str = "day") -> dict:
         db.query(SaleItem.line_total, SaleItem.quantity, Product.purchase_price)
         .join(Sale, Sale.id == SaleItem.sale_id)
         .join(Product, Product.id == SaleItem.product_id)
-        .filter(Sale.status != "cancelled", Sale.created_at >= since)
+        .filter(Sale.status != "cancelled", *_date_conditions(Sale.created_at, since, until))
         .all()
     )
     margin = sum(
@@ -87,7 +143,7 @@ def get_period_summary_data(db: Session, period: str = "day") -> dict:
         db.query(FinancialEntry.channel, func.coalesce(func.sum(FinancialEntry.amount), 0))
         .filter(
             FinancialEntry.entry_type == "income",
-            FinancialEntry.created_at >= since,
+            *_date_conditions(FinancialEntry.created_at, since, until),
         )
         .group_by(FinancialEntry.channel)
         .all()
@@ -109,7 +165,7 @@ def get_period_summary_data(db: Session, period: str = "day") -> dict:
         )
         .filter(
             FinancialEntry.entry_type == "expense",
-            FinancialEntry.created_at >= since,
+            *_date_conditions(FinancialEntry.created_at, since, until),
         )
         .group_by(category_expr)
         .all()
@@ -133,6 +189,7 @@ def get_period_summary_data(db: Session, period: str = "day") -> dict:
 
     return {
         "period": period,
+        "label": label,
         "since": since,
         "sales_total": int(sales_total or 0),
         "sales_count": int(sales_count or 0),
@@ -182,7 +239,7 @@ def _format_currency(value: int) -> str:
 
 
 def render_period_summary(data: dict) -> str:
-    label = PERIOD_LABELS.get(data["period"], "du jour")
+    label = data.get("label") or PERIOD_LABELS.get(data["period"], "du jour")
     lines = [f"📊 Bilan {label}", ""]
     lines.append(
         f"Ventes : {data['sales_count']} opération(s) — {_format_currency(data['sales_total'])}"

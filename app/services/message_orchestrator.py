@@ -38,6 +38,7 @@ from app.services.summary_service import (
     get_daily_summary_data,
     get_period_summary_data,
     render_period_summary,
+    resolve_period_from_text,
 )
 from app.services.receipt_service import handle_receipt_request, is_receipt_request
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
@@ -371,16 +372,12 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # raccourci ici — jamais le chiffre "8" du menu, qui pourrait être
     # la réponse légitime à une question de quantité ou de montant.
     if is_summary_keyword_request(text):
-        lower_period = text.lower()
-        if "mois" in lower_period:
-            period = "month"
-        elif "semaine" in lower_period or "hebdo" in lower_period:
-            period = "week"
-        else:
-            period = "day"
+        since, until, label = resolve_period_from_text(text)
         return {
             "status": "reply",
-            "reply_text": render_period_summary(get_period_summary_data(db, period=period)),
+            "reply_text": render_period_summary(
+                get_period_summary_data(db, since=since, until=until, label=label)
+            ),
             "action": None,
         }
 
@@ -501,14 +498,10 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     business_intent = detect_business_intent(text)
 
     if business_intent == "daily_summary":
-        lower_period = text.lower()
-        if "mois" in lower_period:
-            period = "month"
-        elif "semaine" in lower_period or "hebdo" in lower_period:
-            period = "week"
-        else:
-            period = "day"
-        summary_reply = render_period_summary(get_period_summary_data(db, period=period))
+        since, until, label = resolve_period_from_text(text)
+        summary_reply = render_period_summary(
+            get_period_summary_data(db, since=since, until=until, label=label)
+        )
         return {
             "status": "reply",
             "reply_text": summary_reply,
@@ -613,13 +606,9 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             return {"status": "reply", "reply_text": format_partial_operation(partial), "action": partial}
         return {"status": "reply", "reply_text": "Je n’ai pas compris. Précise d’abord Vente ou Achat.", "action": None}
     if action["type"] == "summary":
-        lower_period = text.lower()
-        if "mois" in lower_period:
-            period = "month"
-        elif "semaine" in lower_period or "hebdo" in lower_period:
-            period = "week"
-        else:
-            period = "day"
-        summary_reply = render_period_summary(get_period_summary_data(db, period=period))
+        since, until, label = resolve_period_from_text(text)
+        summary_reply = render_period_summary(
+            get_period_summary_data(db, since=since, until=until, label=label)
+        )
         return {"status": "reply", "reply_text": summary_reply, "action": None}
     return advance_workflow(sender_id, action, db)
