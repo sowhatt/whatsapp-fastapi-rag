@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session
 from app.agents.conversation_agent import (
     apply_field_answer,
     create_missing_entity,
+    create_missing_product,
     prepare_catalog_workflow,
     prepare_missing_field_workflow,
     resume_action_after_entity_creation,
 )
+from app.business.parser.number_parser import parse_french_number
 from app.agents.intent_agent import IntentAgentError, detect_intent
 from app.agents.validation_agent import (
     format_partial_operation,
@@ -451,6 +453,19 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         pending.pop("_awaiting", None)
         return advance_workflow(sender_id, pending, db)
 
+    if pending and pending.get("_awaiting") == "create_product_price":
+        price = parse_french_number(text)
+        if price is None or price <= 0:
+            return {
+                "status": "reply",
+                "reply_text": "Réponds avec le prix de vente (nombre), par exemple : 60000.",
+                "action": pending,
+            }
+        message = create_missing_product(pending, int(price), db)
+        pending.pop("_suggested_purchase_price", None)
+        pending = resume_action_after_entity_creation(pending)
+        return advance_workflow(sender_id, pending, db, message + "\nJe reprends l’opération.")
+
     if pending and pending.get("_awaiting") == "operation_payment":
         payment = normalize_payment_answer(text)
         if payment is None:
@@ -533,11 +548,31 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         }
 
     if business_intent == "purchase_create":
+        if lower in {"6", "achat", "acheter", "faire un achat"}:
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "📦 Décris ton achat.\n\n"
+                    "Exemple : « Achat 5 sacs de riz chez Soglo, 350 000 crédit »"
+                ),
+                "action": None,
+            }
+
+        try:
+            action = detect_intent(text, db)
+        except IntentAgentError as exc:
+            print("INTENT AGENT ERROR:", str(exc))
+            action = None
+
+        if action and action.get("type") == "purchase":
+            return advance_workflow(sender_id, action, db)
+
         return {
             "status": "reply",
             "reply_text": (
-                "📦 Décris ton achat.\n\n"
-                "Exemple : « Achat 5 sacs de riz chez Soglo, 350 000 crédit »"
+                "Je reconnais un achat, mais certaines informations "
+                "ne sont pas suffisamment claires.\n\n"
+                "Exemple : « Achat 5 sacs de riz chez Soglo pour 350 000 »"
             ),
             "action": None,
         }

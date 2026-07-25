@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
+from app.models.product import Product
 from app.models.supplier import Supplier
 from app.business.parser.number_parser import parse_french_number
 
@@ -100,6 +101,28 @@ def prepare_catalog_workflow(action: dict[str, Any], db: Session) -> tuple[dict[
             action["_awaiting"] = "create_supplier_confirmation"
             action["_resume_after_create"] = "purchase"
             return action, f"Je ne connais pas encore le fournisseur {supplier_name}.\n\nVeux-tu créer ce fournisseur ? Réponds oui ou non."
+
+    if action_type == "purchase" and action.get("product"):
+        # Un achat est la façon la plus naturelle dont un nouveau produit
+        # entre au catalogue : le commerçant l'achète avant de le vendre.
+        # Le prix d'achat se déduit de l'opération elle-même ; seul le
+        # prix de vente doit être demandé.
+        product_name = str(action["product"]).strip()
+        exists = db.query(Product).filter(func.lower(Product.name) == product_name.lower()).first()
+        if not exists:
+            quantity = int(action.get("quantity") or 0)
+            amount = int(action.get("amount") or 0)
+            suggested_price = round(amount / quantity) if quantity else 0
+            action["_awaiting"] = "create_product_price"
+            action["_resume_after_create"] = "purchase"
+            action["_suggested_purchase_price"] = suggested_price
+            unit_label = str(action.get("unit") or "unité").lower()
+            formatted = f"{suggested_price:,}".replace(",", " ") + " FCFA"
+            return action, (
+                f"Je ne connais pas encore le produit {product_name}.\n\n"
+                f"Je vais le créer avec un prix d'achat de {formatted} le {unit_label}.\n"
+                "Quel est le prix de vente prévu ?"
+            )
     return action, None
 
 
@@ -120,6 +143,26 @@ def create_missing_entity(action: dict[str, Any], db: Session) -> str:
             db.commit()
         return f"✅ Fournisseur {name} créé."
     raise ValueError("Aucune création de référentiel en attente.")
+
+
+def create_missing_product(action: dict[str, Any], price: int, db: Session) -> str:
+    name = str(action["product"]).strip()
+    unit = str(action.get("unit") or "unité").strip()
+    purchase_price = int(action.get("_suggested_purchase_price") or 0)
+    existing = db.query(Product).filter(func.lower(Product.name) == name.lower()).first()
+    if not existing:
+        db.add(
+            Product(
+                name=name,
+                unit=unit,
+                price=int(price),
+                purchase_price=purchase_price,
+                stock=0,
+            )
+        )
+        db.commit()
+    formatted = f"{int(price):,}".replace(",", " ") + " FCFA"
+    return f"✅ Produit {name} créé (prix de vente {formatted})."
 
 
 def resume_action_after_entity_creation(action: dict[str, Any]) -> dict[str, Any]:
