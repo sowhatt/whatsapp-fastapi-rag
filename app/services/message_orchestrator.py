@@ -41,6 +41,7 @@ from app.services.summary_service import (
     resolve_period_from_text,
 )
 from app.services.receipt_service import handle_receipt_request, is_receipt_request
+from app.services.sales_list_service import is_sales_list_request, render_sales_list
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
 from app.state.pending_actions import pending_actions
 
@@ -362,6 +363,17 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {
             "status": "reply",
             "reply_text": handle_receipt_request(text, db),
+            "action": None,
+        }
+
+    # Les listes de ventes sont aussi une simple lecture, à vérifier
+    # AVANT la détection générique de vente : sans ce bypass, « ventes
+    # par client » ou « liste des ventes » seraient pris pour le début
+    # d'une nouvelle vente à créer (le mot « ventes » matche ce pattern).
+    if is_sales_list_request(text):
+        return {
+            "status": "reply",
+            "reply_text": render_sales_list(text, db),
             "action": None,
         }
 
