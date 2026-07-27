@@ -74,3 +74,29 @@ def test_fournisseur_numerique_est_aussi_invalide():
     assert action is not None
     assert action["supplier"] is None
     assert action["amount"] == 10000
+
+
+def test_parseur_gere_les_millions():
+    from app.business.parser.number_parser import parse_french_number
+
+    assert parse_french_number("deux millions cinq cents") == 2000500
+    assert parse_french_number("un million") == 1000000
+    assert parse_french_number("deux millions cinq cent mille") == 2500000
+
+
+def test_customer_en_millions_est_invalide_et_devient_amount():
+    parsed = AIIntent(
+        type="sale",
+        customer="Deux millions cinq cents",
+        product="riz",
+        unit="sac",
+        quantity=50,
+        amount=None,
+        payment="unknown",
+        confidence=0.8,
+    )
+    action = _to_business_action(parsed)
+    assert action is not None
+    assert action["customer"] is None
+    assert action["amount"] == 2000500
+    assert "customer" in action["_missing_fields"]

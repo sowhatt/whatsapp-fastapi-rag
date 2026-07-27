@@ -135,6 +135,18 @@ def parse_french_number(value: str) -> Decimal | None:
             total += group * 1000
             group = 0
 
+        elif token in {"million", "millions"}:
+            # Même logique que « mille », mais à l'échelle du million.
+            # Traité avant tout « mille » ultérieur dans la phrase, donc
+            # « deux millions cinq cent mille » s'accumule correctement :
+            # 2 000 000 (à « millions ») puis + 500 000 (à « mille »).
+            if not _flush_current():
+                return None
+            if group == 0:
+                group = 1
+            total += group * 1_000_000
+            group = 0
+
         else:
             current.append(token)
 
