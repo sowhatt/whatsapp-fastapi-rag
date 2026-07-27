@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.models.category import Category  # noqa: F401 (enregistre la table pour Base.metadata.create_all)
+from app.models.category import Category  # noqa: F401
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.sale import Sale
@@ -74,7 +74,7 @@ def test_avant_hier():
 def test_periode_relative_reste_ouverte_jusqu_a_maintenant():
     since, until, label = resolve_period_from_text("bilan du mois")
     assert until is None
-    assert label == "de la semaine" or label == "du mois"
+    assert label in ("de la semaine", "du mois")
 
 
 def test_bilan_isole_une_journee_passee_et_exclut_les_autres(db):

@@ -42,16 +42,6 @@ from app.services.summary_service import (
 )
 from app.services.receipt_service import handle_receipt_request, is_receipt_request
 from app.services.sales_list_service import is_sales_list_request, render_sales_list
-from app.services.catalog_service import (
-    create_product_from_action,
-    low_stock_warnings_for_sale,
-    render_stock_overview,
-    update_product_price,
-    update_product_purchase_price,
-    update_product_stock,
-    update_product_threshold,
-    update_product_initial_stock,
-)
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
 from app.state.pending_actions import pending_actions
 
@@ -137,24 +127,6 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
         return f"Paiement fournisseur : {action['supplier']}, {format_currency(action['amount'])}. Confirmer ? Réponds oui ou non."
     if action["type"] == "expense":
         return f"Dépense : {action['label']}, {format_currency(action['amount'])}, {display_channel(str(action['channel']))}. Confirmer ? Réponds oui ou non."
-    if action["type"] == "catalog_create":
-        return (
-            f"Nouveau produit : {action['product']} ({action['unit']})\n"
-            f"Prix de vente : {format_currency(action['price'])}\n"
-            f"Prix d'achat : {format_currency(action.get('purchase_price') or 0)}\n"
-            f"Stock initial : {action.get('stock') or 0}\n\n"
-            "Confirmer ? Réponds oui ou non."
-        )
-    if action["type"] == "catalog_update_price":
-        return f"Nouveau prix de vente pour {action['product']} : {format_currency(action['price'])}. Confirmer ? Réponds oui ou non."
-    if action["type"] == "catalog_update_purchase_price":
-        return f"Nouveau prix d'achat pour {action['product']} : {format_currency(action['purchase_price'])}. Confirmer ? Réponds oui ou non."
-    if action["type"] == "catalog_update_stock":
-        return f"Nouveau stock pour {action['product']} : {action['stock']}. Confirmer ? Réponds oui ou non."
-    if action["type"] == "catalog_update_threshold":
-        return f"Nouveau seuil d'alerte pour {action['product']} : {action['threshold']}. Confirmer ? Réponds oui ou non."
-    if action["type"] == "catalog_update_initial_stock":
-        return f"Stock initial de {action['product']} déclaré à {action['initial_stock']}. Confirmer ? Réponds oui ou non."
     return "Action détectée. Confirmer ? Réponds oui ou non."
 
 
@@ -213,10 +185,7 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
 
     if action["type"] == "sale":
         item = create_sale_from_intent(action, db, create_sale)
-        message = f"✅ Vente enregistrée. Référence : vente n°{item.id}."
-        for warning in low_stock_warnings_for_sale(item.id, db):
-            message += "\n\n" + warning
-        return message
+        return f"✅ Vente enregistrée. Référence : vente n°{item.id}."
     if action["type"] == "purchase":
         item = create_purchase_from_intent(action, db, create_purchase)
         return f"✅ Achat enregistré. Référence : achat n°{item.id}."
@@ -229,18 +198,6 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
     if action["type"] == "expense":
         item = create_expense_from_intent(action, db, create_financial_entry)
         return f"✅ Dépense enregistrée : {format_currency(item.amount)}."
-    if action["type"] == "catalog_create":
-        return create_product_from_action(action, db)
-    if action["type"] == "catalog_update_price":
-        return update_product_price(action, db)
-    if action["type"] == "catalog_update_purchase_price":
-        return update_product_purchase_price(action, db)
-    if action["type"] == "catalog_update_stock":
-        return update_product_stock(action, db)
-    if action["type"] == "catalog_update_threshold":
-        return update_product_threshold(action, db)
-    if action["type"] == "catalog_update_initial_stock":
-        return update_product_initial_stock(action, db)
     raise ValueError("Type d'action non pris en charge.")
 
 
@@ -419,38 +376,6 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "reply_text": render_sales_list(text, db),
             "action": None,
         }
-
-    # Catalogue (création/mise à jour de produit) : vérifié tôt car
-    # les mots-clés "produit"/"stock"/"prix" percutent d'autres
-    # patterns génériques (vente, stock_view...). Contrairement au
-    # reçu/bilan/liste, ceci ÉCRIT en base : ça passe donc par le
-    # workflow normal (IA -> confirmation -> exécution), pas par un
-    # retour immédiat.
-    if not pending:
-        lower_catalog = text.lower()
-        catalog_create_cue = any(
-            phrase in lower_catalog
-            for phrase in ("crée le produit", "cree le produit", "ajoute le produit", "nouveau produit", "nouvelle produit")
-        )
-        catalog_update_cue = (
-            any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
-            and any(field in lower_catalog for field in ("prix", "stock", "seuil"))
-        ) or "stock initial" in lower_catalog or "seuil" in lower_catalog
-        if catalog_create_cue or catalog_update_cue:
-            try:
-                catalog_action = detect_intent(text, db)
-            except IntentAgentError as exc:
-                print("INTENT AGENT ERROR:", str(exc))
-                catalog_action = None
-            if catalog_action and catalog_action.get("type") in {
-                "catalog_create",
-                "catalog_update_price",
-                "catalog_update_purchase_price",
-                "catalog_update_stock",
-                "catalog_update_threshold",
-                "catalog_update_initial_stock",
-            }:
-                return advance_workflow(sender_id, catalog_action, db)
 
     # Le bilan est aussi une simple lecture : consultable à tout moment,
     # même en plein milieu d'un autre workflow (par exemple pendant
@@ -657,9 +582,6 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "action": None,
         }
 
-    if business_intent == "stock_view":
-        return {"status": "reply", "reply_text": render_stock_overview(db), "action": None}
-
     business_messages = {
         "merchant_create": (
             "🏪 Création du commerce\n\n"
@@ -672,6 +594,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         ),
         "customer_manage": "👥 Gestion des clients bientôt disponible.",
         "supplier_manage": "🚚 Gestion des fournisseurs bientôt disponible.",
+        "stock_view": "📦 Consultation du stock bientôt disponible.",
         "settings": "⚙️ Paramètres du commerce bientôt disponibles.",
     }
 

@@ -16,6 +16,7 @@ class Product(Base):
     packaging: Mapped[str | None] = mapped_column(String(100), nullable=True)
     unit: Mapped[str] = mapped_column(String(30))
     stock: Mapped[int] = mapped_column(Integer, default=0)
+    initial_stock: Mapped[int] = mapped_column(Integer, default=0)
     purchase_price: Mapped[int] = mapped_column(Integer, default=0)
     price: Mapped[int] = mapped_column(Integer, default=0)
     threshold: Mapped[int] = mapped_column(Integer, default=0)

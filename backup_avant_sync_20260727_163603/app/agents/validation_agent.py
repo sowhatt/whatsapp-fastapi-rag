@@ -124,7 +124,7 @@ def validate_before_confirmation(action: dict[str, Any], db: Session) -> str | N
         else:
             action.pop("_price_warnings", None)
 
-    if amount <= 0 and action.get("type") in {"sale", "payment", "purchase", "supplier_payment", "expense"}:
+    if amount <= 0:
         action["_awaiting"] = "awaiting_amount"
         action["_awaiting_field"] = "amount"
         return "Le montant doit être supérieur à zéro. Quel est le montant exact ?"

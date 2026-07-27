@@ -29,11 +29,6 @@ FIELD_QUESTIONS = {
     "amount": "Quel est le montant total ?",
     "label": "Quel est le motif de la dépense ?",
     "payment": "Cash, crédit, Moov ou MTN ?",
-    "price": "Quel est le prix de vente ?",
-    "purchase_price": "Quel est le prix d'achat ?",
-    "stock": "Quel est le stock (nombre) ?",
-    "threshold": "Quel est le seuil d'alerte de stock bas ?",
-    "initial_stock": "Quel est le stock initial ?",
 }
 
 UNIT_ALIASES = {
@@ -76,7 +71,7 @@ def _parse_unit_answer(value: str) -> str:
 def apply_field_answer(action: dict[str, Any], text: str) -> dict[str, Any]:
     field = str(action.get("_awaiting_field") or "")
     value = " ".join(text.split()).strip(" .!?\n\t")
-    if field in {"quantity", "amount", "price", "purchase_price", "stock", "threshold", "initial_stock"}:
+    if field in {"quantity", "amount"}:
         action[field] = _parse_number_answer(value)
     elif field == "unit":
         action[field] = _parse_unit_answer(value)

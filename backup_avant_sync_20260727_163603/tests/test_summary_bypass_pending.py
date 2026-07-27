@@ -51,7 +51,6 @@ def test_bilan_consultable_pendant_question_paiement(db):
     )
     assert result["status"] == "reply"
     assert "Bilan du jour" in result["reply_text"]
-    # Le workflow n'a pas été perdu : le commerçant peut reprendre.
     assert mo.get_pending_action(SENDER) is not None
     assert mo.get_pending_action(SENDER)["_awaiting"] == "operation_payment"
 

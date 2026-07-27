@@ -41,8 +41,6 @@ def _make_sale(db, customer, product, total=100000, quantity=2):
     return sale
 
 
-# ── Détection ─────────────────────────────────────────────────────
-
 def test_detecte_liste_des_ventes():
     assert is_sales_list_request("liste des ventes")
     assert is_sales_list_request("historique des ventes")
@@ -54,8 +52,6 @@ def test_detecte_liste_des_ventes():
 def test_ignore_une_vraie_vente():
     assert not is_sales_list_request("Vends deux sacs de riz à Awa pour 100 000")
 
-
-# ── Liste chronologique ───────────────────────────────────────────
 
 def test_liste_chronologique_affiche_produit_client_montant(db):
     customer = Customer(name="Awa", debt=0)
@@ -95,8 +91,6 @@ def test_client_introuvable_renvoie_message_clair(db):
     assert "introuvable" in text.lower()
 
 
-# ── Par client (agrégé) ───────────────────────────────────────────
-
 def test_ventes_par_client_agrege_et_classe(db):
     awa = Customer(name="Awa", debt=0)
     kofi = Customer(name="Kofi", debt=0)
@@ -112,11 +106,8 @@ def test_ventes_par_client_agrege_et_classe(db):
     text = render_sales_list("ventes par client", db)
     assert "Awa — 2 vente(s) — 150 000 FCFA" in text
     assert "Kofi — 1 vente(s) — 30 000 FCFA" in text
-    # Awa (total plus élevé) doit apparaître avant Kofi
     assert text.index("Awa") < text.index("Kofi")
 
-
-# ── Par catégorie ─────────────────────────────────────────────────
 
 def test_ventes_par_categorie_sans_categorie_assignee(db):
     customer = Customer(name="Awa", debt=0)

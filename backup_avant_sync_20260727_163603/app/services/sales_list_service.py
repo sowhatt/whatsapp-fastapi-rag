@@ -44,7 +44,7 @@ def is_sales_list_request(text: str) -> bool:
         return True
     if re.search(r"\bventes?\s+par\s+(client|categorie|cat[eé]gorie)\b", text.lower()):
         return True
-    if re.search(r"\bventes?\s+(de|du|pour)\s+\w", normalized) and "categorie" not in normalized and "prix" not in normalized:
+    if re.search(r"\bventes?\s+(de|du|pour)\s+\w", normalized) and "categorie" not in normalized:
         return True
     return False
 

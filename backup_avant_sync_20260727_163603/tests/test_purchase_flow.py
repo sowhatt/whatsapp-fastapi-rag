@@ -85,10 +85,9 @@ def test_produit_inconnu_pendant_achat_propose_creation(db, monkeypatch):
         db=db,
     )
     assert "Je ne connais pas encore le produit Mil" in result["reply_text"]
-    assert "20 000 FCFA" in result["reply_text"]  # 80000 / 4 = prix d'achat suggéré
+    assert "20 000 FCFA" in result["reply_text"]
     assert "prix de vente" in result["reply_text"].lower()
 
-    # Le commerçant répond le prix de vente
     result2 = mo.process_incoming_message(
         channel="whatsapp",
         sender_id=SENDER,

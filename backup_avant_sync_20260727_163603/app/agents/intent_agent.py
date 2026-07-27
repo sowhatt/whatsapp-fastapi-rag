@@ -18,12 +18,6 @@ IntentType = Literal[
     "supplier_payment",
     "expense",
     "summary",
-    "catalog_create",
-    "catalog_update_price",
-    "catalog_update_purchase_price",
-    "catalog_update_stock",
-    "catalog_update_threshold",
-    "catalog_update_initial_stock",
     "unknown",
 ]
 
@@ -58,12 +52,6 @@ class AIIntent(BaseModel):
     payment: PaymentChannel = "unknown"
     channel: PaymentChannel = "unknown"
     category: str | None = None
-    price: int | None = None
-    purchase_price: int | None = None
-    stock: int | None = None
-    threshold: int | None = None
-    initial_stock: int | None = None
-    product_category: str | None = None
     items: list[AIIntentItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     missing_fields: list[str] = Field(default_factory=list)
@@ -134,37 +122,6 @@ Règles impératives :
     « à X » ne contient un nom de personne reconnaissable, laisse
     customer vide et ajoute "customer" à missing_fields plutôt que de
     deviner un nombre comme nom.
-20. catalog_create : le commerçant crée un NOUVEAU produit au
-    catalogue (jamais une vente ni un achat). Déclencheurs : « crée le
-    produit », « ajoute le produit », « nouveau produit ». Extrais
-    product (nom du produit), unit, price (prix de vente), et si
-    mentionnés : purchase_price (prix d'achat), stock (stock initial),
-    product_category (nom d'une catégorie existante). Exemple : « Crée
-    le produit Farine de maïs, prix de vente 20 000 le sac, prix
-    d'achat 15 000, stock 10 » -> product=Farine de maïs, unit=sac,
-    price=20000, purchase_price=15000, stock=10.
-21. catalog_update_price : le commerçant modifie le PRIX DE VENTE d'un
-    produit déjà au catalogue (jamais une vente). Déclencheurs :
-    « modifie/change le prix de vente de X à Y », « le riz coûte
-    maintenant Y ». Extrais product et price (la nouvelle valeur).
-22. catalog_update_purchase_price : modification du PRIX D'ACHAT
-    (coût) d'un produit existant. Déclencheurs : « modifie/change le
-    prix d'achat de X à Y », « le coût du riz est maintenant Y ».
-    Extrais product et purchase_price (la nouvelle valeur).
-23. catalog_update_stock : correction ou mise à jour manuelle du
-    STOCK d'un produit existant (pas une vente ni un achat, qui
-    modifient déjà le stock automatiquement). Déclencheurs :
-    « mets à jour/corrige le stock de X à Y », « il reste Y sacs de
-    riz en stock ». Extrais product et stock (la nouvelle valeur).
-24. catalog_update_threshold : définit le SEUIL D'ALERTE de stock bas
-    d'un produit. Déclencheurs : « seuil du riz à Y », « alerte-moi
-    quand le riz atteint Y », « seuil d'alerte de X est Y ». Extrais
-    product et threshold (la nouvelle valeur).
-25. catalog_update_initial_stock : déclare ou corrige le STOCK INITIAL
-    de référence d'un produit (utilisé pour l'inventaire, distinct du
-    stock actuel). Déclencheurs : « stock initial de X est Y »,
-    « déclare le stock initial de X à Y ». Extrais product et
-    initial_stock (la nouvelle valeur).
 """.strip()
 
 
@@ -189,12 +146,6 @@ def _required_fields(intent_type: str) -> list[str]:
         "supplier_payment": ["supplier", "amount"],
         "expense": ["label", "amount"],
         "summary": [],
-        "catalog_create": ["product", "unit", "price"],
-        "catalog_update_price": ["product", "price"],
-        "catalog_update_purchase_price": ["product", "purchase_price"],
-        "catalog_update_stock": ["product", "stock"],
-        "catalog_update_threshold": ["product", "threshold"],
-        "catalog_update_initial_stock": ["product", "initial_stock"],
     }.get(intent_type, [])
 
 
@@ -203,7 +154,7 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return None
 
     data = parsed.model_dump()
-    for key in ("customer", "supplier", "product", "unit", "label", "product_category"):
+    for key in ("customer", "supplier", "product", "unit", "label"):
         data[key] = _clean_name(data.get(key))
 
     # Garde-fou déterministe : un nom de client/fournisseur qui se
@@ -307,37 +258,6 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
 
     if parsed.type == "supplier_payment":
         action.update(supplier=data.get("supplier"), amount=int(data.get("amount") or 0), channel=data.get("channel") or data.get("payment") or "unknown")
-        return action
-
-    if parsed.type == "catalog_create":
-        action.update(
-            product=data.get("product"),
-            unit=data.get("unit"),
-            price=int(data.get("price") or 0),
-            purchase_price=int(data.get("purchase_price") or 0),
-            stock=int(data.get("stock") or 0),
-            product_category=data.get("product_category"),
-        )
-        return action
-
-    if parsed.type == "catalog_update_price":
-        action.update(product=data.get("product"), price=int(data.get("price") or 0))
-        return action
-
-    if parsed.type == "catalog_update_purchase_price":
-        action.update(product=data.get("product"), purchase_price=int(data.get("purchase_price") or 0))
-        return action
-
-    if parsed.type == "catalog_update_stock":
-        action.update(product=data.get("product"), stock=int(data.get("stock") or 0))
-        return action
-
-    if parsed.type == "catalog_update_threshold":
-        action.update(product=data.get("product"), threshold=int(data.get("threshold") or 0))
-        return action
-
-    if parsed.type == "catalog_update_initial_stock":
-        action.update(product=data.get("product"), initial_stock=int(data.get("initial_stock") or 0))
         return action
 
     if parsed.type == "expense":
