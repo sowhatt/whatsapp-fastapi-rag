@@ -660,6 +660,27 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     if business_intent == "stock_view":
         return {"status": "reply", "reply_text": render_stock_overview(db), "action": None}
 
+    if business_intent == "catalog_manage":
+        # Filet de sécurité : si le mot-clé rapide ("crée le produit"...)
+        # n'a pas matché plus haut (transcription qui reformule sans le
+        # verbe, ex. "Produit : X, prix de vente : Y"), on tente quand
+        # même l'IA avant d'afficher le stub générique — même correctif
+        # que pour les achats, qui souffraient du même piège.
+        try:
+            catalog_action = detect_intent(text, db)
+        except IntentAgentError as exc:
+            print("INTENT AGENT ERROR:", str(exc))
+            catalog_action = None
+        if catalog_action and catalog_action.get("type") in {
+            "catalog_create",
+            "catalog_update_price",
+            "catalog_update_purchase_price",
+            "catalog_update_stock",
+            "catalog_update_threshold",
+            "catalog_update_initial_stock",
+        }:
+            return advance_workflow(sender_id, catalog_action, db)
+
     business_messages = {
         "merchant_create": (
             "🏪 Création du commerce\n\n"
