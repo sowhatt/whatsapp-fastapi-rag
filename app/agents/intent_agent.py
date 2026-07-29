@@ -112,14 +112,18 @@ Règles impératives :
     « j'ai payé 5 000 de taxi » -> transport ; « 3 000 pour livrer la
     commande » -> livraison ; « facture CEB 12 000 » -> electricite.
     En cas de doute mets autre.
-17. Distingue prix unitaire et montant de ligne. Si le commerçant dit
-    « prix unitaire X » ou « à X l'unité/le sac/le carton », X est un
-    prix UNITAIRE : items[i].amount doit être quantité × X, pas X seul.
-    Exemple : « 5 sacs de riz, prix unitaire 10 000 » -> items[i].amount
-    = 50 000 (5 × 10 000), jamais 10 000. En revanche « 5 sacs de riz à
-    50 000 » sans mention d'unitaire est déjà un montant de ligne total
-    -> items[i].amount = 50 000 tel quel. En cas de doute entre les deux
-    lectures, privilégie le montant de ligne total.
+17. Distingue prix unitaire et montant de ligne — pour une vente ET
+    pour un achat, avec un seul produit ou plusieurs. Si le commerçant
+    dit « prix unitaire X » ou « à X l'unité/le sac/le carton », X est
+    un prix UNITAIRE : le montant retenu doit être quantité × X, jamais
+    X seul. Cela s'applique aussi bien à amount (un seul produit) qu'à
+    items[i].amount (plusieurs produits). Exemples : « 5 sacs de riz,
+    prix unitaire 10 000 » -> amount = 50 000 (5 × 10 000), jamais
+    10 000 ; « Achat 10 sacs de riz chez Soglo, prix unitaire 5 000 »
+    -> amount = 50 000 (10 × 5 000), jamais 5 000. En revanche « 5 sacs
+    de riz à 50 000 » sans mention d'unitaire est déjà un montant total
+    -> amount = 50 000 tel quel. En cas de doute entre les deux
+    lectures, privilégie le montant total.
 18. Un message texte peut lister les produits sur plusieurs lignes
     (une ligne par produit), suivi du nom du client sur une ligne à
     part. Traite cette liste exactement comme une énumération orale :
