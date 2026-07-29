@@ -111,6 +111,24 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         ]
         if action.get("remaining", 0) > 0:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
+    elif action["type"] == "purchase" and len(items) > 1:
+        lines = ["J’ai compris :", ""]
+        for item in items:
+            unit_label = str(item.get("unit") or "").lower()
+            description = (
+                f"{item['quantity']} {unit_label} de "
+                f"{str(item['product']).lower()}"
+            ).replace("  ", " ")
+            if item.get("amount"):
+                description += f" ({format_currency(item['amount'])})"
+            lines.append(f"• {description}")
+        lines.extend(
+            [
+                f"Fournisseur : {action['supplier']}",
+                f"Montant total : {format_currency(action['amount'])}",
+                f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
+            ]
+        )
     elif action["type"] == "purchase":
         lines = [
             "J’ai compris :", "",

@@ -169,6 +169,16 @@ Règles impératives :
     stock actuel). Déclencheurs : « stock initial de X est Y »,
     « déclare le stock initial de X à Y ». Extrais product et
     initial_stock (la nouvelle valeur).
+26. Un achat peut aussi porter sur plusieurs produits à la fois, avec
+    la même logique que pour une vente : remplis items avec une
+    entrée par produit (product, unit, quantity, et amount si un prix
+    est annoncé pour ce produit précis). Si un montant est annoncé par
+    produit, mets chaque montant dans items[i].amount et laisse amount
+    vide (leur somme sera calculée). Si un seul montant global couvre
+    tous les produits, mets-le dans amount et laisse items[i].amount
+    vide. Exemple : « Achat 5 sacs de riz chez Soglo à 200 000 et 3
+    sacs de mil à 60 000 » -> items=[{product:riz, quantity:5,
+    amount:200000}, {product:mil, quantity:3, amount:60000}].
 """.strip()
 
 
@@ -306,7 +316,42 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "purchase":
-        action.update(supplier=data.get("supplier"), product=data.get("product"), unit=data.get("unit"), quantity=int(data.get("quantity") or 0), amount=int(data.get("amount") or 0))
+        action.update(supplier=data.get("supplier"), product=data.get("product"), unit=data.get("unit"), quantity=int(data.get("quantity") or 0), amount=int(data.get("amount") or 0), payment=data.get("payment") or "unknown")
+        purchase_items: list[dict[str, Any]] = []
+        for item in parsed.items:
+            product_name = _clean_name(item.product)
+            if not product_name:
+                continue
+            purchase_items.append(
+                {
+                    "product": product_name,
+                    "unit": _clean_name(item.unit) or data.get("unit"),
+                    "quantity": int(item.quantity or 0),
+                    "amount": int(item.amount) if item.amount else None,
+                }
+            )
+        if purchase_items:
+            action["items"] = purchase_items
+            first = purchase_items[0]
+            action["product"] = action.get("product") or first["product"]
+            action["unit"] = action.get("unit") or first["unit"]
+            if not action.get("quantity"):
+                action["quantity"] = first["quantity"]
+            item_amounts = [entry["amount"] for entry in purchase_items]
+            if all(value is not None for value in item_amounts):
+                items_total = sum(item_amounts)
+                if not action.get("amount"):
+                    action["amount"] = items_total
+            missing = set(action["_missing_fields"])
+            if all(entry["product"] for entry in purchase_items):
+                missing.discard("product")
+            if all(entry["unit"] for entry in purchase_items):
+                missing.discard("unit")
+            if all(entry["quantity"] > 0 for entry in purchase_items):
+                missing.discard("quantity")
+            if int(action.get("amount") or 0) > 0:
+                missing.discard("amount")
+            action["_missing_fields"] = sorted(missing)
         return action
 
     if parsed.type == "supplier_payment":

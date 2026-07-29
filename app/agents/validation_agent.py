@@ -86,7 +86,7 @@ def validate_before_confirmation(action: dict[str, Any], db: Session) -> str | N
         for entry in (action.get("items") or [])
         if entry.get("product")
     ]
-    if action.get("type") == "sale" and len(items) > 1:
+    if action.get("type") in {"sale", "purchase"} and len(items) > 1:
         item_amounts = [entry.get("amount") for entry in items]
         if all(value for value in item_amounts):
             items_sum = sum(int(value) for value in item_amounts)
