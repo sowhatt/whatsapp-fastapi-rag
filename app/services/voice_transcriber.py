@@ -154,8 +154,12 @@ def transcribe_audio_bytes(
         )
 
     # Les transcriptions produites à partir de bruit ont souvent
-    # une confiance faible.
-    if confidence and confidence < 0.55:
+    # une confiance faible — y compris une confiance à zéro quand
+    # aucune donnée n'est exploitable (vocal quasi silencieux). On
+    # compare directement la valeur, sans test de vérité préalable :
+    # 0.0 est un "faux" en Python et serait sinon contourné, alors
+    # que c'est justement le cas le plus grave à rejeter.
+    if confidence < 0.55:
         raise VoiceTranscriptionError(
             "Aucune parole exploitable détectée."
         )
