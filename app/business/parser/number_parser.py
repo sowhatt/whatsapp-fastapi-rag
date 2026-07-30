@@ -85,6 +85,13 @@ def parse_french_number(value: str) -> Decimal | None:
     if not text:
         return None
 
+    # Les montants sont souvent suivis d'un mot de devise (« 260000
+    # CFA », « deux cent soixante mille francs ») : on l'ignore avant
+    # toute analyse, qu'elle soit en chiffres ou en toutes lettres.
+    text = re.sub(r"\b(cfa|fcfa|franc|francs)\b", " ", text).strip()
+    if not text:
+        return None
+
     compact = text.replace(" ", "")
 
     if re.fullmatch(r"\d+(?:[.,]\d+)?", compact):

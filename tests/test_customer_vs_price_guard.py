@@ -100,3 +100,13 @@ def test_customer_en_millions_est_invalide_et_devient_amount():
     assert action["customer"] is None
     assert action["amount"] == 2000500
     assert "customer" in action["_missing_fields"]
+
+
+def test_parseur_ignore_les_mots_de_devise():
+    from app.business.parser.number_parser import parse_french_number
+
+    assert parse_french_number("deux cent soixante mille CFA") == 260000
+    assert parse_french_number("deux cent soixante mille francs CFA") == 260000
+    assert parse_french_number("260 000 francs CFA") == 260000
+    assert parse_french_number("260000 CFA") == 260000
+    assert parse_french_number("cinq mille francs") == 5000
