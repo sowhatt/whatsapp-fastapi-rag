@@ -238,8 +238,17 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
             data["amount"] = int(parsed_as_number)
         data[name_field] = None
 
-    missing = set(parsed.missing_fields)
-    for field_name in _required_fields(parsed.type):
+    # On ne fait confiance aux "missing_fields" auto-déclarés par
+    # l'IA que s'ils correspondent à un champ que le code sait
+    # effectivement traiter pour ce type précis. Sans ce filtre,
+    # l'IA pourrait faire remonter n'importe quel nom de champ
+    # (ex. "channel", qui existe dans son schéma interne mais n'est
+    # jamais une vraie question posée au commerçant) directement
+    # dans une question mal formée ("Quelle est la valeur de
+    # channel ?") au lieu d'être simplement ignoré.
+    required = set(_required_fields(parsed.type))
+    missing = set(parsed.missing_fields) & required
+    for field_name in required:
         value = data.get(field_name)
         if value is None or value == "" or (isinstance(value, int) and value <= 0):
             missing.add(field_name)
