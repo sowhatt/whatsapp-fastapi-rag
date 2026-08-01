@@ -212,6 +212,19 @@ def _required_fields(intent_type: str) -> list[str]:
     }.get(intent_type, [])
 
 
+def _ordered_missing(intent_type: str, missing: set[str]) -> list[str]:
+    """
+    Ordonne les champs manquants selon l'ordre naturel défini dans
+    _required_fields (ex. produit avant montant), au lieu d'un tri
+    alphabétique qui placerait "amount" avant "product" et ferait
+    demander le prix avant même de savoir ce qui est vendu.
+    """
+    order = _required_fields(intent_type)
+    ordered = [field for field in order if field in missing]
+    ordered += sorted(missing - set(order))
+    return ordered
+
+
 def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
     if parsed.type == "unknown":
         return None
@@ -257,7 +270,7 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         "type": parsed.type,
         "_source": "ai",
         "_confidence": parsed.confidence,
-        "_missing_fields": sorted(missing),
+        "_missing_fields": _ordered_missing(parsed.type, missing),
     }
 
     if parsed.type == "summary":
@@ -317,7 +330,7 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
             # Le paiement est demandé par le flux dédié
             # (« Cash, crédit, Moov ou MTN ? »), jamais comme champ brut.
             missing.discard("payment")
-            action["_missing_fields"] = sorted(missing)
+            action["_missing_fields"] = _ordered_missing("sale", missing)
         return action
 
     if parsed.type == "payment":
@@ -360,7 +373,7 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
                 missing.discard("quantity")
             if int(action.get("amount") or 0) > 0:
                 missing.discard("amount")
-            action["_missing_fields"] = sorted(missing)
+            action["_missing_fields"] = _ordered_missing("purchase", missing)
         return action
 
     if parsed.type == "supplier_payment":
@@ -466,7 +479,7 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
             missing.discard(field)
     if action.get("payment") in {None, "unknown"}:
         missing.discard("payment")
-    action["_missing_fields"] = sorted(missing)
+    action["_missing_fields"] = _ordered_missing(str(action.get("type") or "sale"), missing)
     return action
 
 
