@@ -8,6 +8,7 @@ class StockMovement(Base):
     __tablename__ = "stock_movements"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     movement_type: Mapped[str] = mapped_column(String(50))
     quantity: Mapped[int] = mapped_column(Integer)

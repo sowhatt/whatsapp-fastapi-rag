@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Integer, DateTime, String
+from sqlalchemy import Integer, DateTime, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -8,6 +8,7 @@ class FinancialEntry(Base):
     __tablename__ = "financial_entries"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     entry_type: Mapped[str] = mapped_column(String(20))  # income, expense, transfer, adjustment
     amount: Mapped[int] = mapped_column(Integer, default=0)
     channel: Mapped[str] = mapped_column(String(30), default="cash")  # cash, moov_money, mtn_momo, bank

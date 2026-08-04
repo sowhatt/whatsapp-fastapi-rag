@@ -8,6 +8,7 @@ class Purchase(Base):
     __tablename__ = "purchases"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
     total_amount: Mapped[int] = mapped_column(Integer, default=0)
     paid_amount: Mapped[int] = mapped_column(Integer, default=0)

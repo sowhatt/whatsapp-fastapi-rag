@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Integer, DateTime, String
+from sqlalchemy import Integer, DateTime, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -8,6 +8,7 @@ class TransactionEvent(Base):
     __tablename__ = "transaction_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[int] = mapped_column(Integer)
     event_type: Mapped[str] = mapped_column(String(50))

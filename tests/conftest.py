@@ -1,0 +1,18 @@
+from app.models import (  # noqa: F401
+    category,
+    customer,
+    financial_entry,
+    merchant,
+    payment,
+    payment_allocation,
+    product,
+    purchase,
+    purchase_item,
+    sale,
+    sale_item,
+    stock_movement,
+    supplier,
+    supplier_payment,
+    supplier_payment_allocation,
+    transaction_event,
+)

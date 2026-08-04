@@ -57,6 +57,87 @@ def ensure_catalog_schema() -> None:
             END IF;
         END $$
         """,
+        """
+        CREATE TABLE IF NOT EXISTS merchants (
+            id SERIAL PRIMARY KEY,
+            whatsapp_number VARCHAR(30) UNIQUE NOT NULL,
+            shop_name VARCHAR(150) NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE sales ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE transaction_events ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        """
+        INSERT INTO merchants (whatsapp_number, shop_name)
+        SELECT 'default-legacy-merchant', 'Commerçant existant (à assigner)'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        )
+        """,
+        """
+        UPDATE customers SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE suppliers SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE products SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE categories SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE sales SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE purchases SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE financial_entries SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE payments SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE supplier_payments SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE stock_movements SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
+        """
+        UPDATE transaction_events SET merchant_id = (
+            SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
+        ) WHERE merchant_id IS NULL
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:
