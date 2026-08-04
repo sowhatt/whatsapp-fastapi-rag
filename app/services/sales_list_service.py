@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.services.table_utils import render_table
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.product import Product
@@ -130,14 +131,31 @@ def _render_chronological(text: str, db: Session, limit: int) -> str:
         return f"Aucune vente enregistrée{cible}."
 
     title = f"🧾 Ventes de {customer.name}" if customer else "🧾 Dernières ventes"
-    lines = [title, ""]
+    table_rows = []
     for sale, customer_name in rows:
         date_label = (sale.created_at or "").strftime("%d/%m %H:%M") if sale.created_at else "?"
         items_summary = _sale_items_summary(sale.id, db)
-        lines.append(
-            f"#{sale.id} · {date_label} · {customer_name or 'Client'} · "
-            f"{items_summary} · {_format_currency(sale.total_amount)}"
+        # Feu tricolore : 🟢 vente entièrement payée, 🔴 solde encore
+        # dû. Signal directement utile (qui me doit encore de l'argent
+        # sur CETTE vente précise), pas juste décoratif.
+        icone = "🔴" if (sale.remaining_amount or 0) > 0 else "🟢"
+        table_rows.append(
+            [
+                f"#{sale.id}",
+                date_label,
+                (customer_name or "Client")[:12],
+                items_summary[:18],
+                _format_currency(sale.total_amount),
+                icone,
+            ]
         )
+
+    table = render_table(
+        headers=["Réf", "Date", "Client", "Produits", "Montant", ""],
+        rows=table_rows,
+        right_align={4},
+    )
+    lines = [title, "", table]
     if len(rows) == limit:
         lines.append("")
         lines.append(f"(les {limit} plus récentes)")
@@ -151,7 +169,7 @@ def _render_by_client(text: str, db: Session) -> str:
 
     total_expr = func.coalesce(func.sum(Sale.total_amount), 0)
     query = (
-        db.query(Customer.name, func.count(Sale.id), total_expr)
+        db.query(Customer.name, func.count(Sale.id), total_expr, Customer.debt)
         .join(Sale, Sale.customer_id == Customer.id)
         .filter(Sale.status != "cancelled")
     )
@@ -159,16 +177,26 @@ def _render_by_client(text: str, db: Session) -> str:
         query = query.filter(Sale.created_at >= since)
         if until is not None:
             query = query.filter(Sale.created_at < until)
-    rows = query.group_by(Customer.name).order_by(total_expr.desc()).all()
+    rows = query.group_by(Customer.name, Customer.debt).order_by(total_expr.desc()).all()
 
     if not rows:
         return "Aucune vente enregistrée pour l'instant."
 
     title = f"🧾 Ventes par client ({label})" if label else "🧾 Ventes par client"
-    lines = [title, ""]
-    for name, count, total in rows:
-        lines.append(f"• {name} — {count} vente(s) — {_format_currency(total)}")
-    return "\n".join(lines)
+    table_rows = []
+    for name, count, total, debt in rows:
+        # Feu tricolore sur la dette du client, pas sur son volume
+        # d'achat : un client qui achète beaucoup n'est pas "en
+        # danger", un client qui doit de l'argent, si.
+        icone = "🔴" if (debt or 0) > 0 else "🟢"
+        table_rows.append([name[:16], str(count), _format_currency(total), icone])
+
+    table = render_table(
+        headers=["Client", "Ventes", "Total", ""],
+        rows=table_rows,
+        right_align={1, 2},
+    )
+    return "\n".join([title, "", table])
 
 
 def _render_by_category(text: str, db: Session) -> str:
@@ -196,9 +224,13 @@ def _render_by_category(text: str, db: Session) -> str:
         return "Aucune vente enregistrée pour l'instant."
 
     title = f"🧾 Ventes par catégorie ({label})" if label else "🧾 Ventes par catégorie"
-    lines = [title, ""]
-    for category_name, count, total in rows:
-        lines.append(f"• {category_name} — {count} ligne(s) — {_format_currency(total)}")
+    table_rows = [[name[:18], str(count), _format_currency(total)] for name, count, total in rows]
+    table = render_table(
+        headers=["Catégorie", "Lignes", "Total"],
+        rows=table_rows,
+        right_align={1, 2},
+    )
+    lines = [title, "", table]
     if all(name == "Sans catégorie" for name, *_ in rows):
         lines.append("")
         lines.append(

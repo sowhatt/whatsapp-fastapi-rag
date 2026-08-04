@@ -122,10 +122,10 @@ def test_inventaire_affiche_initial_actuel_et_mouvement(db):
     db.add(Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=9, initial_stock=100, threshold=10))
     db.commit()
     text = render_stock_overview(db)
-    assert "initial 100" in text
-    assert "actuel 9" in text
-    assert "91 écoulé" in text
-    assert "⚠️" in text
+    assert "```" in text
+    assert "100" in text and "9" in text
+    assert "-91" in text
+    assert "🔴" in text
     assert "Stock bas à surveiller : Riz" in text
 
 
@@ -133,14 +133,14 @@ def test_inventaire_sans_alerte_si_au_dessus_du_seuil(db):
     db.add(Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=80, initial_stock=100, threshold=10))
     db.commit()
     text = render_stock_overview(db)
-    assert "⚠️" not in text
+    assert "🔴" not in text
 
 
 def test_inventaire_reapprovisionnement(db):
     db.add(Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=120, initial_stock=100, threshold=10))
     db.commit()
     text = render_stock_overview(db)
-    assert "réapprovisionné" in text
+    assert "+20" in text
 
 
 # ── Intégration bout en bout via l'orchestrateur ──────────────────
@@ -166,5 +166,5 @@ def test_flux_complet_vente_declenche_alerte_puis_inventaire(db, monkeypatch):
     assert "Stock bas" in result["reply_text"]
 
     inventory = mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text="inventaire", db=db)
-    assert "actuel 9" in inventory["reply_text"]
-    assert "⚠️" in inventory["reply_text"]
+    assert "9" in inventory["reply_text"]
+    assert "🔴" in inventory["reply_text"]

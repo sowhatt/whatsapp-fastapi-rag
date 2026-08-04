@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.services.table_utils import render_table
+
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
 from app.models.product import Product
@@ -124,8 +126,6 @@ def get_period_summary_data(
         .scalar()
     )
 
-    # Marge réelle : somme des lignes vendues moins leur coût d'achat
-    # catalogue, sur la période. Les ventes annulées sont exclues.
     margin_rows = (
         db.query(SaleItem.line_total, SaleItem.quantity, Product.purchase_price)
         .join(Sale, Sale.id == SaleItem.sale_id)
@@ -151,12 +151,6 @@ def get_period_summary_data(
         encashed_by_channel[channel] = int(total)
 
     expenses_by_category: dict[str, int] = {}
-    # Important : on construit l'expression une seule fois et on la
-    # réutilise en SELECT et en GROUP BY. PostgreSQL exige que les deux
-    # clauses portent exactement la même expression ; deux appels
-    # séparés à func.coalesce(...) génèrent deux paramètres liés
-    # distincts (même si la valeur "autre" est identique), et Postgres
-    # refuse alors la requête avec un GroupingError.
     category_expr = func.coalesce(FinancialEntry.category, "autre")
     for category, total in (
         db.query(
@@ -241,31 +235,62 @@ def _format_currency(value: int) -> str:
 def render_period_summary(data: dict) -> str:
     label = data.get("label") or PERIOD_LABELS.get(data["period"], "du jour")
     lines = [f"📊 Bilan {label}", ""]
-    lines.append(
-        f"Ventes : {data['sales_count']} opération(s) — {_format_currency(data['sales_total'])}"
+
+    # Feu tricolore sur la marge, seule ligne où un vrai jugement de
+    # santé a du sens (perte / marge faible / marge saine). Les
+    # créances ("on te doit") ne sont volontairement pas colorées :
+    # qu'un client doive de l'argent n'est ni bon ni mauvais en soi,
+    # juste une information à connaître.
+    sales_total = data["sales_total"]
+    margin = data["margin"]
+    if sales_total <= 0:
+        marge_icone = ""
+    elif margin < 0:
+        marge_icone = "🔴"
+    elif margin / sales_total < 0.15:
+        marge_icone = "🟡"
+    else:
+        marge_icone = "🟢"
+
+    table_rows = [
+        ["Ventes", str(data["sales_count"]), _format_currency(sales_total), ""],
+    ]
+    if data["purchases_total"]:
+        table_rows.append(["Achats", "", _format_currency(data["purchases_total"]), ""])
+    if data["expenses_total"]:
+        table_rows.append(["Dépenses", "", _format_currency(data["expenses_total"]), ""])
+    table_rows.append(["Marge", "", _format_currency(margin), marge_icone])
+
+    table = render_table(
+        headers=["", "Nb", "Montant", ""],
+        rows=table_rows,
+        right_align={1, 2},
     )
+    lines.append(table)
+
     if data["encashed_by_channel"]:
         parts = ", ".join(
             f"{k} {_format_currency(v)}" for k, v in data["encashed_by_channel"].items()
         )
         lines.append(f"Encaissé : {parts}")
-    if data["purchases_total"]:
-        lines.append(f"Achats : {_format_currency(data['purchases_total'])}")
 
     if data["expenses_total"]:
         detail = ", ".join(
             f"{EXPENSE_CATEGORY_LABELS.get(cat, cat.capitalize())} {_format_currency(v)}"
             for cat, v in sorted(data["expenses_by_category"].items(), key=lambda x: -x[1])
         )
-        lines.append(f"Dépenses : {_format_currency(data['expenses_total'])} ({detail})")
-
-    lines.append("")
-    lines.append(f"💰 Marge estimée : {_format_currency(data['margin'])}")
+        lines.append(f"Détail dépenses : {detail}")
 
     if data["top_debtors"]:
-        detail = ", ".join(f"{name} {_format_currency(debt)}" for name, debt in data["top_debtors"])
+        creances_rows = [[name[:16], _format_currency(debt)] for name, debt in data["top_debtors"]]
+        creances_table = render_table(
+            headers=["On te doit", "Montant"],
+            rows=creances_rows,
+            right_align={1},
+        )
         lines.append("")
-        lines.append(f"On te doit au total {_format_currency(data['customer_debt_total'])} : {detail}")
+        lines.append(f"On te doit au total {_format_currency(data['customer_debt_total'])} :")
+        lines.append(creances_table)
     if data["supplier_debt_total"]:
         lines.append(f"Tu dois aux fournisseurs : {_format_currency(data['supplier_debt_total'])}")
 

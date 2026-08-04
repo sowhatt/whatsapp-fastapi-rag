@@ -9,6 +9,8 @@ de précision, aucune est signalée clairement.
 """
 from typing import Any
 
+from app.services.table_utils import render_table
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -160,30 +162,51 @@ def render_stock_overview(db: Session) -> str:
     if not products:
         return "Aucun produit au catalogue pour l'instant."
 
-    lines = ["📦 Inventaire", ""]
+    rows = []
     low_stock_names = []
     for product in products:
         initial = product.initial_stock or 0
-        diff = initial - product.stock
-        if diff > 0:
-            mouvement = f"{diff} écoulé(s)"
-        elif diff < 0:
-            mouvement = f"{-diff} réapprovisionné(s) net"
-        else:
-            mouvement = "inchangé"
+        diff = product.stock - initial
+        mouvement = f"{diff:+d}" if diff != 0 else "0"
 
-        flag = ""
-        if product.threshold and product.threshold > 0 and product.stock <= product.threshold:
-            flag = " ⚠️"
-            low_stock_names.append(product.name)
+        # Feu tricolore basé sur le seuil d'alerte, quand il est
+        # configuré. Sans seuil défini, on ne prétend pas juger la
+        # santé du stock : pas d'icône plutôt qu'un faux "vert".
+        # Placé en DERNIÈRE colonne (jamais en préfixe) : un émoji
+        # s'affiche souvent en largeur double sur téléphone, ce qui
+        # décalerait tout le reste de la ligne s'il était devant.
+        icone = ""
+        if product.threshold and product.threshold > 0:
+            if product.stock <= product.threshold:
+                icone = "🔴"
+                low_stock_names.append(product.name)
+            elif product.stock <= product.threshold * 2:
+                icone = "🟡"
+            else:
+                icone = "🟢"
 
-        lines.append(
-            f"• {product.name} — initial {initial}, actuel {product.stock} {product.unit} "
-            f"({mouvement}){flag}"
+        nom_tronque = product.name[:16]
+        rows.append(
+            [
+                nom_tronque,
+                str(initial),
+                str(product.stock),
+                product.unit or "",
+                mouvement,
+                icone,
+            ]
         )
+
+    table = render_table(
+        headers=["Produit", "Initial", "Actuel", "Unité", "Mvt", ""],
+        rows=rows,
+        right_align={1, 2, 4},
+    )
+
+    lines = ["📦 Inventaire", "", table]
 
     if low_stock_names:
         lines.append("")
-        lines.append("⚠️ Stock bas à surveiller : " + ", ".join(low_stock_names))
+        lines.append("🔴 Stock bas à surveiller : " + ", ".join(low_stock_names))
 
     return "\n".join(lines)

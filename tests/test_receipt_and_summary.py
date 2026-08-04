@@ -165,6 +165,6 @@ def test_render_period_summary_contient_les_sections_cles(db):
     data = get_period_summary_data(db, period="day")
     text = render_period_summary(data)
     assert "Bilan du jour" in text
-    assert "Marge estimée" in text
+    assert "Marge" in text
     assert "On te doit au total" in text
     assert "Transport" in text
