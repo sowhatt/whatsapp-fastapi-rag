@@ -21,6 +21,7 @@ from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
 from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
+from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
 
