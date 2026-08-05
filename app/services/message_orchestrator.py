@@ -444,31 +444,41 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # reçu/bilan/liste, ceci ÉCRIT en base : ça passe donc par le
     # workflow normal (IA -> confirmation -> exécution), pas par un
     # retour immédiat.
-    if not pending:
-        lower_catalog = text.lower()
-        catalog_create_cue = any(
-            phrase in lower_catalog
-            for phrase in ("crée le produit", "cree le produit", "ajoute le produit", "nouveau produit", "nouvelle produit")
-        )
-        catalog_update_cue = (
-            any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
-            and any(field in lower_catalog for field in ("prix", "stock", "seuil"))
-        ) or "stock initial" in lower_catalog or "seuil" in lower_catalog
-        if catalog_create_cue or catalog_update_cue:
-            try:
-                catalog_action = detect_intent(text, db)
-            except IntentAgentError as exc:
-                print("INTENT AGENT ERROR:", str(exc))
-                catalog_action = None
-            if catalog_action and catalog_action.get("type") in {
-                "catalog_create",
-                "catalog_update_price",
-                "catalog_update_purchase_price",
-                "catalog_update_stock",
-                "catalog_update_threshold",
-                "catalog_update_initial_stock",
-            }:
-                return advance_workflow(sender_id, catalog_action, db)
+    #
+    # Volontairement PAS de garde "if not pending" ici (contrairement
+    # à une version antérieure) : les mots-clés déclencheurs (« crée
+    # le produit », « seuil », « stock initial ») sont des signaux
+    # forts, peu susceptibles d'apparaître par hasard dans une simple
+    # réponse à une question en attente. Sans ce retrait, une
+    # transcription vocale imparfaite pouvait faire dévier une
+    # commande catalogue vers un workflow de vente bloqué (« quel est
+    # le client ? »), et même une reformulation texte parfaitement
+    # correcte restait alors piégée dans cet état bloqué au lieu
+    # d'être reconnue comme une nouvelle commande.
+    lower_catalog = text.lower()
+    catalog_create_cue = any(
+        phrase in lower_catalog
+        for phrase in ("crée le produit", "cree le produit", "ajoute le produit", "nouveau produit", "nouvelle produit")
+    )
+    catalog_update_cue = (
+        any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
+        and any(field in lower_catalog for field in ("prix", "stock", "seuil"))
+    ) or "stock initial" in lower_catalog or "seuil" in lower_catalog
+    if catalog_create_cue or catalog_update_cue:
+        try:
+            catalog_action = detect_intent(text, db)
+        except IntentAgentError as exc:
+            print("INTENT AGENT ERROR:", str(exc))
+            catalog_action = None
+        if catalog_action and catalog_action.get("type") in {
+            "catalog_create",
+            "catalog_update_price",
+            "catalog_update_purchase_price",
+            "catalog_update_stock",
+            "catalog_update_threshold",
+            "catalog_update_initial_stock",
+        }:
+            return advance_workflow(sender_id, catalog_action, db)
 
     # Le bilan est aussi une simple lecture : consultable à tout moment,
     # même en plein milieu d'un autre workflow (par exemple pendant
