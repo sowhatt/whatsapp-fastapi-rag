@@ -26,6 +26,7 @@ from app.business.assistant import (
     BUSINESS_MENU,
     detect_business_intent,
     is_menu_request,
+    is_stock_view_request,
     is_summary_keyword_request,
 )
 from app.business.commands import SaleCommand
@@ -479,6 +480,17 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "catalog_update_initial_stock",
         }:
             return advance_workflow(sender_id, catalog_action, db)
+
+    # "Mon stock" est aussi une simple lecture : consultable à tout
+    # moment, même si une question reste bloquée en attente. Vérifié
+    # APRÈS les raccourcis catalogue ci-dessus (donc "stock initial du
+    # riz est 100" reste bien capté comme une mise à jour, pas comme
+    # une consultation) mais AVANT l'absorption d'une réponse en
+    # attente — sinon "mon stock" se fait avaler comme tentative de
+    # réponse à une question bloquée au lieu d'être reconnu comme la
+    # commande de consultation.
+    if is_stock_view_request(text):
+        return {"status": "reply", "reply_text": render_stock_overview(db), "action": None}
 
     # Le bilan est aussi une simple lecture : consultable à tout moment,
     # même en plein milieu d'un autre workflow (par exemple pendant

@@ -48,6 +48,7 @@ NATURAL_PATTERNS = [
 
 
 _DAILY_SUMMARY_KEYWORD_PATTERN = r"\b(r[eé]sum[eé]|bilan|total du jour)\b"
+_STOCK_VIEW_KEYWORD_PATTERN = r"\b(stock|inventaire)\b"
 
 
 def is_summary_keyword_request(text: str) -> bool:
@@ -62,6 +63,22 @@ def is_summary_keyword_request(text: str) -> bool:
 
     normalized = " ".join(text.lower().split()).strip(" .!?")
     return bool(_re.search(_DAILY_SUMMARY_KEYWORD_PATTERN, normalized, _re.IGNORECASE))
+
+
+def is_stock_view_request(text: str) -> bool:
+    """
+    Même principe que is_summary_keyword_request, pour "mon stock" /
+    "inventaire" : consultable à tout moment, même si une question
+    reste bloquée en attente (ex. une transcription vocale imparfaite
+    plus tôt a laissé le workflow coincé sur "quelle est l'unité ?").
+    Sans ce raccourci prioritaire, "mon stock" se faisait avaler comme
+    une tentative de réponse à cette question bloquée au lieu d'être
+    reconnu comme la commande de consultation du stock.
+    """
+    import re as _re
+
+    normalized = " ".join(text.lower().split()).strip(" .!?")
+    return bool(_re.search(_STOCK_VIEW_KEYWORD_PATTERN, normalized, _re.IGNORECASE))
 
 
 def is_menu_request(text: str) -> bool:
