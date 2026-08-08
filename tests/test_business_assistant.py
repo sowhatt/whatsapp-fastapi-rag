@@ -55,8 +55,20 @@ def test_router_handles_next_message() -> None:
 from app.services.message_orchestrator import process_incoming_message
 
 
-class FakeDB:
-    pass
+def FakeDB():
+    """
+    Une vraie session SQLite en mémoire, légère. La résolution du
+    commerce a désormais besoin d'une vraie base, même pour des tests
+    qui ne portent que sur le routage.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.base import Base
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
 
 
 def test_message_orchestrator_displays_business_menu():
@@ -308,15 +320,12 @@ def test_pending_quantity_answer_is_not_detected_as_new_operation(monkeypatch):
         fake_advance_workflow,
     )
 
-    class FakeDb:
-        pass
-
     result = orchestrator.process_incoming_message(
         channel="whatsapp",
         sender_id=sender_id,
         message_type="text",
         text="vingt sacs",
-        db=FakeDb(),
+        db=FakeDB(),
     )
 
     assert "Nouvelle opération détectée" not in result["reply_text"]
@@ -360,15 +369,12 @@ def test_pending_quantity_answer_is_not_detected_as_new_operation(monkeypatch):
         fake_advance_workflow,
     )
 
-    class FakeDb:
-        pass
-
     result = orchestrator.process_incoming_message(
         channel="whatsapp",
         sender_id=sender_id,
         message_type="text",
         text="vingt sacs",
-        db=FakeDb(),
+        db=FakeDB(),
     )
 
     assert "Nouvelle opération détectée" not in result["reply_text"]

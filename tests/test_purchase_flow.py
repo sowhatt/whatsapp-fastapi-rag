@@ -106,6 +106,15 @@ def test_produit_inconnu_pendant_achat_propose_creation(db, monkeypatch):
 
 
 def test_reponse_non_numerique_au_prix_de_vente_redemande():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.base import Base
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
     pending_actions[SENDER] = {
         "type": "purchase",
         "product": "Mil",
@@ -120,7 +129,7 @@ def test_reponse_non_numerique_au_prix_de_vente_redemande():
         sender_id=SENDER,
         message_type="text",
         text="je ne sais pas",
-        db=None,
+        db=db,
     )
     assert "prix de vente" in result["reply_text"].lower()
     assert mo.get_pending_action(SENDER) is not None

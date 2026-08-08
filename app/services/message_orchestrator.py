@@ -6,6 +6,9 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.db.tenant import set_current_merchant
+from app.services.merchant_service import get_or_create_merchant
+
 from app.agents.conversation_agent import (
     apply_field_answer,
     create_missing_entity,
@@ -418,6 +421,15 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
     lower = text.lower().strip(" .!?\n\t")
     pending = get_pending_action(sender_id)
+
+    # Résolution du commerce à partir du numéro WhatsApp de
+    # l'expéditeur (créé automatiquement au premier message). Tout ce
+    # qui sera créé à partir de maintenant (client, produit, vente...)
+    # sera automatiquement étiqueté avec ce commerce. Aucune lecture
+    # n'est encore filtrée à ce stade — étape volontairement limitée
+    # à l'étiquetage, l'isolation complète est un chantier séparé.
+    merchant = get_or_create_merchant(sender_id, db)
+    set_current_merchant(db, merchant.id)
 
     # Le reçu est une simple lecture : il n'abandonne pas le workflow
     # en cours et ne nécessite aucune confirmation.
