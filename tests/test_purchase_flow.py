@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.services import message_orchestrator as mo
 from app.state.pending_actions import pending_actions
+from tests.conftest import with_merchant
 
 SENDER = "22990000002"
 
@@ -62,6 +63,7 @@ def test_achat_declenche_bien_le_workflow_ia(db, monkeypatch):
 
 
 def test_produit_inconnu_pendant_achat_propose_creation(db, monkeypatch):
+    with_merchant(db, SENDER)
     supplier = Supplier(name="Soglo", debt=0)
     db.add(supplier)
     db.commit()

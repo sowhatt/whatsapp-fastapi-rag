@@ -26,6 +26,7 @@ from app.services.catalog_service import (
 from app.services.sales_list_service import is_sales_list_request
 from app.services import message_orchestrator as mo
 from app.state.pending_actions import pending_actions
+from tests.conftest import with_merchant
 
 SENDER = "22990000003"
 
@@ -148,6 +149,7 @@ def test_flux_complet_creation_via_orchestrateur(db, monkeypatch):
 
 
 def test_flux_complet_maj_prix_via_orchestrateur(db, monkeypatch):
+    with_merchant(db, SENDER)
     db.add(Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=100))
     db.commit()
     fake_action = {"type": "catalog_update_price", "product": "Riz", "price": 55000, "_missing_fields": []}

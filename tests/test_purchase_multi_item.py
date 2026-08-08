@@ -19,6 +19,7 @@ from app.services.purchases_service import (
     resolve_purchase_intent,
 )
 from app.state.pending_actions import pending_actions
+from tests.conftest import with_merchant
 
 SENDER = "22990000005"
 
@@ -127,6 +128,7 @@ def test_validation_bloque_incoherence_achat_avant_confirmation():
 
 
 def test_flux_complet_achat_multi_produits(db, monkeypatch):
+    with_merchant(db, SENDER)
     db.add(Supplier(name="Soglo", debt=0))
     db.add(Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=100))
     db.add(Product(name="Mil", unit="Sac", price=30000, purchase_price=20000, stock=50))

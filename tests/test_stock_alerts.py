@@ -29,6 +29,7 @@ from app.services.catalog_service import (
 )
 from app.services import message_orchestrator as mo
 from app.state.pending_actions import pending_actions
+from tests.conftest import with_merchant
 
 SENDER = "22990000004"
 
@@ -146,6 +147,7 @@ def test_inventaire_reapprovisionnement(db):
 # ── Intégration bout en bout via l'orchestrateur ──────────────────
 
 def test_flux_complet_vente_declenche_alerte_puis_inventaire(db, monkeypatch):
+    with_merchant(db, SENDER)
     customer = Customer(name="Awa", debt=0)
     db.add(customer)
     product = Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=15, initial_stock=100, threshold=10)

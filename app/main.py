@@ -139,6 +139,64 @@ def ensure_catalog_schema() -> None:
             SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
         ) WHERE merchant_id IS NULL
         """,
+        # --- Isolation par commerçant : le nom de produit/catégorie
+        # n'a plus besoin d'être unique globalement, seulement au sein
+        # d'un même commerce (deux commerçants peuvent chacun avoir
+        # un "Riz"). On retire l'ancienne contrainte unique globale,
+        # quel que soit son nom exact (auto-généré par Postgres), et
+        # on la remplace par une contrainte composée (merchant_id, nom).
+        """
+        DO $$
+        DECLARE
+            contrainte TEXT;
+        BEGIN
+            SELECT tc.constraint_name INTO contrainte
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+                ON tc.constraint_name = ccu.constraint_name
+            WHERE tc.table_name = 'products'
+                AND tc.constraint_type = 'UNIQUE'
+                AND ccu.column_name = 'name'
+            LIMIT 1;
+
+            IF contrainte IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE products DROP CONSTRAINT %I', contrainte);
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'uq_products_merchant_name'
+            ) THEN
+                ALTER TABLE products
+                ADD CONSTRAINT uq_products_merchant_name UNIQUE (merchant_id, name);
+            END IF;
+        END $$
+        """,
+        """
+        DO $$
+        DECLARE
+            contrainte TEXT;
+        BEGIN
+            SELECT tc.constraint_name INTO contrainte
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+                ON tc.constraint_name = ccu.constraint_name
+            WHERE tc.table_name = 'categories'
+                AND tc.constraint_type = 'UNIQUE'
+                AND ccu.column_name = 'name'
+            LIMIT 1;
+
+            IF contrainte IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE categories DROP CONSTRAINT %I', contrainte);
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'uq_categories_merchant_name'
+            ) THEN
+                ALTER TABLE categories
+                ADD CONSTRAINT uq_categories_merchant_name UNIQUE (merchant_id, name);
+            END IF;
+        END $$
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:
