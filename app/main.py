@@ -150,6 +150,7 @@ def ensure_catalog_schema() -> None:
         DECLARE
             contrainte TEXT;
         BEGIN
+            -- Cas 1 : une contrainte UNIQUE formelle (ALTER TABLE ... ADD CONSTRAINT)
             SELECT tc.constraint_name INTO contrainte
             FROM information_schema.table_constraints tc
             JOIN information_schema.constraint_column_usage ccu
@@ -161,6 +162,29 @@ def ensure_catalog_schema() -> None:
 
             IF contrainte IS NOT NULL THEN
                 EXECUTE format('ALTER TABLE products DROP CONSTRAINT %I', contrainte);
+            END IF;
+
+            -- Cas 2 : un INDEX unique créé directement (CREATE UNIQUE
+            -- INDEX), sans passer par une contrainte formelle — c'est
+            -- ce que SQLAlchemy génère pour Column(unique=True,
+            -- index=True), et ça n'apparaît PAS dans
+            -- information_schema.table_constraints, contrairement au
+            -- cas 1. Sans ce second cas, l'ancienne restriction reste
+            -- active malgré la migration : exactement le bug rencontré
+            -- en conditions réelles (products.name toujours unique
+            -- globalement au lieu de l'être par commerçant).
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'products' AND indexname = 'ix_products_name'
+            ) THEN
+                DROP INDEX ix_products_name;
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'products' AND indexname = 'ix_products_name_lookup'
+            ) THEN
+                CREATE INDEX ix_products_name_lookup ON products (name);
             END IF;
 
             IF NOT EXISTS (
@@ -187,6 +211,20 @@ def ensure_catalog_schema() -> None:
 
             IF contrainte IS NOT NULL THEN
                 EXECUTE format('ALTER TABLE categories DROP CONSTRAINT %I', contrainte);
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'categories' AND indexname = 'ix_categories_name'
+            ) THEN
+                DROP INDEX ix_categories_name;
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'categories' AND indexname = 'ix_categories_name_lookup'
+            ) THEN
+                CREATE INDEX ix_categories_name_lookup ON categories (name);
             END IF;
 
             IF NOT EXISTS (
