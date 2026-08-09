@@ -78,6 +78,15 @@ def is_stock_view_request(text: str) -> bool:
     import re as _re
 
     normalized = " ".join(text.lower().split()).strip(" .!?")
+
+    # Filet de sécurité : une phrase qui mentionne aussi "prix de
+    # vente" ou "prix d'achat" est manifestement une dictée de
+    # catalogue (création/mise à jour de produit), pas une demande de
+    # consultation du stock, même si elle contient le mot "stock" en
+    # passant (ex. "stock 50" comme l'un des champs dictés).
+    if "prix de vente" in normalized or "prix d'achat" in normalized or "prix d achat" in normalized:
+        return False
+
     return bool(_re.search(_STOCK_VIEW_KEYWORD_PATTERN, normalized, _re.IGNORECASE))
 
 

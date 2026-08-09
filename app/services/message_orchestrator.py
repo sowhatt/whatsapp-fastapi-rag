@@ -472,6 +472,14 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     catalog_create_cue = any(
         phrase in lower_catalog
         for phrase in ("crée le produit", "cree le produit", "ajoute le produit", "nouveau produit", "nouvelle produit")
+    ) or (
+        # Dictée naturelle sans verbe explicite : "Produit riz, prix de
+        # vente 50000, prix d'achat 45000, stock 50, unité sac". Sans
+        # ce cas, une telle phrase — qui contient "stock" — se faisait
+        # intercepter par le raccourci de consultation du stock au
+        # lieu d'être reconnue comme une création de produit.
+        lower_catalog.strip().startswith("produit ")
+        and "prix de vente" in lower_catalog
     )
     catalog_update_cue = (
         any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
@@ -536,6 +544,29 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "status": "reply",
             "reply_text": cancel_pending_action(sender_id),
             "action": None,
+        }
+
+    # Si une confirmation de création de client/fournisseur est en
+    # attente et que la réponse n'est ni "oui" ni "non" (ex. une
+    # transcription vocale imparfaite, ou une réponse mal comprise),
+    # on relance clairement plutôt que d'abandonner silencieusement le
+    # contexte — sans ce garde-fou, le nom du client déjà saisi
+    # (ex. "Richa") se perdait et le message suivant repartait de
+    # zéro comme s'il s'agissait d'une toute nouvelle opération.
+    if (
+        pending
+        and pending.get("_awaiting") in {"create_customer_confirmation", "create_supplier_confirmation"}
+        and lower not in {"oui", "ok", "confirmer", "valider", "yes", "confirm"}
+    ):
+        entity_label = "client" if pending["_awaiting"] == "create_customer_confirmation" else "fournisseur"
+        entity_name = pending.get("customer") if entity_label == "client" else pending.get("supplier")
+        return {
+            "status": "reply",
+            "reply_text": (
+                f"Je n'ai pas compris ta réponse.\n\n"
+                f"Veux-tu créer le {entity_label} {entity_name} ? Réponds oui ou non."
+            ),
+            "action": pending,
         }
 
     # Une nouvelle commande ne remplace le workflow actif que si le message
