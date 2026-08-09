@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.services.table_utils import render_table
+from app.services.table_utils import render_table, smart_truncate
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.product import Product
@@ -189,7 +189,7 @@ def _render_by_client(text: str, db: Session) -> str:
         # d'achat : un client qui achète beaucoup n'est pas "en
         # danger", un client qui doit de l'argent, si.
         icone = "🔴" if (debt or 0) > 0 else "🟢"
-        table_rows.append([name[:16], str(count), _format_currency(total), icone])
+        table_rows.append([smart_truncate(name, 16), str(count), _format_currency(total), icone])
 
     table = render_table(
         headers=["Client", "Ventes", "Total", ""],
@@ -224,7 +224,7 @@ def _render_by_category(text: str, db: Session) -> str:
         return "Aucune vente enregistrée pour l'instant."
 
     title = f"🧾 Ventes par catégorie ({label})" if label else "🧾 Ventes par catégorie"
-    table_rows = [[name[:18], str(count), _format_currency(total)] for name, count, total in rows]
+    table_rows = [[smart_truncate(name, 18), str(count), _format_currency(total)] for name, count, total in rows]
     table = render_table(
         headers=["Catégorie", "Lignes", "Total"],
         rows=table_rows,

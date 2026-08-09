@@ -9,7 +9,7 @@ de précision, aucune est signalée clairement.
 """
 from typing import Any
 
-from app.services.table_utils import render_table
+from app.services.table_utils import render_table, smart_truncate
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -185,7 +185,7 @@ def render_stock_overview(db: Session) -> str:
             else:
                 icone = "🟢"
 
-        nom_tronque = product.name[:16]
+        nom_tronque = smart_truncate(product.name, 16)
         rows.append(
             [
                 nom_tronque,

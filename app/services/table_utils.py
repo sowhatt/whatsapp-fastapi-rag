@@ -11,6 +11,33 @@ couleur de cellule que la plateforme autorise.
 """
 
 
+def smart_truncate(name: str, limit: int) -> str:
+    """
+    Tronque un nom trop long pour un tableau, en préservant si
+    possible le DERNIER mot plutôt que de couper bêtement au Nème
+    caractère. Utile pour des produits qui ne se distinguent que par
+    leur fin ("Spaghetti matanti grand" vs "... petit") : une simple
+    coupe à 16 caractères donne "Spaghetti matant" pour les deux,
+    strictement indiscernables dans le tableau. Ici, on obtient
+    "Spaghetti…grand" et "Spaghetti…petit" — toujours dans le budget
+    de largeur, mais distincts.
+
+    Si même le dernier mot ne laisse pas assez de place pour un
+    préfixe utile (nom composé d'un seul mot très long, par exemple),
+    on retombe sur une coupe simple.
+    """
+    if len(name) <= limit:
+        return name
+    words = name.split()
+    if len(words) > 1:
+        last_word = words[-1]
+        prefix_budget = limit - len(last_word) - 1  # 1 caractère pour "…"
+        if prefix_budget >= 3:
+            prefix = name[:prefix_budget].rstrip()
+            return f"{prefix}…{last_word}"
+    return name[:limit]
+
+
 def render_table(headers: list[str], rows: list[list[str]], right_align: set[int] | None = None) -> str:
     """
     headers : libellés de colonnes.
