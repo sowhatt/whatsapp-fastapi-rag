@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, with_loader_criteria
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
+from app.models.open_tab import OpenTab, OpenTabItem
 from app.models.payment import Payment
 from app.models.product import Product
 from app.models.purchase import Purchase
@@ -48,6 +49,8 @@ TENANT_SCOPED_MODELS = (
     SupplierPayment,
     StockMovement,
     TransactionEvent,
+    OpenTab,
+    OpenTabItem,
 )
 
 _MERCHANT_KEY = "merchant_id"

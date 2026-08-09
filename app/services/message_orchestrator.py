@@ -59,6 +59,7 @@ from app.services.catalog_service import (
     update_product_initial_stock,
 )
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
+from app.services.tab_service import TabError, add_items_to_tab, close_tab, render_tab
 from app.state.pending_actions import pending_actions
 
 
@@ -182,6 +183,18 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
         return f"Nouveau seuil d'alerte pour {action['product']} : {action['threshold']}. Confirmer ? Réponds oui ou non."
     if action["type"] == "catalog_update_initial_stock":
         return f"Stock initial de {action['product']} déclaré à {action['initial_stock']}. Confirmer ? Réponds oui ou non."
+    if action["type"] == "tab_add_item":
+        table = action.get("table") or "?"
+        items = action.get("items") or []
+        lignes = "\n".join(
+            f"• {item['quantity']} {item.get('unit') or ''} {item['product']}".replace("  ", " ")
+            for item in items
+        )
+        return f"Ajouter à l'addition de {table} :\n{lignes}\n\nConfirmer ? Réponds oui ou non."
+    if action["type"] == "tab_close":
+        table = action.get("table") or "?"
+        payment = display_channel(str(action.get("payment") or "cash"))
+        return f"Solder l'addition de {table}, paiement {payment}. Confirmer ? Réponds oui ou non."
     return "Action détectée. Confirmer ? Réponds oui ou non."
 
 
@@ -268,6 +281,18 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
         return update_product_threshold(action, db)
     if action["type"] == "catalog_update_initial_stock":
         return update_product_initial_stock(action, db)
+    if action["type"] == "tab_add_item":
+        try:
+            return add_items_to_tab(action.get("table"), action.get("items") or [], db)
+        except TabError as exc:
+            db.rollback()
+            return f"❌ {exc}"
+    if action["type"] == "tab_close":
+        try:
+            return close_tab(action.get("table"), str(action.get("payment") or "cash"), db, create_sale)
+        except TabError as exc:
+            db.rollback()
+            return f"❌ {exc}"
     raise ValueError("Type d'action non pris en charge.")
 
 
@@ -506,6 +531,24 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "catalog_update_initial_stock",
         }:
             return advance_workflow(sender_id, catalog_action, db)
+
+    # Tables ouvertes (usage restaurant/bar) : détectées tôt, comme le
+    # catalogue, avec leur propre appel à l'IA — "table" + un numéro,
+    # ou le mot "addition", est un signal fort qui ne doit pas se
+    # faire absorber par la détection générique de vente/achat.
+    tab_cue = bool(re.search(r"\btable\s*\d+\b", lower_catalog)) or "addition" in lower_catalog
+    if tab_cue:
+        try:
+            tab_action = detect_intent(text, db)
+        except IntentAgentError as exc:
+            print("INTENT AGENT ERROR:", str(exc))
+            tab_action = None
+        if tab_action and tab_action.get("type") == "tab_view":
+            table_name = tab_action.get("table")
+            if table_name:
+                return {"status": "reply", "reply_text": render_tab(table_name, db), "action": None}
+        if tab_action and tab_action.get("type") in {"tab_add_item", "tab_close"}:
+            return advance_workflow(sender_id, tab_action, db)
 
     # "Mon stock" est aussi une simple lecture : consultable à tout
     # moment, même si une question reste bloquée en attente. Vérifié

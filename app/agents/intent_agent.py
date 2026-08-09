@@ -24,6 +24,9 @@ IntentType = Literal[
     "catalog_update_stock",
     "catalog_update_threshold",
     "catalog_update_initial_stock",
+    "tab_add_item",
+    "tab_view",
+    "tab_close",
     "unknown",
 ]
 
@@ -64,6 +67,7 @@ class AIIntent(BaseModel):
     threshold: int | None = None
     initial_stock: int | None = None
     product_category: str | None = None
+    table: str | None = None
     items: list[AIIntentItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     missing_fields: list[str] = Field(default_factory=list)
@@ -180,6 +184,21 @@ Règles impératives :
     vide. Exemple : « Achat 5 sacs de riz chez Soglo à 200 000 et 3
     sacs de mil à 60 000 » -> items=[{product:riz, quantity:5,
     amount:200000}, {product:mil, quantity:3, amount:60000}].
+27. tab_add_item : AJOUTE un ou plusieurs articles à l'ADDITION EN
+    COURS d'une table (usage restaurant/bar) — ce n'est PAS une vente
+    immédiate, juste un ajout à une addition qui s'accumule.
+    Déclencheurs : « la table 3 prend deux bières », « ajoute un riz
+    au poulet à la table 5 », « table 2 commande... ». Extrais table
+    (ex. "Table 3") et items (product, unit, quantity par article —
+    jamais de amount ici, le prix vient toujours du catalogue).
+28. tab_view : consulte l'addition en cours d'une table, sans rien
+    modifier. Déclencheurs : « addition de la table 3 », « combien
+    doit la table 5 », « addition table 2 ». Extrais table.
+29. tab_close : SOLDE l'addition d'une table — la transforme en une
+    vraie vente et ferme l'addition. Déclencheurs : « la table 3 paie
+    cash », « encaisse la table 5 », « solde la table 2 en espèces »,
+    « table 4 règle par Mobile Money ». Extrais table et payment (le
+    canal de paiement).
 """.strip()
 
 
@@ -210,6 +229,9 @@ def _required_fields(intent_type: str) -> list[str]:
         "catalog_update_stock": ["product", "stock"],
         "catalog_update_threshold": ["product", "threshold"],
         "catalog_update_initial_stock": ["product", "initial_stock"],
+        "tab_add_item": ["table"],
+        "tab_view": ["table"],
+        "tab_close": ["table"],
     }.get(intent_type, [])
 
 
@@ -410,6 +432,43 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
 
     if parsed.type == "catalog_update_initial_stock":
         action.update(product=data.get("product"), initial_stock=int(data.get("initial_stock") or 0))
+        return action
+
+    if parsed.type == "tab_add_item":
+        items: list[dict[str, Any]] = []
+        for item in parsed.items:
+            product_name = _clean_name(item.product)
+            if not product_name:
+                continue
+            items.append(
+                {
+                    "product": product_name,
+                    "unit": _clean_name(item.unit) or "",
+                    "quantity": int(item.quantity or 0),
+                }
+            )
+        # Compatibilité : si l'IA n'a pas rempli items[] mais a
+        # rempli product/quantity directement (un seul article), on
+        # le traite comme une liste à un seul élément.
+        if not items and data.get("product"):
+            items.append(
+                {
+                    "product": data.get("product"),
+                    "unit": data.get("unit") or "",
+                    "quantity": int(data.get("quantity") or 0),
+                }
+            )
+        action.update(table=_clean_name(data.get("table")), items=items)
+        if not items:
+            action["_missing_fields"] = list(set(action.get("_missing_fields") or []) | {"product"})
+        return action
+
+    if parsed.type == "tab_view":
+        action.update(table=_clean_name(data.get("table")))
+        return action
+
+    if parsed.type == "tab_close":
+        action.update(table=_clean_name(data.get("table")), payment=data.get("payment") or "cash")
         return action
 
     if parsed.type == "expense":

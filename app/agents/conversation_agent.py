@@ -34,6 +34,7 @@ FIELD_QUESTIONS = {
     "stock": "Quel est le stock (nombre) ?",
     "threshold": "Quel est le seuil d'alerte de stock bas ?",
     "initial_stock": "Quel est le stock initial ?",
+    "table": "Quel est le numéro de la table ?",
 }
 
 UNIT_ALIASES = {
