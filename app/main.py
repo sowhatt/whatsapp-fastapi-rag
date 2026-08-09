@@ -235,6 +235,79 @@ def ensure_catalog_schema() -> None:
             END IF;
         END $$
         """,
+        # --- Tables ouvertes (addition en cours, usage restaurant/bar) ---
+        """
+        CREATE TABLE IF NOT EXISTS open_tabs (
+            id SERIAL PRIMARY KEY,
+            merchant_id INTEGER NULL REFERENCES merchants(id),
+            table_name VARCHAR(50) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            total_amount INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW(),
+            closed_at TIMESTAMP NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS open_tab_items (
+            id SERIAL PRIMARY KEY,
+            merchant_id INTEGER NULL REFERENCES merchants(id),
+            tab_id INTEGER NOT NULL REFERENCES open_tabs(id),
+            product_id INTEGER NULL REFERENCES products(id),
+            product_name VARCHAR(100) NOT NULL,
+            unit VARCHAR(30) NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price INTEGER NOT NULL,
+            line_total INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_open_tabs_merchant_id ON open_tabs (merchant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_open_tabs_table_name ON open_tabs (table_name)",
+        "CREATE INDEX IF NOT EXISTS ix_open_tab_items_merchant_id ON open_tab_items (merchant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_open_tab_items_tab_id ON open_tab_items (tab_id)",
+        # --- Même correctif que products/categories, appliqué aux
+        # fournisseurs : le nom de fournisseur n'a plus besoin d'être
+        # unique globalement, seulement par commerçant. ---
+        """
+        DO $$
+        DECLARE
+            contrainte TEXT;
+        BEGIN
+            SELECT tc.constraint_name INTO contrainte
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+                ON tc.constraint_name = ccu.constraint_name
+            WHERE tc.table_name = 'suppliers'
+                AND tc.constraint_type = 'UNIQUE'
+                AND ccu.column_name = 'name'
+            LIMIT 1;
+
+            IF contrainte IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE suppliers DROP CONSTRAINT %I', contrainte);
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'suppliers' AND indexname = 'ix_suppliers_name'
+            ) THEN
+                DROP INDEX ix_suppliers_name;
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'suppliers' AND indexname = 'ix_suppliers_name_lookup'
+            ) THEN
+                CREATE INDEX ix_suppliers_name_lookup ON suppliers (name);
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'uq_suppliers_merchant_name'
+            ) THEN
+                ALTER TABLE suppliers
+                ADD CONSTRAINT uq_suppliers_merchant_name UNIQUE (merchant_id, name);
+            END IF;
+        END $$
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:
