@@ -11,6 +11,7 @@ from app.services.merchant_service import get_or_create_merchant
 
 from app.agents.conversation_agent import (
     apply_field_answer,
+    autofill_amount_from_catalog,
     create_missing_entity,
     create_missing_product,
     prepare_catalog_workflow,
@@ -49,6 +50,7 @@ from app.services.sales_list_service import is_sales_list_request, render_sales_
 from app.services.catalog_service import (
     create_product_from_action,
     low_stock_warnings_for_sale,
+    render_product_price,
     render_stock_overview,
     update_product_price,
     update_product_purchase_price,
@@ -106,11 +108,14 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         if action.get("remaining", 0) > 0:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
     elif action["type"] == "sale":
+        montant_label = "Montant"
+        if action.get("_amount_from_catalog"):
+            montant_label = "Montant (prix catalogue)"
         lines = [
             "J’ai compris :", "",
             f"{action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
             f"Client : {action['customer']}",
-            f"Montant : {format_currency(action['amount'])}",
+            f"{montant_label} : {format_currency(action['amount'])}",
             f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
         ]
         if action.get("remaining", 0) > 0:
@@ -267,6 +272,7 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
 
 
 def advance_workflow(sender_id: str, action: dict[str, Any], db: Session, prefix: str = "") -> dict[str, Any]:
+    action = autofill_amount_from_catalog(action, db)
     action, question = prepare_missing_field_workflow(action)
     if question:
         set_pending_action(sender_id, action)
@@ -483,8 +489,8 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     )
     catalog_update_cue = (
         any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
-        and any(field in lower_catalog for field in ("prix", "stock", "seuil"))
-    ) or "stock initial" in lower_catalog or "seuil" in lower_catalog
+        and any(field in lower_catalog for field in ("prix", "stock", "seuil", "niveau"))
+    ) or "stock initial" in lower_catalog or "seuil" in lower_catalog or "niveau" in lower_catalog
     if catalog_create_cue or catalog_update_cue:
         try:
             catalog_action = detect_intent(text, db)
@@ -511,6 +517,19 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # commande de consultation.
     if is_stock_view_request(text):
         return {"status": "reply", "reply_text": render_stock_overview(db), "action": None}
+
+    # Consultation du prix d'un produit ("quel est le prix du riz ?",
+    # "prix de vente du riz", "combien coûte le riz") : simple
+    # lecture, consultable à tout moment, comme le stock et le bilan.
+    price_query_match = re.search(
+        r"(?:prix(?:\s+de\s+vente|\s+d'achat|\s+d achat)?|combien\s+co[uû]te)\s+(?:du|de\s+la|de\s+l'|des|de|le|la|l')\s+(.+)",
+        text,
+        re.IGNORECASE,
+    )
+    if price_query_match and not lower.startswith(("modifie", "change", "corrige", "crée", "cree")):
+        product_query = price_query_match.group(1).strip(" ?.!")
+        if product_query:
+            return {"status": "reply", "reply_text": render_product_price(product_query, db), "action": None}
 
     # Le bilan est aussi une simple lecture : consultable à tout moment,
     # même en plein milieu d'un autre workflow (par exemple pendant

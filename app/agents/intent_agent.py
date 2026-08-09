@@ -161,7 +161,8 @@ Règles impératives :
     « mets à jour/corrige le stock de X à Y », « il reste Y sacs de
     riz en stock ». Extrais product et stock (la nouvelle valeur).
 24. catalog_update_threshold : définit le SEUIL D'ALERTE de stock bas
-    d'un produit. Déclencheurs : « seuil du riz à Y », « alerte-moi
+    d'un produit. Déclencheurs : « seuil du riz à Y », « niveau du riz
+    à Y » (synonyme de seuil, plus facile à prononcer), « alerte-moi
     quand le riz atteint Y », « seuil d'alerte de X est Y ». Extrais
     product et threshold (la nouvelle valeur).
 25. catalog_update_initial_stock : déclare ou corrige le STOCK INITIAL

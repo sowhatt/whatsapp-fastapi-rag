@@ -157,6 +157,27 @@ def low_stock_warnings_for_sale(sale_id: int, db: Session) -> list[str]:
     return warnings
 
 
+def render_product_price(product_name: str, db: Session) -> str:
+    """
+    Réponse à "quel est le prix du riz ?" / "prix de vente du riz" /
+    "combien coûte le riz". Affiche les deux prix (vente et achat)
+    sauf si l'un des deux est explicitement demandé, pour rester
+    utile même si le commerçant n'a pas précisé lequel il voulait.
+    """
+    candidates = find_product_candidates(product_name, db)
+    if len(candidates) == 1:
+        product = candidates[0]
+        return (
+            f"💰 {product.name}\n"
+            f"Prix de vente : {_format_currency(product.price)}\n"
+            f"Prix d'achat : {_format_currency(product.purchase_price)}"
+        )
+    if len(candidates) > 1:
+        options = ", ".join(product.name for product in candidates[:5])
+        return f"Plusieurs produits correspondent à « {product_name} » : {options}. Précise le produit."
+    return f"Produit introuvable : {product_name}"
+
+
 def render_stock_overview(db: Session) -> str:
     products = db.query(Product).order_by(Product.name).all()
     if not products:

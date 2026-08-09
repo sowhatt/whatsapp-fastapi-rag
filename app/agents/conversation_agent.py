@@ -46,6 +46,42 @@ UNIT_ALIASES = {
 }
 
 
+def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[str, Any]:
+    """
+    Si une vente ne précise pas de montant mais que le produit et la
+    quantité sont connus, utilise automatiquement le prix de vente du
+    catalogue plutôt que de redemander — le commerçant voit le
+    montant calculé dans le résumé de confirmation et peut toujours
+    le corriger avant de valider, comme pour n'importe quelle autre
+    donnée extraite automatiquement.
+
+    Ne s'applique pas aux ventes multi-produits (chaque ligne a son
+    propre prix, pas géré ici pour l'instant) ni si le produit est
+    introuvable ou n'a pas de prix de vente catalogué.
+    """
+    if action.get("type") != "sale":
+        return action
+    if action.get("amount"):
+        return action
+    if action.get("items"):
+        return action
+    product_name = action.get("product")
+    quantity = action.get("quantity")
+    if not product_name or not quantity:
+        return action
+
+    product = db.query(Product).filter(func.lower(Product.name) == str(product_name).lower()).first()
+    if not product or not product.price:
+        return action
+
+    action["amount"] = int(product.price) * int(quantity)
+    action["_amount_from_catalog"] = True
+    missing = action.get("_missing_fields")
+    if missing and "amount" in missing:
+        action["_missing_fields"] = [field for field in missing if field != "amount"]
+    return action
+
+
 def prepare_missing_field_workflow(action: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     missing = list(action.get("_missing_fields") or [])
     if not missing:
