@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.db.tenant import set_current_merchant
 from app.services.merchant_service import get_or_create_merchant
+from app.models.sale import Sale
+from app.models.customer import Customer
+from app.schemas.cancel_sale import CancelSalePayload
 
 from app.agents.conversation_agent import (
     apply_field_answer,
@@ -293,6 +296,15 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
         except TabError as exc:
             db.rollback()
             return f"❌ {exc}"
+    if action["type"] == "cancel_sale":
+        from app.routers.sales import cancel_sale
+
+        try:
+            sale = cancel_sale(int(action["sale_id"]), CancelSalePayload(reason="Annulé via WhatsApp"), db)
+        except HTTPException as exc:
+            db.rollback()
+            return f"❌ {exc.detail}"
+        return f"✅ Vente n°{sale.id} annulée. Stock remis, dette corrigée si besoin."
     raise ValueError("Type d'action non pris en charge.")
 
 
@@ -549,6 +561,49 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 return {"status": "reply", "reply_text": render_tab(table_name, db), "action": None}
         if tab_action and tab_action.get("type") in {"tab_add_item", "tab_close"}:
             return advance_workflow(sender_id, tab_action, db)
+
+    # Annulation d'une vente DÉJÀ ENREGISTRÉE (pas une vente en attente
+    # de confirmation, ça c'est déjà géré par "non"). Deux formes :
+    # "annule la vente n°19" (numéro précis) ou "annule ma dernière
+    # vente" (résout la vente la plus récente non déjà annulée).
+    cancel_match = re.search(r"annule\s+la\s+vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?(\d+)", lower_catalog)
+    cancel_last_match = re.search(r"annule\s+ma\s+derni[eè]re\s+vente", lower_catalog)
+    if cancel_match or cancel_last_match:
+        if cancel_match:
+            sale_id = int(cancel_match.group(1))
+            sale = db.query(Sale).filter(Sale.id == sale_id).first()
+        else:
+            sale = db.query(Sale).filter(Sale.status != "cancelled").order_by(Sale.created_at.desc()).first()
+            sale_id = sale.id if sale else None
+
+        if not sale:
+            if cancel_match:
+                return {"status": "reply", "reply_text": f"Vente n°{sale_id} introuvable.", "action": None}
+            return {"status": "reply", "reply_text": "Aucune vente à annuler pour l'instant.", "action": None}
+        if sale.status == "cancelled":
+            return {"status": "reply", "reply_text": f"La vente n°{sale.id} est déjà annulée.", "action": None}
+
+        customer_name = None
+        if sale.customer_id:
+            customer = db.query(Customer).filter(Customer.id == sale.customer_id).first()
+            customer_name = customer.name if customer else None
+
+        cancel_action = {
+            "type": "cancel_sale",
+            "sale_id": sale.id,
+            "_missing_fields": [],
+        }
+        set_pending_action(sender_id, cancel_action)
+        detail = f" à {customer_name}" if customer_name else ""
+        return {
+            "status": "reply",
+            "reply_text": (
+                f"Annuler la vente n°{sale.id}{detail} ({format_currency(sale.total_amount)}) ?\n"
+                "Le stock sera remis et la dette du client corrigée si besoin.\n\n"
+                "Réponds oui ou non."
+            ),
+            "action": cancel_action,
+        }
 
     # "Mon stock" est aussi une simple lecture : consultable à tout
     # moment, même si une question reste bloquée en attente. Vérifié
