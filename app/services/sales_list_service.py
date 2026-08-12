@@ -102,6 +102,57 @@ def _sale_items_summary(sale_id: int, db: Session) -> str:
     return f"{first_product.name} + {len(items) - 1} autre(s)"
 
 
+def render_sale_detail(sale_id: int, db: Session) -> str:
+    """
+    Fiche détaillée d'UNE vente précise, consultable à tout moment
+    par son numéro de référence (contrairement à la liste générale,
+    qui ne montre qu'un résumé des ventes récentes). Utile pour
+    revoir le détail avant de décider de l'annuler, par exemple.
+    """
+    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    if not sale:
+        return f"Vente n°{sale_id} introuvable."
+
+    customer_name = None
+    if sale.customer_id:
+        customer = db.query(Customer).filter(Customer.id == sale.customer_id).first()
+        customer_name = customer.name if customer else None
+
+    items = (
+        db.query(SaleItem, Product)
+        .join(Product, Product.id == SaleItem.product_id)
+        .filter(SaleItem.sale_id == sale.id)
+        .all()
+    )
+
+    date_label = sale.created_at.strftime("%d/%m/%Y %H:%M") if sale.created_at else "?"
+    status_label = {
+        "paid": "Payée",
+        "credit": "À crédit",
+        "cancelled": "Annulée",
+    }.get(sale.status, sale.status)
+
+    lines = [f"🧾 Vente n°{sale.id}", ""]
+    lines.append(f"Date : {date_label}")
+    lines.append(f"Client : {customer_name or 'Non renseigné'}")
+    lines.append(f"Statut : {status_label}")
+    lines.append("")
+
+    for item, product in items:
+        lines.append(
+            f"• {item.quantity} {product.unit or ''} {product.name} "
+            f"— {_format_currency(item.unit_price)}/unité — {_format_currency(item.line_total)}".replace("  ", " ")
+        )
+
+    lines.append("")
+    lines.append(f"Montant total : {_format_currency(sale.total_amount)}")
+    lines.append(f"Payé : {_format_currency(sale.paid_amount)}")
+    if sale.remaining_amount > 0:
+        lines.append(f"Reste dû : {_format_currency(sale.remaining_amount)}")
+
+    return "\n".join(lines)
+
+
 def render_sales_list(text: str, db: Session, limit: int = 15) -> str:
     lower = text.lower()
 

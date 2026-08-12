@@ -49,7 +49,7 @@ from app.services.summary_service import (
     resolve_period_from_text,
 )
 from app.services.receipt_service import handle_receipt_request, is_receipt_request
-from app.services.sales_list_service import is_sales_list_request, render_sales_list
+from app.services.sales_list_service import is_sales_list_request, render_sale_detail, render_sales_list
 from app.services.catalog_service import (
     create_product_from_action,
     low_stock_warnings_for_sale,
@@ -586,14 +586,28 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             return advance_workflow(sender_id, tab_action, db)
 
     # Annulation d'une vente DÉJÀ ENREGISTRÉE (pas une vente en attente
-    # de confirmation, ça c'est déjà géré par "non"). Deux formes :
-    # "annule la vente n°19" (numéro précis) ou "annule ma dernière
-    # vente" (résout la vente la plus récente non déjà annulée).
-    cancel_match = re.search(r"annule\s+la\s+vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?(\d+)", lower_catalog)
+    # de confirmation, ça c'est déjà géré par "non"). Trois formes :
+    # "annule la vente n°19" (chiffres), "annule la vente vingt-trois"
+    # (en toutes lettres — fréquent avec la transcription vocale), ou
+    # "annule ma dernière vente" (résout la vente la plus récente non
+    # déjà annulée).
+    cancel_text_match = re.search(
+        r"annule\s+la\s+vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?([a-zà-ÿ0-9\s-]+?)(?:[.!?]|$)",
+        lower_catalog,
+    )
     cancel_last_match = re.search(r"annule\s+ma\s+derni[eè]re\s+vente", lower_catalog)
+    sale_id = None
+    if cancel_text_match:
+        raw = cancel_text_match.group(1).strip()
+        if raw.isdigit():
+            sale_id = int(raw)
+        else:
+            parsed_number = parse_french_number(raw)
+            if parsed_number is not None:
+                sale_id = int(parsed_number)
+    cancel_match = sale_id is not None
     if cancel_match or cancel_last_match:
         if cancel_match:
-            sale_id = int(cancel_match.group(1))
             sale = db.query(Sale).filter(Sale.id == sale_id).first()
         else:
             sale = db.query(Sale).filter(Sale.status != "cancelled").order_by(Sale.created_at.desc()).first()
@@ -627,6 +641,22 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             ),
             "action": cancel_action,
         }
+
+    view_text_match = re.search(
+        r"(?:montre|affiche|d[ée]tail(?:s)?(?:\s+de)?|voir)?\s*(?:-moi\s+)?(?:la\s+)?vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?([a-zà-ÿ0-9\s-]+?)(?:[.!?]|$)",
+        lower_catalog,
+    )
+    if view_text_match:
+        raw = view_text_match.group(1).strip()
+        view_sale_id = None
+        if raw.isdigit():
+            view_sale_id = int(raw)
+        else:
+            parsed_number = parse_french_number(raw)
+            if parsed_number is not None:
+                view_sale_id = int(parsed_number)
+        if view_sale_id is not None:
+            return {"status": "reply", "reply_text": render_sale_detail(view_sale_id, db), "action": None}
 
     # "Mon stock" est aussi une simple lecture : consultable à tout
     # moment, même si une question reste bloquée en attente. Vérifié
