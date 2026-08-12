@@ -56,16 +56,47 @@ def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[st
     le corriger avant de valider, comme pour n'importe quelle autre
     donnée extraite automatiquement.
 
-    Ne s'applique pas aux ventes multi-produits (chaque ligne a son
-    propre prix, pas géré ici pour l'instant) ni si le produit est
-    introuvable ou n'a pas de prix de vente catalogué.
+    Couvre aussi bien une vente à un seul produit qu'une vente
+    multi-produits (chaque ligne reçoit son propre prix catalogue,
+    additionnés pour le montant total). Résolution "tout ou rien" en
+    multi-produits : si UN SEUL article est introuvable au catalogue
+    ou n'a pas de prix, on n'invente rien — la question habituelle du
+    montant est posée normalement, plutôt que de proposer un total
+    partiel ou faux.
     """
     if action.get("type") != "sale":
         return action
     if action.get("amount"):
         return action
-    if action.get("items"):
+
+    items = action.get("items")
+    if items:
+        resolved_items = []
+        total = 0
+        for item in items:
+            if item.get("amount"):
+                resolved_items.append(item)
+                total += int(item["amount"])
+                continue
+            product_name = item.get("product")
+            quantity = item.get("quantity")
+            if not product_name or not quantity:
+                return action
+            product = db.query(Product).filter(func.lower(Product.name) == str(product_name).lower()).first()
+            if not product or not product.price:
+                return action
+            line_amount = int(product.price) * int(quantity)
+            resolved_items.append({**item, "amount": line_amount})
+            total += line_amount
+
+        action["items"] = resolved_items
+        action["amount"] = total
+        action["_amount_from_catalog"] = True
+        missing = action.get("_missing_fields")
+        if missing and "amount" in missing:
+            action["_missing_fields"] = [field for field in missing if field != "amount"]
         return action
+
     product_name = action.get("product")
     quantity = action.get("quantity")
     if not product_name or not quantity:
