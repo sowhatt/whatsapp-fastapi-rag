@@ -424,6 +424,29 @@ def _looks_like_complete_operation(text: str) -> bool:
     return has_operation and has_unit and has_amount
 
 
+def _looks_like_operation_restatement(text: str) -> bool:
+    """
+    Version assouplie de _looks_like_complete_operation, sans exiger
+    de montant explicite : un verbe de vente/achat ET une unité
+    suffisent. Utilisée uniquement quand une vente/achat est déjà en
+    cours et en attente d'un champ — dans ce contexte précis, un
+    commerçant qui redécrit les articles est presque certainement en
+    train de corriger son opération, pas de répondre au champ demandé
+    par un mot isolé (qui, lui, ne contiendrait ni verbe ni unité).
+    """
+    lower = " ".join(text.lower().split())
+    has_operation = bool(
+        re.search(r"\b(vente|vends?|vendu|achat|ach[eè]te|acheter|achet[eé])\b", lower)
+    )
+    has_unit = bool(
+        re.search(
+            r"\b(sacs?|cartons?|bidons?|paquets?|bouteilles?|bo[iî]tes?|kg|kilos?|unit[eé]s?)\b",
+            lower,
+        )
+    )
+    return has_operation and has_unit
+
+
 def _detect_new_operation(
     text: str,
     db: Session,
@@ -674,6 +697,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         pending
         and pending.get("_awaiting") in {"create_customer_confirmation", "create_supplier_confirmation"}
         and lower not in {"oui", "ok", "confirmer", "valider", "yes", "confirm"}
+        and not _looks_like_complete_operation(text)
     ):
         entity_label = "client" if pending["_awaiting"] == "create_customer_confirmation" else "fournisseur"
         entity_name = pending.get("customer") if entity_label == "client" else pending.get("supplier")
@@ -687,8 +711,23 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         }
 
     # Une nouvelle commande ne remplace le workflow actif que si le message
-    # ressemble explicitement à une opération complète.
-    if pending and _looks_like_complete_operation(text):
+    # ressemble explicitement à une opération complète (verbe + unité +
+    # montant). Mais si le commerçant est en train de RESTER dans le
+    # même type d'opération (vente/achat) tout en corrigeant les
+    # articles — sans encore avoir donné le montant, précisément parce
+    # que c'est ce qu'on lui redemande — cette exigence de montant est
+    # trop stricte et le bloque indéfiniment sur l'ancienne question.
+    # On assouplit donc UNIQUEMENT dans ce cas précis : une vente/achat
+    # déjà en cours, en attente d'un champ, et un nouveau message qui
+    # redécrit clairement une opération (verbe + unité), même sans
+    # montant explicite.
+    is_mid_sale_or_purchase_workflow = bool(
+        pending and pending.get("type") in {"sale", "purchase"} and pending.get("_awaiting_field")
+    )
+    if pending and (
+        _looks_like_complete_operation(text)
+        or (is_mid_sale_or_purchase_workflow and _looks_like_operation_restatement(text))
+    ):
         replacement = _detect_new_operation(text, db)
         if replacement:
             pending_actions.pop(sender_id, None)
