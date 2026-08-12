@@ -592,7 +592,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # "annule ma dernière vente" (résout la vente la plus récente non
     # déjà annulée).
     cancel_text_match = re.search(
-        r"annule\s+la\s+vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?([a-zà-ÿ0-9\s-]+?)(?:[.!?]|$)",
+        r"annule\s+(?:la\s+)?vente\s+(?:n[°o]\.?\s*|num[ée]ro\s*)?([a-zà-ÿ0-9\s-]+?)(?:[.!?]|$)",
         lower_catalog,
     )
     cancel_last_match = re.search(r"annule\s+ma\s+derni[eè]re\s+vente", lower_catalog)
