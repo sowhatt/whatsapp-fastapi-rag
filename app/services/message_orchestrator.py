@@ -819,6 +819,23 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         pending = resume_action_after_entity_creation(pending)
         return advance_workflow(sender_id, pending, db, message + "\nJe reprends l’opération.")
 
+    # Correction explicite du montant ("montant deux millions", "le
+    # montant est 500000") pendant qu'une vente/achat attend le
+    # paiement. Sans ça, cette correction se faisait avaler
+    # silencieusement par la question en cours ("Cash, crédit, Moov ou
+    # MTN ?" continuait d'être reposée, ignorant que le commerçant
+    # venait de corriger le montant).
+    if pending and pending.get("type") in {"sale", "purchase"} and pending.get("_awaiting") == "operation_payment":
+        montant_correction_match = re.search(
+            r"montant\s+(?:total\s+)?(?:est\s+|de\s+)?(.+)", lower,
+        )
+        if montant_correction_match:
+            nouveau_montant = parse_french_number(montant_correction_match.group(1).strip())
+            if nouveau_montant is not None and nouveau_montant > 0:
+                pending["amount"] = int(nouveau_montant)
+                set_pending_action(sender_id, pending)
+                return {"status": "reply", "reply_text": "Cash, crédit, Moov ou MTN ?", "action": pending}
+
     if pending and pending.get("_awaiting") == "operation_payment":
         payment = normalize_payment_answer(text)
         if payment is None:
