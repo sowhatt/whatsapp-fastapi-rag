@@ -143,7 +143,7 @@ def render_supplier_detail(name: str, db: Session) -> str:
 _CUSTOMER_LIST_PATTERN = re.compile(r"\b(?:liste|mes)\s+(?:des\s+|de\s+)?clients?\b", re.IGNORECASE)
 _SUPPLIER_LIST_PATTERN = re.compile(r"\b(?:liste|mes)\s+(?:des\s+|de\s+)?fournisseurs?\b", re.IGNORECASE)
 _CUSTOMER_DETAIL_PATTERN = re.compile(
-    r"\b(?:fiche\s+(?:du\s+|de\s+la\s+)?client\s+|client\s+)([a-zà-ÿ][a-zà-ÿ\s-]*?)(?:[.!?]|$)",
+    r"\b(?:fiche\s+(?:du\s+|de\s+la\s+)?client\s+|client\s+|dette\s+(?:de\s+|du\s+client\s+)?)([a-zà-ÿ][a-zà-ÿ\s-]*?)(?:[.!?]|$)",
     re.IGNORECASE,
 )
 _SUPPLIER_DETAIL_PATTERN = re.compile(
