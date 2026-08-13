@@ -50,6 +50,16 @@ from app.services.summary_service import (
 )
 from app.services.receipt_service import handle_receipt_request, is_receipt_request
 from app.services.sales_list_service import is_sales_list_request, render_sale_detail, render_sales_list
+from app.services.customer_supplier_service import (
+    extract_customer_detail_name,
+    extract_supplier_detail_name,
+    is_customer_list_request,
+    is_supplier_list_request,
+    render_customer_detail,
+    render_customer_list,
+    render_supplier_detail,
+    render_supplier_list,
+)
 from app.services.catalog_service import (
     create_product_from_action,
     low_stock_warnings_for_sale,
@@ -870,6 +880,22 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
     business_intent = detect_business_intent(text)
 
+    # Fiche détaillée d'un client/fournisseur précis ("client Awa",
+    # "fournisseur Soglo") : vérifié en priorité, avant le dispatch
+    # générique du menu, sinon "client Awa" retombe sur la simple
+    # liste (le nom "Awa" n'étant jamais extrait par la détection
+    # générique de menu).
+    customer_name = extract_customer_detail_name(text)
+    if customer_name:
+        return {"status": "reply", "reply_text": render_customer_detail(customer_name, db), "action": None}
+    supplier_name = extract_supplier_detail_name(text)
+    if supplier_name:
+        return {"status": "reply", "reply_text": render_supplier_detail(supplier_name, db), "action": None}
+    if is_customer_list_request(text):
+        return {"status": "reply", "reply_text": render_customer_list(db), "action": None}
+    if is_supplier_list_request(text):
+        return {"status": "reply", "reply_text": render_supplier_list(db), "action": None}
+
     if business_intent == "daily_summary":
         since, until, label = resolve_period_from_text(text)
         summary_reply = render_period_summary(
@@ -967,6 +993,16 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         }:
             return advance_workflow(sender_id, catalog_action, db)
 
+    # customer_manage/supplier_manage sortis du dictionnaire ci-dessous
+    # exprès : mis dedans, render_customer_list(db)/render_supplier_list(db)
+    # s'exécuteraient à CHAQUE message qui atteint ce point (le
+    # dictionnaire est construit avant le lookup), gaspillant une
+    # requête base de données à chaque fois même sans rapport.
+    if business_intent == "customer_manage":
+        return {"status": "reply", "reply_text": render_customer_list(db), "action": None}
+    if business_intent == "supplier_manage":
+        return {"status": "reply", "reply_text": render_supplier_list(db), "action": None}
+
     business_messages = {
         "merchant_create": (
             "🏪 Création du commerce\n\n"
@@ -977,8 +1013,6 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "📚 Gestion du catalogue\n\n"
             "Tu pourras créer des catégories et ajouter tes produits."
         ),
-        "customer_manage": "👥 Gestion des clients bientôt disponible.",
-        "supplier_manage": "🚚 Gestion des fournisseurs bientôt disponible.",
         "settings": "⚙️ Paramètres du commerce bientôt disponibles.",
     }
 
