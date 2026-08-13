@@ -92,6 +92,13 @@ def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[st
         action["items"] = resolved_items
         action["amount"] = total
         action["_amount_from_catalog"] = True
+        # Si le paiement à crédit était déjà connu AVANT que ce montant
+        # ne soit calculé (ex. "à crédit" donné dans le même message
+        # que la vente), le reste dû avait pu être fixé trop tôt à une
+        # valeur fausse (souvent 0, avant que le vrai montant soit
+        # connu). On le resynchronise ici avec le montant définitif.
+        if action.get("payment") == "credit":
+            action["remaining"] = total
         missing = action.get("_missing_fields")
         if missing and "amount" in missing:
             action["_missing_fields"] = [field for field in missing if field != "amount"]
@@ -108,6 +115,8 @@ def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[st
 
     action["amount"] = int(product.price) * int(quantity)
     action["_amount_from_catalog"] = True
+    if action.get("payment") == "credit":
+        action["remaining"] = action["amount"]
     missing = action.get("_missing_fields")
     if missing and "amount" in missing:
         action["_missing_fields"] = [field for field in missing if field != "amount"]
