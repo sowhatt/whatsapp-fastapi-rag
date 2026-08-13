@@ -308,6 +308,7 @@ def ensure_catalog_schema() -> None:
             END IF;
         END $$
         """,
+        "ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date DATE NULL",
     ]
     with engine.begin() as connection:
         for statement in statements:

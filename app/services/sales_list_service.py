@@ -149,6 +149,14 @@ def render_sale_detail(sale_id: int, db: Session) -> str:
     lines.append(f"Payé : {_format_currency(sale.paid_amount)}")
     if sale.remaining_amount > 0:
         lines.append(f"Reste dû : {_format_currency(sale.remaining_amount)}")
+    if sale.due_date:
+        from datetime import date as _date
+
+        echeance_label = sale.due_date.strftime("%d/%m/%Y")
+        if sale.remaining_amount > 0 and sale.due_date < _date.today():
+            lines.append(f"⚠️ Échéance dépassée : {echeance_label}")
+        else:
+            lines.append(f"Échéance : {echeance_label}")
 
     return "\n".join(lines)
 

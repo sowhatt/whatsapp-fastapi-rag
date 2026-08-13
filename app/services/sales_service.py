@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ class ResolvedSale:
     paid_amount: int
     remaining_amount: int
     payment_channel: str
+    due_date: date | None = None
     lines: list[ResolvedSaleLine] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -144,6 +146,16 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
     remaining_amount = int(intent.get("remaining", 0))
     payment_channel = normalize_channel(str(intent.get("payment", "cash")))
 
+    due_date_raw = intent.get("due_date")
+    due_date: date | None = None
+    if isinstance(due_date_raw, date):
+        due_date = due_date_raw
+    elif isinstance(due_date_raw, str) and due_date_raw:
+        try:
+            due_date = date.fromisoformat(due_date_raw)
+        except ValueError:
+            due_date = None
+
     if quantity <= 0:
         raise SaleServiceError("Quantité invalide.")
     if total_amount <= 0:
@@ -219,6 +231,7 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
             paid_amount=paid_amount,
             remaining_amount=remaining_amount,
             payment_channel=payment_channel,
+            due_date=due_date,
             lines=lines,
         )
 
@@ -239,6 +252,7 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         payment_channel=payment_channel,
+        due_date=due_date,
     )
 
 
@@ -260,6 +274,7 @@ def build_sale_create_payload(resolved: ResolvedSale) -> SaleCreate:
         ],
         paid_amount=resolved.paid_amount,
         payment_channel=resolved.payment_channel,
+        due_date=resolved.due_date,
     )
 
 

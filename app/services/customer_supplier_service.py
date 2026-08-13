@@ -79,25 +79,34 @@ def render_customer_detail(name: str, db: Session) -> str:
         return f"Plusieurs clients correspondent à « {name} » : {options}. Précise le nom."
 
     customer = candidates[0]
-    sales = db.query(Sale).filter(Sale.customer_id == customer.id).order_by(Sale.created_at.desc()).limit(10).all()
+    all_sales = db.query(Sale).filter(Sale.customer_id == customer.id).order_by(Sale.created_at.desc()).all()
+    unpaid_sales = [s for s in all_sales if s.remaining_amount > 0]
     payments_count = db.query(Payment).filter(Payment.customer_id == customer.id).count()
 
     lines = [f"👤 {customer.name}", ""]
     if customer.phone:
         lines.append(f"Téléphone : {customer.phone}")
     lines.append(f"Dette actuelle : {_format_currency(customer.debt)}")
-    lines.append(f"Ventes enregistrées : {len(sales)}" + (" (10 dernières)" if len(sales) == 10 else ""))
+    lines.append(f"Ventes enregistrées : {len(all_sales)}")
     lines.append(f"Paiements reçus : {payments_count}")
     lines.append("")
 
-    if sales:
-        lines.append("Dernières ventes :")
-        for sale in sales:
-            status_icon = "🔴" if sale.remaining_amount > 0 else "🟢"
-            date_label = sale.created_at.strftime("%d/%m") if sale.created_at else "?"
-            lines.append(
-                f"{status_icon} #{sale.id} {date_label} — {_format_currency(sale.total_amount)}"
-            )
+    if unpaid_sales:
+        from datetime import date as _date
+
+        lines.append(f"Ventes avec dette ({len(unpaid_sales)}) :")
+        for sale in unpaid_sales:
+            date_label = sale.created_at.strftime("%d/%m/%Y") if sale.created_at else "?"
+            ligne = f"🔴 #{sale.id} du {date_label} — dû : {_format_currency(sale.remaining_amount)}"
+            if sale.due_date:
+                echeance_label = sale.due_date.strftime("%d/%m/%Y")
+                if sale.due_date < _date.today():
+                    ligne += f" ⚠️ échéance dépassée ({echeance_label})"
+                else:
+                    ligne += f" — échéance {echeance_label}"
+            lines.append(ligne)
+    else:
+        lines.append("Aucune dette en cours — toutes les ventes sont réglées.")
 
     return "\n".join(lines)
 

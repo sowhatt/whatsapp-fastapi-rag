@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -13,6 +15,7 @@ class SaleCreate(BaseModel):
     items: list[SaleItemCreate]
     paid_amount: int = 0
     payment_channel: str = "cash"
+    due_date: date | None = None
 
 
 class SaleRead(BaseModel):
@@ -22,5 +25,6 @@ class SaleRead(BaseModel):
     paid_amount: int
     remaining_amount: int
     status: str
+    due_date: date | None = None
 
     model_config = {"from_attributes": True}

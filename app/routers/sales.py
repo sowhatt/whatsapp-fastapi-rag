@@ -128,6 +128,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         status=status,
+        due_date=payload.due_date,
     )
     db.add(sale)
     db.flush()

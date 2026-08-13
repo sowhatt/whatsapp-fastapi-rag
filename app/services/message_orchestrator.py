@@ -99,6 +99,19 @@ def display_channel(value: str) -> str:
     }.get(value, value)
 
 
+def _format_due_date(value: Any) -> str:
+    from datetime import date as _date
+
+    if isinstance(value, _date):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, str):
+        try:
+            return _date.fromisoformat(value).strftime("%d/%m/%Y")
+        except ValueError:
+            return value
+    return str(value)
+
+
 def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
     items = action.get("items") or []
     if action["type"] == "sale" and len(items) > 1:
@@ -121,6 +134,8 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         )
         if action.get("remaining", 0) > 0:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
+        if action.get("due_date"):
+            lines.append(f"Échéance : {_format_due_date(action['due_date'])}")
     elif action["type"] == "sale":
         montant_label = "Montant"
         if action.get("_amount_from_catalog"):
@@ -134,6 +149,8 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         ]
         if action.get("remaining", 0) > 0:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
+        if action.get("due_date"):
+            lines.append(f"Échéance : {_format_due_date(action['due_date'])}")
     elif action["type"] == "purchase" and len(items) > 1:
         lines = ["J’ai compris :", ""]
         for item in items:
@@ -318,7 +335,46 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
     raise ValueError("Type d'action non pris en charge.")
 
 
-def advance_workflow(sender_id: str, action: dict[str, Any], db: Session, prefix: str = "") -> dict[str, Any]:
+def _extract_due_date_from_text(text: str) -> "date | None":
+    """
+    Reconnaît une échéance de paiement dictée directement dans le
+    message : "échéance dans 15 jours" (relative) ou "échéance le
+    30/08" / "échéance le 30/08/2026" (absolue, avec ou sans année).
+    Utilisé pour les ventes à crédit, pour savoir quand relancer un
+    client qui n'a pas encore payé.
+    """
+    from datetime import date, timedelta
+
+    lower = text.lower()
+    relatif = re.search(r"[ée]ch[ée]ance\s+dans\s+(.+?)\s+jours?", lower)
+    if relatif:
+        nombre = parse_french_number(relatif.group(1).strip())
+        if nombre is not None and nombre > 0:
+            return date.today() + timedelta(days=int(nombre))
+
+    absolu = re.search(
+        r"[ée]ch[ée]ance\s+(?:le\s+|avant\s+le\s+)?(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?",
+        lower,
+    )
+    if absolu:
+        jour, mois, annee = absolu.groups()
+        annee_int = int(annee) if annee else date.today().year
+        if annee_int < 100:
+            annee_int += 2000
+        try:
+            return date(annee_int, int(mois), int(jour))
+        except ValueError:
+            return None
+    return None
+
+
+def advance_workflow(
+    sender_id: str, action: dict[str, Any], db: Session, prefix: str = "", text: str | None = None
+) -> dict[str, Any]:
+    if text and action.get("type") == "sale" and not action.get("due_date"):
+        due_date = _extract_due_date_from_text(text)
+        if due_date:
+            action["due_date"] = due_date.isoformat()
     action = autofill_amount_from_catalog(action, db)
     action, question = prepare_missing_field_workflow(action)
     if question:
@@ -776,6 +832,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 replacement,
                 db,
                 "Nouvelle opération détectée.",
+                text=text,
             )
 
     if pending and pending.get("_awaiting") == "operation_type":
@@ -927,7 +984,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             action = None
 
         if action and action.get("type") == "sale":
-            return advance_workflow(sender_id, action, db)
+            return advance_workflow(sender_id, action, db, text=text)
 
         return {
             "status": "reply",
@@ -957,7 +1014,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             action = None
 
         if action and action.get("type") == "purchase":
-            return advance_workflow(sender_id, action, db)
+            return advance_workflow(sender_id, action, db, text=text)
 
         return {
             "status": "reply",
@@ -1041,4 +1098,4 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             get_period_summary_data(db, since=since, until=until, label=label)
         )
         return {"status": "reply", "reply_text": summary_reply, "action": None}
-    return advance_workflow(sender_id, action, db)
+    return advance_workflow(sender_id, action, db, text=text)
