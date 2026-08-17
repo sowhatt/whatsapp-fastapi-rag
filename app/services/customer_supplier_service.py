@@ -51,22 +51,32 @@ def render_supplier_list(db: Session) -> str:
 
 
 def _find_customer_candidates(name: str, db: Session) -> list[Customer]:
+    from app.services.text_normalize import find_customer_accent_insensitive
+
     cleaned = " ".join(str(name).split()).strip()
     if not cleaned:
         return []
     exact = db.query(Customer).filter(Customer.name.ilike(cleaned)).first()
     if exact:
         return [exact]
+    accent_match = find_customer_accent_insensitive(cleaned, db)
+    if accent_match:
+        return [accent_match]
     return db.query(Customer).filter(Customer.name.ilike(f"%{cleaned}%")).limit(5).all()
 
 
 def _find_supplier_candidates(name: str, db: Session) -> list[Supplier]:
+    from app.services.text_normalize import find_supplier_accent_insensitive
+
     cleaned = " ".join(str(name).split()).strip()
     if not cleaned:
         return []
     exact = db.query(Supplier).filter(Supplier.name.ilike(cleaned)).first()
     if exact:
         return [exact]
+    accent_match = find_supplier_accent_insensitive(cleaned, db)
+    if accent_match:
+        return [accent_match]
     return db.query(Supplier).filter(Supplier.name.ilike(f"%{cleaned}%")).limit(5).all()
 
 

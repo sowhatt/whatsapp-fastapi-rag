@@ -38,7 +38,9 @@ def normalize_channel(value: str) -> str:
 
 
 def find_customer_by_name(name: str, db: Session) -> Customer:
-    customer = db.query(Customer).filter(Customer.name.ilike(name)).first()
+    from app.services.text_normalize import find_customer_accent_insensitive
+
+    customer = find_customer_accent_insensitive(name, db)
     if not customer:
         raise PaymentServiceError(f"Client introuvable : {name}")
     return customer

@@ -63,7 +63,9 @@ def _format_currency(value: int) -> str:
 
 
 def _find_customer(name: str, db: Session) -> tuple[Customer | None, str | None]:
-    exact = db.query(Customer).filter(Customer.name.ilike(name)).first()
+    from app.services.text_normalize import find_customer_accent_insensitive
+
+    exact = find_customer_accent_insensitive(name, db)
     if exact:
         return exact, None
     escaped = name.replace("%", "\\%").replace("_", "\\_")

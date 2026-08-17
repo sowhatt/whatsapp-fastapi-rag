@@ -167,10 +167,12 @@ def apply_field_answer(action: dict[str, Any], text: str) -> dict[str, Any]:
 
 
 def prepare_catalog_workflow(action: dict[str, Any], db: Session) -> tuple[dict[str, Any], str | None]:
+    from app.services.text_normalize import find_customer_accent_insensitive, find_supplier_accent_insensitive
+
     action_type = action.get("type")
     if action_type == "sale" and action.get("customer"):
         customer_name = str(action["customer"]).strip()
-        exists = db.query(Customer).filter(func.lower(Customer.name) == customer_name.lower()).first()
+        exists = find_customer_accent_insensitive(customer_name, db)
         if not exists:
             action["_awaiting"] = "create_customer_confirmation"
             action["_resume_after_create"] = "sale"
@@ -178,7 +180,7 @@ def prepare_catalog_workflow(action: dict[str, Any], db: Session) -> tuple[dict[
 
     if action_type == "purchase" and action.get("supplier"):
         supplier_name = str(action["supplier"]).strip()
-        exists = db.query(Supplier).filter(func.lower(Supplier.name) == supplier_name.lower()).first()
+        exists = find_supplier_accent_insensitive(supplier_name, db)
         if not exists:
             action["_awaiting"] = "create_supplier_confirmation"
             action["_resume_after_create"] = "purchase"
