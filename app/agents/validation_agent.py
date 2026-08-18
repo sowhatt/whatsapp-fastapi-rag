@@ -133,7 +133,41 @@ def validate_before_confirmation(action: dict[str, Any], db: Session) -> str | N
         action["_awaiting_field"] = "quantity"
         return "La quantité doit être supérieure à zéro. Quelle est la quantité exacte ?"
 
-    if action.get("type") == "sale":
+    if action.get("type") == "sale" and len(items) > 1:
+        unit_aliases = {
+            "sacs": "sac", "kg": "kilo", "kilos": "kilo", "cartons": "carton",
+            "bidons": "bidon", "paquets": "paquet", "bouteilles": "bouteille",
+            "boîtes": "boîte", "boites": "boîte", "unités": "unité", "unites": "unité",
+            "pièces": "pièce", "pieces": "pièce",
+        }
+        for entry in items:
+            product = db.query(Product).filter(Product.name.ilike(str(entry.get("product") or "").strip())).first()
+            if not product:
+                continue
+            requested_unit = unit_aliases.get(str(entry.get("unit") or "").strip().lower(), str(entry.get("unit") or "").strip().lower())
+            catalog_unit = unit_aliases.get(str(product.unit or "").strip().lower(), str(product.unit or "").strip().lower())
+            if requested_unit and catalog_unit and requested_unit != catalog_unit:
+                # Pas de correction chirurgicale d'un seul article ici
+                # (ça demanderait un état d'attente dédié qui n'existe
+                # pas encore côté traitement des réponses). Le message
+                # est clair, et si le commerçant redit toute
+                # l'opération avec la bonne unité, le mécanisme de
+                # reformulation déjà en place la détecte et la
+                # remplace correctement.
+                return (
+                    f"Le produit {product.name} est géré en {product.unit} "
+                    "dans ton catalogue (pas en \"" + str(entry.get("unit") or "") + "\").\n\n"
+                    f"Redis la vente en précisant \"{product.unit}\" pour {product.name}."
+                )
+            item_quantity = int(entry.get("quantity") or 0)
+            if product.stock < item_quantity:
+                return (
+                    f"Stock insuffisant pour {product.name}.\n\n"
+                    f"Stock disponible : {product.stock} {product.unit}\n"
+                    f"Quantité demandée : {item_quantity} {product.unit}\n\n"
+                    "Redis la vente avec une quantité plus faible, ou vérifie ton stock."
+                )
+    elif action.get("type") == "sale":
         product_name = str(action.get("product") or "").strip()
         product = db.query(Product).filter(Product.name.ilike(product_name)).first()
 
