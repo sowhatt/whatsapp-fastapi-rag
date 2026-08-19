@@ -8,6 +8,7 @@ from app.models.customer import Customer
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.business.parser.number_parser import parse_french_number
+from app.services.sales_service import find_product_candidates
 
 
 FIELD_STATES = {
@@ -82,8 +83,14 @@ def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[st
             quantity = item.get("quantity")
             if not product_name or not quantity:
                 return action
-            product = db.query(Product).filter(func.lower(Product.name) == str(product_name).lower()).first()
-            if not product or not product.price:
+            candidates = find_product_candidates(str(product_name), db)
+            if len(candidates) != 1:
+                # Introuvable, ou nom ambigu (plusieurs correspondances) :
+                # on abandonne le calcul automatique plutôt que de
+                # deviner — le commerçant devra donner le montant.
+                return action
+            product = candidates[0]
+            if not product.price:
                 return action
             line_amount = int(product.price) * int(quantity)
             resolved_items.append({**item, "amount": line_amount})
@@ -109,8 +116,11 @@ def autofill_amount_from_catalog(action: dict[str, Any], db: Session) -> dict[st
     if not product_name or not quantity:
         return action
 
-    product = db.query(Product).filter(func.lower(Product.name) == str(product_name).lower()).first()
-    if not product or not product.price:
+    candidates = find_product_candidates(str(product_name), db)
+    if len(candidates) != 1:
+        return action
+    product = candidates[0]
+    if not product.price:
         return action
 
     action["amount"] = int(product.price) * int(quantity)
