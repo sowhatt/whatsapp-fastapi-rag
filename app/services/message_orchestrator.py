@@ -12,6 +12,8 @@ from app.models.sale import Sale
 from app.models.customer import Customer
 from app.schemas.cancel_sale import CancelSalePayload
 
+from app.agents.intent_agent import count_enumerated_products
+
 from app.agents.conversation_agent import (
     apply_field_answer,
     autofill_amount_from_catalog,
@@ -112,6 +114,27 @@ def _format_due_date(value: Any) -> str:
     return str(value)
 
 
+def _missing_items_warning(action: dict[str, Any], items: list[dict[str, Any]]) -> str | None:
+    """
+    Filet de sécurité final : compare le nombre d'items retenus au
+    nombre de groupes quantité+unité détectés dans le texte d'origine.
+    Si le retry côté IntentAgent n'a pas suffi à combler l'écart, on
+    prévient quand même le commerçant plutôt que d'envoyer une
+    confirmation silencieusement incomplète.
+    """
+    original_text = action.get("_original_text")
+    if not original_text or len(items) < 2:
+        return None
+    expected = count_enumerated_products(str(original_text))
+    if expected > len(items):
+        return (
+            f"⚠️ {expected} article(s) semblent mentionnés dans ton "
+            f"message mais seulement {len(items)} ont été compris. "
+            "Vérifie la liste ci-dessus avant de confirmer."
+        )
+    return None
+
+
 def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
     items = action.get("items") or []
     if action["type"] == "sale" and len(items) > 1:
@@ -136,6 +159,9 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
             lines.append(f"Reste dû : {format_currency(action['remaining'])}")
         if action.get("due_date"):
             lines.append(f"Échéance : {_format_due_date(action['due_date'])}")
+        missing_warning = _missing_items_warning(action, items)
+        if missing_warning:
+            lines.extend(["", missing_warning])
     elif action["type"] == "sale":
         montant_label = "Montant"
         if action.get("_amount_from_catalog"):
@@ -169,6 +195,9 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
                 f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
             ]
         )
+        missing_warning = _missing_items_warning(action, items)
+        if missing_warning:
+            lines.extend(["", missing_warning])
     elif action["type"] == "purchase":
         lines = [
             "J’ai compris :", "",

@@ -102,7 +102,14 @@ Règles impératives :
 12. Si plusieurs produits sont vendus ou achetés dans la même phrase, remplis
     items avec une entrée par produit (product, unit, quantity, et amount si
     un prix est annoncé pour ce produit précis). Renseigne aussi product,
-    unit et quantity avec le premier produit.
+    unit et quantity avec le premier produit. AVANT de répondre, recompte
+    toi-même le nombre de groupes "quantité + unité + produit" présents
+    dans le message (ex. "trois sacs de riz" = un groupe, "deux cartons de
+    tomates" = un autre groupe) et vérifie que items contient exactement
+    une entrée par groupe trouvé, dans le même ordre. Ne fusionne jamais
+    deux produits différents (ex. "riz", "riz parfumé" et "riz long" sont
+    TROIS produits distincts, même s'ils partagent le mot "riz") et
+    n'en oublie aucun, même en fin d'énumération.
 13. Si un montant est annoncé produit par produit, mets chaque montant dans
     items[i].amount et mets leur somme dans amount.
 14. Si un seul montant global couvre plusieurs produits, mets-le dans amount
@@ -543,6 +550,46 @@ def _normalize_sale_from_text(text: str, action: dict[str, Any] | None) -> dict[
     return action
 
 
+_QUANTITY_UNIT_RE = re.compile(
+    r"\b(\d+|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|"
+    r"onze|douze|vingt|trente|quarante|cinquante)\s+"
+    r"(sacs?|cartons?|bo[iî]tes?|bouteilles?|paquets?|bidons?|kilos?|kg|litres?)\b",
+    re.IGNORECASE,
+)
+
+
+def _count_enumerated_products(text: str) -> int:
+    """
+    Compte grossièrement les groupes "quantité + unité" présents dans
+    le texte (ex. "deux sacs", "3 cartons"), pour servir de garde-fou
+    déterministe contre un oubli d'items par le LLM. Ce n'est pas une
+    extraction fiable en soi (une seule quantité peut parfois couvrir
+    plusieurs unités), mais un décompte inférieur au nombre d'items
+    renvoyés par l'IA signale une extraction probablement incomplète.
+    """
+    return len(_QUANTITY_UNIT_RE.findall(text))
+
+
+# Alias public : réutilisé par message_orchestrator.py comme filet de
+# sécurité final, au cas où le retry ci-dessous n'aurait pas suffi.
+count_enumerated_products = _count_enumerated_products
+
+
+def _call_ai(client: OpenAI, model: str, text: str, extra_instruction: str = "") -> AIIntent | None:
+    system_prompt = SYSTEM_PROMPT
+    if extra_instruction:
+        system_prompt = f"{SYSTEM_PROMPT}\n\n{extra_instruction}"
+    response = client.responses.parse(
+        model=model,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ],
+        text_format=AIIntent,
+    )
+    return response.output_parsed
+
+
 def parse_with_ai(text: str) -> dict[str, Any] | None:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -553,15 +600,28 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
 
     try:
         client = OpenAI(api_key=api_key)
-        response = client.responses.parse(
-            model=model,
-            input=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
-            text_format=AIIntent,
-        )
-        parsed = response.output_parsed
+        parsed = _call_ai(client, model, text)
+
+        # Garde-fou : si le texte énumère visiblement plus de produits
+        # (quantité + unité) que ce que l'IA a mis dans items, on
+        # retente une fois avec une instruction renforcée plutôt que
+        # d'envoyer une confirmation tronquée au commerçant.
+        if parsed is not None and parsed.type in {"sale", "purchase"}:
+            expected_count = _count_enumerated_products(text)
+            actual_count = max(len(parsed.items), 1 if parsed.product else 0)
+            if expected_count > 1 and actual_count < expected_count:
+                retry_instruction = (
+                    f"ATTENTION : le message contient environ {expected_count} "
+                    "groupes quantité+unité+produit. Ta réponse précédente en a "
+                    "manqué. Relis le message intégralement et renvoie une "
+                    f"entrée dans items pour CHACUN des {expected_count} produits, "
+                    "sans en fusionner ni en oublier aucun."
+                )
+                retried = _call_ai(client, model, text, retry_instruction)
+                if retried is not None:
+                    retried_count = max(len(retried.items), 1 if retried.product else 0)
+                    if retried_count >= actual_count:
+                        parsed = retried
     except Exception as exc:
         raise IntentAgentError(f"Erreur IntentAgent : {exc}") from exc
 

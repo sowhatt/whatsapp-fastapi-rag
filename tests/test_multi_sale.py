@@ -4,7 +4,12 @@ résumé de confirmation et payload de persistance.
 """
 from types import SimpleNamespace
 
-from app.agents.intent_agent import AIIntent, AIIntentItem, _to_business_action
+from app.agents.intent_agent import (
+    AIIntent,
+    AIIntentItem,
+    _to_business_action,
+    count_enumerated_products,
+)
 from app.services.message_orchestrator import build_operation_summary
 from app.services.sales_service import (
     ResolvedSale,
@@ -125,3 +130,74 @@ def test_payload_mono_ligne_conserve_le_montant_annonce():
     payload = build_sale_create_payload(resolved)
     assert len(payload.items) == 1
     assert payload.items[0].line_total == 250000
+
+
+def test_compte_5_produits_enumeres_message_fatima():
+    """
+    Reproduit le vocal de la vente à Fatima (2 sacs de maïs, 2 cartons
+    de tomates, 2 sacs de riz, 4 sacs de riz parfumé, 6 sacs de riz
+    long) : le garde-fou doit détecter les 5 groupes quantité+unité,
+    même avec trois occurrences distinctes de "riz".
+    """
+    text = (
+        "Vends deux sacs de maïs, deux cartons de tomates, deux sacs de "
+        "riz, quatre sacs de riz parfumé et six sacs de riz long à Fatima."
+    )
+    assert count_enumerated_products(text) == 5
+
+
+def test_avertissement_affiche_si_items_incomplets():
+    """
+    Si l'IA n'a retenu que 2 items sur les 5 énumérés dans le texte
+    d'origine, build_operation_summary doit afficher un avertissement
+    au commerçant plutôt que de confirmer silencieusement une vente
+    tronquée.
+    """
+    action = {
+        "type": "sale",
+        "customer": "Fatima",
+        "amount": 415000,
+        "payment": "cash",
+        "remaining": 0,
+        "items": [
+            {"product": "Maïs", "unit": "Sac", "quantity": 3, "amount": 375000},
+            {"product": "Tomates", "unit": "Carton", "quantity": 2, "amount": 40000},
+        ],
+        "_original_text": (
+            "Vends deux sacs de maïs, deux cartons de tomates, deux sacs "
+            "de riz, quatre sacs de riz parfumé et six sacs de riz long "
+            "à Fatima."
+        ),
+    }
+    summary = build_operation_summary(action, confirm=True)
+    assert "5 article(s)" in summary
+    assert "seulement 2 ont été compris" in summary
+
+
+def test_pas_avertissement_si_items_complets():
+    """
+    Avec les 5 items correctement retenus, aucun avertissement ne doit
+    apparaître (pas de faux positif qui fatiguerait le commerçant).
+    """
+    action = {
+        "type": "sale",
+        "customer": "Fatima",
+        "amount": 415000,
+        "payment": "cash",
+        "remaining": 0,
+        "items": [
+            {"product": "Maïs", "unit": "Sac", "quantity": 2, "amount": None},
+            {"product": "Tomates", "unit": "Carton", "quantity": 2, "amount": None},
+            {"product": "Riz", "unit": "Sac", "quantity": 2, "amount": None},
+            {"product": "Riz parfumé", "unit": "Sac", "quantity": 4, "amount": None},
+            {"product": "Riz long", "unit": "Sac", "quantity": 6, "amount": None},
+        ],
+        "_original_text": (
+            "Vends deux sacs de maïs, deux cartons de tomates, deux sacs "
+            "de riz, quatre sacs de riz parfumé et six sacs de riz long "
+            "à Fatima."
+        ),
+    }
+    summary = build_operation_summary(action, confirm=True)
+    assert "⚠️" not in summary
+

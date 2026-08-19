@@ -166,8 +166,11 @@ def transcribe_audio_bytes(
 
     # Protection complémentaire contre les réponses artificielles
     # anormalement longues pour un vocal très court ou silencieux.
+    # Seuil relevé à 80 mots : un panier de 5-6 produits énumérés
+    # oralement ("deux sacs de riz, trois cartons de tomates, ...")
+    # dépasse largement les 35 mots initiaux sans être un artefact.
     words = text.split()
-    if len(words) > 35:
+    if len(words) > 80:
         raise VoiceTranscriptionError(
             "Le vocal semble mal compris. Réessaie plus clairement."
         )
