@@ -305,7 +305,15 @@ def render_customer_catalog(
     if not products:
         return "Le catalogue ne contient aucun produit disponible pour le moment."
 
-    lines = ["🛒 Catalogue", ""]
+    # merchant_id est passé explicitement par l'appelant (pas de
+    # dépendance au contexte tenant implicite ici), on interroge donc
+    # directement le Merchant correspondant plutôt que
+    # get_current_shop_name (qui suppose set_current_merchant appelé).
+    from app.models.merchant import Merchant
+
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
+    shop_name = merchant.shop_name if merchant and merchant.shop_name else "Catalogue"
+    lines = [f"🛒 {shop_name}", ""]
 
     for index, product in enumerate(products, start=1):
         price = product.get("price")

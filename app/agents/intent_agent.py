@@ -575,6 +575,52 @@ def _count_enumerated_products(text: str) -> int:
 count_enumerated_products = _count_enumerated_products
 
 
+_WORDS_TO_NUMBERS = {
+    "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5,
+    "six": 6, "sept": 7, "huit": 8, "neuf": 9, "dix": 10,
+    "onze": 11, "douze": 12, "vingt": 20, "trente": 30,
+    "quarante": 40, "cinquante": 50,
+}
+
+
+def _extract_ordered_quantities(text: str) -> list[int]:
+    """
+    Extrait, dans l'ordre d'apparition, chaque quantité des groupes
+    "quantité + unité" (ex. "deux sacs" -> 2, "6 cartons" -> 6).
+    Contrairement au comptage de produits, une conversion mot->nombre
+    ("six" -> 6) est purement mécanique : aucune ambiguïté possible,
+    donc plus fiable que le LLM, qui peut confondre ou décaler les
+    nombres en fin d'énumération longue (observé : "six" et "cinq"
+    transformés en "4" et "6" sur un message à 5 produits).
+    """
+    quantities: list[int] = []
+    for raw_qty, _unit in _QUANTITY_UNIT_RE.findall(text):
+        raw_qty = raw_qty.lower()
+        if raw_qty.isdigit():
+            quantities.append(int(raw_qty))
+        else:
+            quantities.append(_WORDS_TO_NUMBERS.get(raw_qty, 1))
+    return quantities
+
+
+def _realign_item_quantities(text: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Remplace les quantités renvoyées par le LLM par celles extraites
+    mécaniquement du texte, uniquement quand le nombre de quantités
+    détectées correspond exactement au nombre d'items (mapping
+    positionnel non ambigu). Sinon, on laisse les valeurs de l'IA
+    inchangées plutôt que de risquer un mauvais alignement.
+    """
+    if len(items) < 2:
+        return items
+    quantities = _extract_ordered_quantities(text)
+    if len(quantities) != len(items):
+        return items
+    for item, quantity in zip(items, quantities):
+        item["quantity"] = quantity
+    return items
+
+
 def _call_ai(client: OpenAI, model: str, text: str, extra_instruction: str = "") -> AIIntent | None:
     system_prompt = SYSTEM_PROMPT
     if extra_instruction:
@@ -628,7 +674,21 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
     if parsed is None or parsed.confidence < minimum_confidence:
         return None
 
-    return _normalize_sale_from_text(text, _to_business_action(parsed))
+    action = _normalize_sale_from_text(text, _to_business_action(parsed))
+
+    # Réalignement déterministe des quantités (voir _realign_item_quantities) :
+    # s'applique après coup sur l'action finale, pour couvrir aussi bien
+    # le chemin ventes que le chemin achats sans dupliquer la logique.
+    if action and action.get("type") in {"sale", "purchase"} and action.get("items"):
+        action["items"] = _realign_item_quantities(text, action["items"])
+        # Le premier produit (aussi dupliqué en product/unit/quantity de
+        # premier niveau) doit rester cohérent avec items[0] après le
+        # réalignement, sinon le résumé sans puces afficherait encore
+        # l'ancienne quantité pour un item à une seule ligne.
+        if action["items"]:
+            action["quantity"] = action["items"][0]["quantity"]
+
+    return action
 
 
 def detect_intent(text: str, db: Session | None = None) -> dict[str, Any] | None:

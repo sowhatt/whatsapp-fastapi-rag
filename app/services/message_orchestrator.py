@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.tenant import set_current_merchant
 from app.services.merchant_service import get_or_create_merchant
+from app.services.shop_name_command import handle_shop_name_request
 from app.models.sale import Sale
 from app.models.customer import Customer
 from app.schemas.cancel_sale import CancelSalePayload
@@ -591,6 +592,19 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # à l'étiquetage, l'isolation complète est un chantier séparé.
     merchant = get_or_create_merchant(sender_id, db)
     set_current_merchant(db, merchant.id)
+
+    # Nom de la boutique : détection déterministe (pas d'IA), écrite
+    # et confirmée immédiatement — valeur unique à faible risque, pas
+    # besoin du couple confirmation IA + oui/non des ventes/achats.
+    # Vérifié avant tout le reste : "nom de la boutique" ne doit
+    # jamais être intercepté par un autre pattern générique.
+    shop_name_reply = handle_shop_name_request(text, merchant, db)
+    if shop_name_reply is not None:
+        return {
+            "status": "reply",
+            "reply_text": shop_name_reply,
+            "action": None,
+        }
 
     # Le reçu est une simple lecture : il n'abandonne pas le workflow
     # en cours et ne nécessite aucune confirmation.

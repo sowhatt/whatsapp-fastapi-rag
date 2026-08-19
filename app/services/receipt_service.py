@@ -87,8 +87,14 @@ def render_receipt(
     sale: Sale,
     customer_name: str,
     lines: list[dict[str, Any]],
+    shop_name: str | None = None,
 ) -> str:
-    shop_name = os.getenv("SHOP_NAME", "Ma boutique")
+    # shop_name explicite (résolu depuis le Merchant en base par
+    # l'appelant) prioritaire ; retombe sur la variable d'environnement
+    # historique si aucun nom n'est encore configuré pour ce commerce,
+    # pour ne rien casser tant que tous les commerçants n'ont pas
+    # encore défini leur nom via "Nom de la boutique : ...".
+    shop_name = shop_name or os.getenv("SHOP_NAME", "Ma boutique")
     created = sale.created_at or datetime.utcnow()
 
     parts = [
@@ -171,4 +177,12 @@ def handle_receipt_request(text: str, db: Session) -> str:
             }
         )
 
-    return render_receipt(sale, customer_name, lines)
+    shop_name = None
+    if sale.merchant_id:
+        from app.models.merchant import Merchant
+
+        merchant = db.query(Merchant).filter(Merchant.id == sale.merchant_id).first()
+        if merchant and merchant.shop_name:
+            shop_name = merchant.shop_name
+
+    return render_receipt(sale, customer_name, lines, shop_name)

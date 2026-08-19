@@ -18,3 +18,22 @@ def get_or_create_merchant(whatsapp_number: str, db: Session) -> Merchant:
     db.commit()
     db.refresh(merchant)
     return merchant
+
+def get_current_shop_name(db: Session, default: str = "Ma boutique") -> str:
+    """
+    Nom de la boutique du commerçant courant (résolu via
+    set_current_merchant en début de traitement), utilisé sur le
+    catalogue client et les reçus. Retombe sur `default` si aucun nom
+    n'a encore été configuré, plutôt que d'afficher un champ vide.
+    """
+    from app.db.tenant import get_current_merchant
+
+    merchant_id = get_current_merchant(db)
+    if merchant_id is None:
+        return default
+
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
+    if merchant is None or not merchant.shop_name:
+        return default
+
+    return merchant.shop_name

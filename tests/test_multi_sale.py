@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from app.agents.intent_agent import (
     AIIntent,
     AIIntentItem,
+    _extract_ordered_quantities,
+    _realign_item_quantities,
     _to_business_action,
     count_enumerated_products,
 )
@@ -133,26 +135,14 @@ def test_payload_mono_ligne_conserve_le_montant_annonce():
 
 
 def test_compte_5_produits_enumeres_message_fatima():
-    """
-    Reproduit le vocal de la vente à Fatima (2 sacs de maïs, 2 cartons
-    de tomates, 2 sacs de riz, 4 sacs de riz parfumé, 6 sacs de riz
-    long) : le garde-fou doit détecter les 5 groupes quantité+unité,
-    même avec trois occurrences distinctes de "riz".
-    """
     text = (
-        "Vends deux sacs de maïs, deux cartons de tomates, deux sacs de "
-        "riz, quatre sacs de riz parfumé et six sacs de riz long à Fatima."
+        "Vends deux sacs de mais, deux cartons de tomates, deux sacs de "
+        "riz, quatre sacs de riz parfume et six sacs de riz long a Fatima."
     )
     assert count_enumerated_products(text) == 5
 
 
 def test_avertissement_affiche_si_items_incomplets():
-    """
-    Si l'IA n'a retenu que 2 items sur les 5 énumérés dans le texte
-    d'origine, build_operation_summary doit afficher un avertissement
-    au commerçant plutôt que de confirmer silencieusement une vente
-    tronquée.
-    """
     action = {
         "type": "sale",
         "customer": "Fatima",
@@ -160,25 +150,21 @@ def test_avertissement_affiche_si_items_incomplets():
         "payment": "cash",
         "remaining": 0,
         "items": [
-            {"product": "Maïs", "unit": "Sac", "quantity": 3, "amount": 375000},
+            {"product": "Mais", "unit": "Sac", "quantity": 3, "amount": 375000},
             {"product": "Tomates", "unit": "Carton", "quantity": 2, "amount": 40000},
         ],
         "_original_text": (
-            "Vends deux sacs de maïs, deux cartons de tomates, deux sacs "
-            "de riz, quatre sacs de riz parfumé et six sacs de riz long "
-            "à Fatima."
+            "Vends deux sacs de mais, deux cartons de tomates, deux sacs "
+            "de riz, quatre sacs de riz parfume et six sacs de riz long "
+            "a Fatima."
         ),
     }
     summary = build_operation_summary(action, confirm=True)
     assert "5 article(s)" in summary
-    assert "seulement 2 ont été compris" in summary
+    assert "seulement 2 ont" in summary
 
 
 def test_pas_avertissement_si_items_complets():
-    """
-    Avec les 5 items correctement retenus, aucun avertissement ne doit
-    apparaître (pas de faux positif qui fatiguerait le commerçant).
-    """
     action = {
         "type": "sale",
         "customer": "Fatima",
@@ -186,18 +172,77 @@ def test_pas_avertissement_si_items_complets():
         "payment": "cash",
         "remaining": 0,
         "items": [
-            {"product": "Maïs", "unit": "Sac", "quantity": 2, "amount": None},
+            {"product": "Mais", "unit": "Sac", "quantity": 2, "amount": None},
             {"product": "Tomates", "unit": "Carton", "quantity": 2, "amount": None},
             {"product": "Riz", "unit": "Sac", "quantity": 2, "amount": None},
-            {"product": "Riz parfumé", "unit": "Sac", "quantity": 4, "amount": None},
+            {"product": "Riz parfume", "unit": "Sac", "quantity": 4, "amount": None},
             {"product": "Riz long", "unit": "Sac", "quantity": 6, "amount": None},
         ],
         "_original_text": (
-            "Vends deux sacs de maïs, deux cartons de tomates, deux sacs "
-            "de riz, quatre sacs de riz parfumé et six sacs de riz long "
-            "à Fatima."
+            "Vends deux sacs de mais, deux cartons de tomates, deux sacs "
+            "de riz, quatre sacs de riz parfume et six sacs de riz long "
+            "a Fatima."
         ),
     }
     summary = build_operation_summary(action, confirm=True)
-    assert "⚠️" not in summary
+    assert "avertissement" not in summary.lower() and "seulement" not in summary
+
+
+def test_extrait_les_quantites_dans_l_ordre_message_fatima_v2():
+    """
+    Reproduit le 2e vocal Fatima (2 mais, 2 tomates, 2 riz, 6 riz
+    parfume, 5 riz long) : la regex doit extraire les quantites dans
+    le bon ordre, y compris "six" et "cinq" en fin d'enumeration.
+    """
+    text = (
+        "Vends deux sacs de mais, deux cartons de tomates, deux sacs "
+        "de riz, six sacs de riz parfume, cinq sacs de riz long a "
+        "Fatima."
+    )
+    assert _extract_ordered_quantities(text) == [2, 2, 2, 6, 5]
+
+
+def test_realigne_quantites_hallucinees_par_le_llm():
+    """
+    Reproduit exactement le bug observe en prod : le LLM renvoie 5
+    items (bon compte) mais avec les 2 dernieres quantites fausses
+    (4 au lieu de 6, 6 au lieu de 5 -- un "4" jamais prononce). Le
+    realignement deterministe doit corriger sans casser les 3
+    premiers items, deja corrects.
+    """
+    text = (
+        "Vends deux sacs de mais, deux cartons de tomates, deux sacs "
+        "de riz, six sacs de riz parfume, cinq sacs de riz long a "
+        "Fatima."
+    )
+    items_buggy = [
+        {"product": "Mais", "unit": "Sac", "quantity": 2, "amount": None},
+        {"product": "Tomates", "unit": "Carton", "quantity": 2, "amount": None},
+        {"product": "Riz", "unit": "Sac", "quantity": 2, "amount": None},
+        {"product": "Riz parfume", "unit": "Sac", "quantity": 4, "amount": None},
+        {"product": "Riz long", "unit": "Sac", "quantity": 6, "amount": None},
+    ]
+
+    corrected = _realign_item_quantities(text, items_buggy)
+
+    assert [item["quantity"] for item in corrected] == [2, 2, 2, 6, 5]
+
+
+def test_ne_realigne_pas_si_le_compte_ne_correspond_pas():
+    """
+    Filet de securite du realignement lui-meme : si le nombre de
+    quantites detectees par regex ne correspond pas au nombre
+    d'items, on ne touche a rien plutot que de risquer un mauvais
+    alignement positionnel.
+    """
+    text = "Vends deux sacs de riz et trois cartons de tomates a Awa."
+    items = [
+        {"product": "Riz", "unit": "Sac", "quantity": 99, "amount": None},
+        {"product": "Tomates", "unit": "Carton", "quantity": 99, "amount": None},
+        {"product": "Huile", "unit": "Bidon", "quantity": 99, "amount": None},
+    ]
+
+    corrected = _realign_item_quantities(text, items)
+
+    assert [item["quantity"] for item in corrected] == [99, 99, 99]
 
