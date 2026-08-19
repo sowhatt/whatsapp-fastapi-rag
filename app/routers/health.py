@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from app.db.session import test_database_connection, engine
 from app.db.base import Base
+from app.models.product_image import ProductImage
+from app.models.product_publication import ProductPublication
 
 router = APIRouter(tags=["technique"])
 
