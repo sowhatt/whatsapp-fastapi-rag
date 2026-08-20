@@ -17,6 +17,7 @@ Que souhaites-tu faire ?
 7️⃣ Consulter mon stock
 8️⃣ Résumé du jour
 9️⃣ Paramètres
+🔟 Calculatrice
 
 Réponds avec un numéro ou parle naturellement."""
 
@@ -31,6 +32,7 @@ MENU_INTENTS = {
     "7": "stock_view",
     "8": "daily_summary",
     "9": "settings",
+    "10": "calculator",
 }
 
 
@@ -44,6 +46,7 @@ NATURAL_PATTERNS = [
     (r"\b(stock|inventaire)\b", "stock_view"),
     (r"\b(r[eé]sum[eé]|bilan|total du jour)\b", "daily_summary"),
     (r"\b(param[eè]tre|configuration)\b", "settings"),
+    (r"\b(calculatrice|calculette|calculer)\b", "calculator"),
 ]
 
 
