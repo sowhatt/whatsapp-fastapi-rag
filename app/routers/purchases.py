@@ -117,6 +117,15 @@ def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         status=status,
+        original_amount=(
+            payload.original_amount
+            if payload.original_amount is not None
+            else total_amount
+        ),
+        original_currency=(
+            payload.original_currency or "XOF"
+        ).upper(),
+        exchange_rate=payload.exchange_rate,
     )
     db.add(purchase)
     db.flush()

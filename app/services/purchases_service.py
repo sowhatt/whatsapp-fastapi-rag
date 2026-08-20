@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -30,6 +31,9 @@ class ResolvedPurchase:
     paid_amount: int
     remaining_amount: int
     payment_channel: str
+    original_amount: int | None = None
+    original_currency: str = "XOF"
+    exchange_rate: Decimal | None = None
     lines: list[ResolvedPurchaseLine] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -133,6 +137,17 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
             paid_amount=paid_amount,
             remaining_amount=remaining_amount,
             payment_channel=payment_channel,
+            original_amount=int(intent.get("original_amount") or total_amount),
+            original_currency=str(
+                intent.get("original_currency")
+                or intent.get("currency")
+                or "XOF"
+            ).upper(),
+            exchange_rate=(
+                Decimal(str(intent["exchange_rate"]))
+                if intent.get("exchange_rate") is not None
+                else Decimal("1")
+            ),
             lines=lines,
         )
 
@@ -152,6 +167,17 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         payment_channel=payment_channel,
+        original_amount=int(intent.get("original_amount") or total_amount),
+        original_currency=str(
+            intent.get("original_currency")
+            or intent.get("currency")
+            or "XOF"
+        ).upper(),
+        exchange_rate=(
+            Decimal(str(intent["exchange_rate"]))
+            if intent.get("exchange_rate") is not None
+            else Decimal("1")
+        ),
     )
 
 
@@ -172,6 +198,9 @@ def build_purchase_create_payload(resolved: ResolvedPurchase) -> PurchaseCreate:
         ],
         paid_amount=resolved.paid_amount,
         payment_channel=resolved.payment_channel,
+        original_amount=resolved.original_amount,
+        original_currency=resolved.original_currency,
+        exchange_rate=resolved.exchange_rate,
     )
 
 

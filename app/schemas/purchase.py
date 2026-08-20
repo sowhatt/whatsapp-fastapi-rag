@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel
 
 
@@ -13,6 +14,11 @@ class PurchaseCreate(BaseModel):
     paid_amount: int = 0
     payment_channel: str = "cash"
 
+    # total_amount sera toujours recalculé en XOF par le routeur.
+    original_amount: int | None = None
+    original_currency: str = "XOF"
+    exchange_rate: Decimal | None = None
+
 
 class PurchaseRead(BaseModel):
     id: int
@@ -21,6 +27,9 @@ class PurchaseRead(BaseModel):
     paid_amount: int
     remaining_amount: int
     status: str
+    original_amount: int | None = None
+    original_currency: str = "XOF"
+    exchange_rate: Decimal | None = None
 
     model_config = {"from_attributes": True}
 

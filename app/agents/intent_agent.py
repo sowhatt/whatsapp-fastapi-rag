@@ -57,6 +57,7 @@ class AIIntent(BaseModel):
     label: str | None = None
     quantity: int | None = None
     amount: int | None = None
+    currency: str | None = None
     paid_amount: int | None = None
     remaining: int | None = None
     payment: PaymentChannel = "unknown"
@@ -207,6 +208,15 @@ Règles impératives :
     cash », « encaisse la table 5 », « solde la table 2 en espèces »,
     « table 4 règle par Mobile Money ». Extrais table et payment (le
     canal de paiement).
+30. Pour tout montant d'achat, détecte la DEVISE explicitement mentionnée.
+    Normalise obligatoirement ainsi :
+    - CFA, FCFA, franc CFA, francs CFA, XOF -> currency="XOF"
+    - naira, nairas, naïra, naïras, NGN -> currency="NGN"
+    - euro, euros, EUR -> currency="EUR"
+    - dollar, dollars, USD -> currency="USD"
+    Si aucune devise n'est mentionnée, utilise currency="XOF".
+    Exemple : « Achat 20 cartons de tomates chez Chinedu à 500 000 nairas »
+    -> amount=500000, currency="NGN".
 """.strip()
 
 
@@ -369,7 +379,15 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "purchase":
-        action.update(supplier=data.get("supplier"), product=data.get("product"), unit=data.get("unit"), quantity=int(data.get("quantity") or 0), amount=int(data.get("amount") or 0), payment=data.get("payment") or "unknown")
+        action.update(
+            supplier=data.get("supplier"),
+            product=data.get("product"),
+            unit=data.get("unit"),
+            quantity=int(data.get("quantity") or 0),
+            amount=int(data.get("amount") or 0),
+            currency=str(data.get("currency") or "XOF").strip().upper(),
+            payment=data.get("payment") or "unknown",
+        )
         purchase_items: list[dict[str, Any]] = []
         for item in parsed.items:
             product_name = _clean_name(item.product)

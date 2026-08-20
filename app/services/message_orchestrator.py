@@ -1,6 +1,7 @@
 import os
 import time
 import re
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -85,14 +86,75 @@ from app.services.calculator_service import (
 )
 from app.services.currency_service import (
     CurrencyServiceError,
+    convert_currency,
     convert_currency_message,
     looks_like_currency_conversion,
+    seed_currencies,
 )
 from app.state.pending_actions import pending_actions
 
 
 def format_currency(value: int | float) -> str:
     return f"{int(value):,}".replace(",", " ") + " FCFA"
+
+
+def format_money(value: int | float, currency: str) -> str:
+    formatted = f"{int(value):,}".replace(",", " ")
+    labels = {
+        "XOF": "FCFA",
+        "NGN": "NGN",
+        "EUR": "EUR",
+        "USD": "USD",
+    }
+    code = str(currency or "XOF").upper()
+    return f"{formatted} {labels.get(code, code)}"
+
+
+def _prepare_purchase_currency(
+    action: dict[str, Any],
+    db: Session,
+) -> None:
+    if action.get("type") != "purchase":
+        return
+
+    # Déjà converti : ne jamais reconvertir pendant le workflow pending.
+    if action.get("_currency_converted"):
+        return
+
+    currency = str(action.get("currency") or "XOF").upper()
+    action["currency"] = currency
+
+    if currency == "XOF":
+        action["original_amount"] = int(action.get("amount") or 0)
+        action["original_currency"] = "XOF"
+        action["amount_xof"] = int(action.get("amount") or 0)
+        action["exchange_rate"] = "1"
+        action["_currency_converted"] = True
+        return
+
+    original_amount = int(action.get("amount") or 0)
+    if original_amount <= 0:
+        return
+
+    seed_currencies(db)
+
+    converted, rate = convert_currency(
+        amount=Decimal(str(original_amount)),
+        from_code=currency,
+        to_code="XOF",
+        db=db,
+    )
+
+    amount_xof = int(converted.quantize(Decimal("1")))
+
+    action["original_amount"] = original_amount
+    action["original_currency"] = currency
+    action["exchange_rate"] = str(rate)
+    action["amount_xof"] = amount_xof
+
+    # Le cœur comptable historique continue de travailler en FCFA.
+    action["amount"] = amount_xof
+    action["_currency_converted"] = True
 
 
 def build_summary_response(db: Session) -> str:
@@ -212,13 +274,43 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
         if missing_warning:
             lines.extend(["", missing_warning])
     elif action["type"] == "purchase":
+        original_currency = str(
+            action.get("original_currency")
+            or action.get("currency")
+            or "XOF"
+        ).upper()
+
+        original_amount = int(
+            action.get("original_amount")
+            or action.get("amount")
+            or 0
+        )
+
         lines = [
             "J’ai compris :", "",
             f"Achat : {action['quantity']} {action['unit'].lower()} de {action['product'].lower()}",
             f"Fournisseur : {action['supplier']}",
-            f"Montant : {format_currency(action['amount'])}",
-            f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}",
         ]
+
+        if original_currency != "XOF":
+            lines.extend(
+                [
+                    f"Montant fournisseur : {format_money(original_amount, original_currency)}",
+                    f"Équivalent comptable : {format_currency(action['amount'])}",
+                    (
+                        f"Taux utilisé : 1 {original_currency} = "
+                        f"{Decimal(str(action['exchange_rate'])):.6f} XOF"
+                    ),
+                ]
+            )
+        else:
+            lines.append(
+                f"Montant : {format_currency(action['amount'])}"
+            )
+
+        lines.append(
+            f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}"
+        )
     else:
         return "Action détectée. Confirmer ? Réponds oui ou non."
     for warning in action.get("_price_warnings") or []:
@@ -418,6 +510,23 @@ def advance_workflow(
         if due_date:
             action["due_date"] = due_date.isoformat()
     action = autofill_amount_from_catalog(action, db)
+
+    # Pour un achat en devise étrangère, on garde le montant fournisseur
+    # et on convertit une seule fois vers XOF avant toute logique comptable.
+    if action.get("type") == "purchase" and int(action.get("amount") or 0) > 0:
+        try:
+            _prepare_purchase_currency(action, db)
+        except CurrencyServiceError as exc:
+            set_pending_action(sender_id, action)
+            return {
+                "status": "reply",
+                "reply_text": (
+                    (prefix + "\n\n" if prefix else "")
+                    + f"❌ Impossible de convertir la devise : {exc}"
+                ),
+                "action": action,
+            }
+
     action, question = prepare_missing_field_workflow(action)
     if question:
         set_pending_action(sender_id, action)
