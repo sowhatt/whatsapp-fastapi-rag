@@ -233,6 +233,32 @@ def _clean_name(value: str | None) -> str | None:
     return cleaned[:1].upper() + cleaned[1:]
 
 
+
+def detect_explicit_currency(text: str) -> str | None:
+    """
+    Détecte une devise explicitement mentionnée dans le message utilisateur.
+    La devise explicite doit avoir priorité sur une devise supposée par l'IA.
+    """
+    lower = " ".join(
+        text.lower()
+        .replace("’", "'")
+        .split()
+    )
+
+    if re.search(r"\b(naira|nairas|naïra|naïras|ngn)\b", lower):
+        return "NGN"
+
+    if re.search(r"\b(fcfa|cfa|xof|francs?\s+cfa)\b", lower):
+        return "XOF"
+
+    if re.search(r"\b(euro|euros|eur)\b", lower):
+        return "EUR"
+
+    if re.search(r"\b(dollar|dollars|usd)\b", lower):
+        return "USD"
+
+    return None
+
 def _required_fields(intent_type: str) -> list[str]:
     return {
         "sale": ["customer", "product", "unit", "quantity", "amount"],

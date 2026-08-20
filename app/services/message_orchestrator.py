@@ -26,7 +26,11 @@ from app.agents.conversation_agent import (
     resume_action_after_entity_creation,
 )
 from app.business.parser.number_parser import parse_french_number
-from app.agents.intent_agent import IntentAgentError, detect_intent
+from app.agents.intent_agent import (
+    IntentAgentError,
+    detect_explicit_currency,
+    detect_intent,
+)
 from app.agents.validation_agent import (
     format_partial_operation,
     parse_partial_operation,
@@ -664,6 +668,25 @@ def _looks_like_operation_restatement(text: str) -> bool:
     return has_operation and has_unit
 
 
+def _enforce_explicit_purchase_currency(
+    action: dict[str, Any] | None,
+    text: str,
+) -> dict[str, Any] | None:
+    """
+    Une devise explicitement prononcée ou écrite par l'utilisateur
+    a priorité sur celle éventuellement déduite par le LLM.
+    """
+    if not action or action.get("type") != "purchase":
+        return action
+
+    explicit_currency = detect_explicit_currency(text)
+
+    if explicit_currency:
+        action["currency"] = explicit_currency
+
+    return action
+
+
 def _detect_new_operation(
     text: str,
     db: Session,
@@ -676,6 +699,7 @@ def _detect_new_operation(
     """
     try:
         action = detect_intent(text, db)
+        action = _enforce_explicit_purchase_currency(action, text)
     except IntentAgentError:
         return None
 
@@ -1173,6 +1197,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
         try:
             action = detect_intent(text, db)
+            action = _enforce_explicit_purchase_currency(action, text)
         except IntentAgentError as exc:
             print("INTENT AGENT ERROR:", str(exc))
             action = None
@@ -1288,6 +1313,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
     try:
         action = detect_intent(text, db)
+        action = _enforce_explicit_purchase_currency(action, text)
     except IntentAgentError as exc:
         print("INTENT AGENT ERROR:", str(exc))
         return {"status": "reply", "reply_text": "Je n’arrive pas à analyser cette demande. Réessaie plus simplement.", "action": None}
