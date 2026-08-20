@@ -3,6 +3,8 @@ from app.db.session import test_database_connection, engine
 from app.db.base import Base
 from app.models.product_image import ProductImage
 from app.models.product_publication import ProductPublication
+from app.models.currency import Currency
+from app.models.exchange_rate import ExchangeRate
 
 router = APIRouter(tags=["technique"])
 

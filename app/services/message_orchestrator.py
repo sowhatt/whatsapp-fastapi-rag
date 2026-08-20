@@ -83,6 +83,11 @@ from app.services.calculator_service import (
     format_calculation,
     looks_like_calculation,
 )
+from app.services.currency_service import (
+    CurrencyServiceError,
+    convert_currency_message,
+    looks_like_currency_conversion,
+)
 from app.state.pending_actions import pending_actions
 
 
@@ -1080,6 +1085,25 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {
             "status": "reply",
             "reply_text": calculator_help(),
+            "action": None,
+        }
+
+    if looks_like_currency_conversion(text):
+        try:
+            reply = convert_currency_message(
+                text=text,
+                db=db,
+            )
+        except CurrencyServiceError as exc:
+            return {
+                "status": "reply",
+                "reply_text": f"❌ {exc}",
+                "action": None,
+            }
+
+        return {
+            "status": "reply",
+            "reply_text": reply,
             "action": None,
         }
 
