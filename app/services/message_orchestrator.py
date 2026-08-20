@@ -76,6 +76,13 @@ from app.services.catalog_service import (
 )
 from app.services.supplier_payments_service import create_supplier_payment_from_intent
 from app.services.tab_service import TabError, add_items_to_tab, close_tab, render_tab
+from app.services.calculator_service import (
+    CalculatorError,
+    calculate,
+    calculator_help,
+    format_calculation,
+    looks_like_calculation,
+)
 from app.state.pending_actions import pending_actions
 
 
@@ -1066,6 +1073,29 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 "ne sont pas suffisamment claires.\n\n"
                 "Exemple : « Achat 5 sacs de riz chez Soglo pour 350 000 »"
             ),
+            "action": None,
+        }
+
+    if business_intent == "calculator":
+        return {
+            "status": "reply",
+            "reply_text": calculator_help(),
+            "action": None,
+        }
+
+    if looks_like_calculation(text):
+        try:
+            result = calculate(text)
+        except CalculatorError as exc:
+            return {
+                "status": "reply",
+                "reply_text": f"❌ {exc}",
+                "action": None,
+            }
+
+        return {
+            "status": "reply",
+            "reply_text": format_calculation(result),
             "action": None,
         }
 
