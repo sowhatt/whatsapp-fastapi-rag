@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from typing import Any, Literal
 
 from openai import OpenAI
@@ -646,7 +647,10 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
 
     try:
         client = OpenAI(api_key=api_key)
+        _t0 = time.monotonic()
         parsed = _call_ai(client, model, text)
+        _t1 = time.monotonic()
+        retry_triggered = False
 
         # Garde-fou : si le texte énumère visiblement plus de produits
         # (quantité + unité) que ce que l'IA a mis dans items, on
@@ -656,6 +660,7 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
             expected_count = _count_enumerated_products(text)
             actual_count = max(len(parsed.items), 1 if parsed.product else 0)
             if expected_count > 1 and actual_count < expected_count:
+                retry_triggered = True
                 retry_instruction = (
                     f"ATTENTION : le message contient environ {expected_count} "
                     "groupes quantité+unité+produit. Ta réponse précédente en a "
@@ -668,6 +673,16 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
                     retried_count = max(len(retried.items), 1 if retried.product else 0)
                     if retried_count >= actual_count:
                         parsed = retried
+        _t2 = time.monotonic()
+        print(
+            "INTENT AGENT TIMING:",
+            {
+                "first_call_s": round(_t1 - _t0, 2),
+                "retry_triggered": retry_triggered,
+                "retry_call_s": round(_t2 - _t1, 2) if retry_triggered else 0.0,
+                "total_s": round(_t2 - _t0, 2),
+            },
+        )
     except Exception as exc:
         raise IntentAgentError(f"Erreur IntentAgent : {exc}") from exc
 
