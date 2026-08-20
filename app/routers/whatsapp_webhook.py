@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -102,15 +103,18 @@ async def receive_whatsapp_webhook(
                             continue
 
                         try:
+                            _t0 = time.monotonic()
                             media_url = get_whatsapp_media_url(
                                 audio_id,
                             )
+                            _t1 = time.monotonic()
 
                             audio_bytes, content_type = (
                                 download_whatsapp_media(
                                     media_url,
                                 )
                             )
+                            _t2 = time.monotonic()
 
                             from app.agents.normalization_agent import (
                                 _catalog_values,
@@ -122,11 +126,23 @@ async def receive_whatsapp_webhook(
                                 for values in catalog.values()
                                 for name in values
                             ]
+                            _t3 = time.monotonic()
 
                             text_body = transcribe_audio_bytes(
                                 audio_bytes,
                                 content_type,
                                 vocabulary=vocabulary,
+                            )
+                            _t4 = time.monotonic()
+
+                            print(
+                                "WHATSAPP TIMING (audio):",
+                                {
+                                    "media_url_fetch_s": round(_t1 - _t0, 2),
+                                    "media_download_s": round(_t2 - _t1, 2),
+                                    "catalog_query_s": round(_t3 - _t2, 2),
+                                    "transcription_s": round(_t4 - _t3, 2),
+                                },
                             )
 
                             print(
@@ -170,6 +186,7 @@ async def receive_whatsapp_webhook(
                     if not text_body:
                         continue
 
+                    _t5 = time.monotonic()
                     result = process_incoming_message(
                         channel="whatsapp",
                         sender_id=from_number,
@@ -177,6 +194,7 @@ async def receive_whatsapp_webhook(
                         text=text_body,
                         db=db,
                     )
+                    _t6 = time.monotonic()
 
                     reply_text = result.get("reply_text")
 
@@ -197,6 +215,16 @@ async def receive_whatsapp_webhook(
                         send_whatsapp_text_message(
                             from_number,
                             reply_text,
+                        )
+                        _t7 = time.monotonic()
+
+                        print(
+                            "WHATSAPP TIMING (message processing):",
+                            {
+                                "message_type": message_type,
+                                "process_incoming_message_s": round(_t6 - _t5, 2),
+                                "send_reply_s": round(_t7 - _t6, 2),
+                            },
                         )
 
         return {"status": "received"}
