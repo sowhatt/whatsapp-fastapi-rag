@@ -114,7 +114,8 @@ def fetch_rate_from_frankfurter(
             )
     except (URLError, TimeoutError, OSError) as exc:
         raise CurrencyServiceError(
-            "Impossible de récupérer le taux de change."
+            "Impossible de récupérer le taux de change : "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
     rate = payload.get("rate")
@@ -125,6 +126,27 @@ def fetch_rate_from_frankfurter(
         )
 
     return Decimal(str(rate))
+
+
+def _latest_known_rate(
+    *,
+    base: Currency,
+    quote: Currency,
+    db: Session,
+) -> ExchangeRate | None:
+    """
+    Retourne le dernier taux connu, même s'il est plus ancien
+    que la durée maximale de fraîcheur.
+    """
+    return (
+        db.query(ExchangeRate)
+        .filter(
+            ExchangeRate.base_currency_id == base.id,
+            ExchangeRate.quote_currency_id == quote.id,
+        )
+        .order_by(desc(ExchangeRate.retrieved_at))
+        .first()
+    )
 
 
 def refresh_exchange_rate(
@@ -194,14 +216,37 @@ def get_exchange_rate(
         if age <= timedelta(minutes=max_age_minutes):
             return Decimal(str(latest.rate))
 
-    refreshed = refresh_exchange_rate(
-        base_code=base.code,
-        quote_code=quote.code,
-        db=db,
-    )
+    try:
+        refreshed = refresh_exchange_rate(
+            base_code=base.code,
+            quote_code=quote.code,
+            db=db,
+        )
+        return Decimal(str(refreshed.rate))
 
-    return Decimal(str(refreshed.rate))
+    except CurrencyServiceError as exc:
+        # Fallback : on préfère un taux ancien à un blocage complet
+        # du workflow commerçant.
+        fallback = _latest_known_rate(
+            base=base,
+            quote=quote,
+            db=db,
+        )
 
+        if fallback:
+            print(
+                "CURRENCY FALLBACK:",
+                {
+                    "base": base.code,
+                    "quote": quote.code,
+                    "rate": str(fallback.rate),
+                    "retrieved_at": str(fallback.retrieved_at),
+                    "reason": str(exc),
+                },
+            )
+            return Decimal(str(fallback.rate))
+
+        raise
 
 def convert_currency(
     *,

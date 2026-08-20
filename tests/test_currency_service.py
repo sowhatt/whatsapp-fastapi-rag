@@ -149,3 +149,66 @@ def test_negative_amount_is_rejected(db):
             to_code="XOF",
             db=db,
         )
+
+
+def test_old_cached_rate_is_used_if_provider_fails(db, monkeypatch):
+    seed_currencies(db)
+
+    from datetime import timedelta
+
+    ngn = db.query(Currency).filter(
+        Currency.code == "NGN"
+    ).first()
+
+    xof = db.query(Currency).filter(
+        Currency.code == "XOF"
+    ).first()
+
+    old_rate = ExchangeRate(
+        base_currency_id=ngn.id,
+        quote_currency_id=xof.id,
+        rate=Decimal("0.41862"),
+        source="test-old",
+        retrieved_at=datetime.now(UTC) - timedelta(days=2),
+        valid_at=datetime.now(UTC) - timedelta(days=2),
+    )
+
+    db.add(old_rate)
+    db.commit()
+
+    def failing_refresh(*args, **kwargs):
+        raise CurrencyServiceError("provider down")
+
+    monkeypatch.setattr(
+        "app.services.currency_service.refresh_exchange_rate",
+        failing_refresh,
+    )
+
+    rate = get_exchange_rate(
+        base_code="NGN",
+        quote_code="XOF",
+        db=db,
+        max_age_minutes=1,
+    )
+
+    assert rate == Decimal("0.41862000")
+
+
+def test_provider_failure_without_cache_is_raised(db, monkeypatch):
+    seed_currencies(db)
+
+    def failing_refresh(*args, **kwargs):
+        raise CurrencyServiceError("provider down")
+
+    monkeypatch.setattr(
+        "app.services.currency_service.refresh_exchange_rate",
+        failing_refresh,
+    )
+
+    with pytest.raises(CurrencyServiceError):
+        get_exchange_rate(
+            base_code="NGN",
+            quote_code="XOF",
+            db=db,
+            max_age_minutes=1,
+        )
