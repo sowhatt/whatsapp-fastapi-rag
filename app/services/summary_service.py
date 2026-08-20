@@ -41,15 +41,46 @@ EXPENSE_CATEGORY_LABELS = {
     "autre": "Autre",
 }
 
+# Fuseau horaire cible des commerçants (Bénin, WAT = UTC+1, fixe toute
+# l'année, aucune heure d'été). Bug découvert en test : utiliser
+# datetime.utcnow() directement pour calculer "aujourd'hui" fait
+# basculer le bilan sur un nouveau jour à minuit UTC, soit 1h du matin
+# heure de Cotonou — en pleine soirée de vente pour le commerçant. Le
+# bug était particulièrement visible en testant depuis la France
+# (UTC+2 l'été) : le jour UTC pouvait alors basculer dès 2h du matin
+# heure française, faisant disparaître les ventes du bilan en cours de
+# test. Toutes les bornes "jour/semaine/mois" sont donc calculées ici
+# dans le fuseau du commerçant, puis reconverties en UTC uniquement
+# pour la comparaison SQL contre les colonnes created_at (stockées en
+# UTC via datetime.utcnow()).
+MERCHANT_TZ_OFFSET = timedelta(hours=1)
+
+
+def _to_merchant_local(utc_dt: datetime) -> datetime:
+    return utc_dt + MERCHANT_TZ_OFFSET
+
+
+def _to_utc(merchant_local_dt: datetime) -> datetime:
+    return merchant_local_dt - MERCHANT_TZ_OFFSET
+
 
 def _period_start(period: str, now: datetime | None = None) -> datetime:
-    now = now or datetime.utcnow()
+    """
+    Retourne la borne de début de période en UTC (pour comparaison
+    directe avec Sale.created_at), mais calculée à partir du jour
+    calendaire du commerçant (UTC+1), pas du jour UTC serveur.
+    """
+    now_utc = now or datetime.utcnow()
+    local_now = _to_merchant_local(now_utc)
     if period == "week":
-        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return start_of_day - timedelta(days=start_of_day.weekday())
+        local_start_of_day = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_start = local_start_of_day - timedelta(days=local_start_of_day.weekday())
+        return _to_utc(local_start)
     if period == "month":
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return _to_utc(local_start)
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return _to_utc(local_start)
 
 
 def resolve_period_from_text(text: str, now: datetime | None = None) -> tuple[datetime, datetime | None, str]:
@@ -63,34 +94,41 @@ def resolve_period_from_text(text: str, now: datetime | None = None) -> tuple[da
     jour clos (hier, avant-hier, date explicite) — auquel cas la borne
     supérieure exclut tout ce qui est arrivé après ce jour-là.
     """
-    now = now or datetime.utcnow()
+    now_utc = now or datetime.utcnow()
     lower = text.lower()
 
     match = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", text)
     if match:
         day, month, year = (int(part) for part in match.groups())
         try:
-            since = datetime(year, month, day)
+            local_since = datetime(year, month, day)
         except ValueError:
-            since = None
-        if since is not None:
-            return since, since + timedelta(days=1), f"du {since.strftime('%d/%m/%Y')}"
+            local_since = None
+        if local_since is not None:
+            # Date explicite interprétée comme un jour calendaire du
+            # commerçant (UTC+1), pas comme minuit UTC — sinon les
+            # ventes de 00h-01h locales tombent sur le mauvais jour.
+            since = _to_utc(local_since)
+            return since, since + timedelta(days=1), f"du {local_since.strftime('%d/%m/%Y')}"
 
-    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    local_now = _to_merchant_local(now_utc)
+    local_start_of_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if "avant-hier" in lower:
-        since = start_of_today - timedelta(days=2)
+        local_since = local_start_of_today - timedelta(days=2)
+        since = _to_utc(local_since)
         return since, since + timedelta(days=1), "d'avant-hier"
 
     if "hier" in lower:
-        since = start_of_today - timedelta(days=1)
+        local_since = local_start_of_today - timedelta(days=1)
+        since = _to_utc(local_since)
         return since, since + timedelta(days=1), "d'hier"
 
     if "mois" in lower:
-        return _period_start("month", now), None, PERIOD_LABELS["month"]
+        return _period_start("month", now_utc), None, PERIOD_LABELS["month"]
     if "semaine" in lower or "hebdo" in lower:
-        return _period_start("week", now), None, PERIOD_LABELS["week"]
-    return _period_start("day", now), None, PERIOD_LABELS["day"]
+        return _period_start("week", now_utc), None, PERIOD_LABELS["week"]
+    return _period_start("day", now_utc), None, PERIOD_LABELS["day"]
 
 
 def _date_conditions(column, since: datetime, until: datetime | None):

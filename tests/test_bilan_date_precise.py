@@ -45,30 +45,31 @@ def _make_sale(db, customer, product, when: datetime, total=100000):
 
 def test_date_explicite_jj_mm_aaaa():
     since, until, label = resolve_period_from_text("résumé du 22/07/2026")
-    assert since == datetime(2026, 7, 22)
-    assert until == datetime(2026, 7, 23)
+    # Minuit heure du Bénin (UTC+1) le 22/07 = 23:00 UTC la veille.
+    assert since == datetime(2026, 7, 21, 23, 0)
+    assert until == datetime(2026, 7, 22, 23, 0)
     assert label == "du 22/07/2026"
 
 
 def test_date_explicite_avec_tirets():
     since, until, label = resolve_period_from_text("bilan du 05-01-2026")
-    assert since == datetime(2026, 1, 5)
+    assert since == datetime(2026, 1, 4, 23, 0)
     assert label == "du 05/01/2026"
 
 
 def test_hier():
     now = datetime(2026, 7, 24, 15, 30)
     since, until, label = resolve_period_from_text("resumé d'hier", now=now)
-    assert since == datetime(2026, 7, 23)
-    assert until == datetime(2026, 7, 24)
+    assert since == datetime(2026, 7, 22, 23, 0)
+    assert until == datetime(2026, 7, 23, 23, 0)
     assert label == "d'hier"
 
 
 def test_avant_hier():
     now = datetime(2026, 7, 24, 15, 30)
     since, until, label = resolve_period_from_text("bilan d'avant-hier", now=now)
-    assert since == datetime(2026, 7, 22)
-    assert until == datetime(2026, 7, 23)
+    assert since == datetime(2026, 7, 21, 23, 0)
+    assert until == datetime(2026, 7, 22, 23, 0)
 
 
 def test_periode_relative_reste_ouverte_jusqu_a_maintenant():
@@ -97,3 +98,36 @@ def test_bilan_isole_une_journee_passee_et_exclut_les_autres(db):
     text = render_period_summary(data)
     assert "Bilan du 22/07/2026" in text
     assert "999 999" not in text
+
+
+def test_bilan_stable_de_part_et_d_autre_de_minuit_utc(db):
+    """
+    Reproduit le bug de production : deux appels "bilan" à quelques
+    minutes d'écart, l'un juste avant minuit UTC et l'autre juste
+    après (ex. 23:58 UTC puis 00:01 UTC, observé en testant depuis la
+    France en heure d'été où cela correspond à 01:58 et 02:01 heure
+    locale). Une vente faite avant minuit UTC mais après minuit heure
+    du Bénin (UTC+1) doit rester visible dans les deux bilans -- avant
+    le fix, le second bilan tombait à 0 vente.
+    """
+    customer = Customer(name="Fatima", debt=0)
+    db.add(customer)
+    db.flush()
+    product = Product(name="Riz", unit="Sac", price=50000, purchase_price=40000, stock=100)
+    db.add(product)
+    db.commit()
+
+    _make_sale(db, customer, product, when=datetime(2026, 8, 19, 23, 54, 0), total=250000)
+
+    now_before_midnight_utc = datetime(2026, 8, 19, 23, 58, 0)
+    now_after_midnight_utc = datetime(2026, 8, 20, 0, 1, 0)
+
+    since_1, until_1, _ = resolve_period_from_text("bilan", now=now_before_midnight_utc)
+    since_2, until_2, _ = resolve_period_from_text("bilan", now=now_after_midnight_utc)
+
+    data_1 = get_period_summary_data(db, since=since_1, until=until_1)
+    data_2 = get_period_summary_data(db, since=since_2, until=until_2)
+
+    assert data_1["sales_count"] == 1
+    assert data_2["sales_count"] == 1
+    assert data_1["sales_total"] == data_2["sales_total"] == 250000
