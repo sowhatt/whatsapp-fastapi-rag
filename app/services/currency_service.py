@@ -1,9 +1,9 @@
-import re
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -107,8 +107,16 @@ def fetch_rate_from_frankfurter(
         f"{base_code.upper()}/{quote_code.upper()}"
     )
 
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Whatzabi/1.0",
+            "Accept": "application/json",
+        },
+    )
+
     try:
-        with urlopen(url, timeout=5) as response:
+        with urlopen(request, timeout=5) as response:
             payload = json.loads(
                 response.read().decode("utf-8")
             )
@@ -126,27 +134,6 @@ def fetch_rate_from_frankfurter(
         )
 
     return Decimal(str(rate))
-
-
-def _latest_known_rate(
-    *,
-    base: Currency,
-    quote: Currency,
-    db: Session,
-) -> ExchangeRate | None:
-    """
-    Retourne le dernier taux connu, même s'il est plus ancien
-    que la durée maximale de fraîcheur.
-    """
-    return (
-        db.query(ExchangeRate)
-        .filter(
-            ExchangeRate.base_currency_id == base.id,
-            ExchangeRate.quote_currency_id == quote.id,
-        )
-        .order_by(desc(ExchangeRate.retrieved_at))
-        .first()
-    )
 
 
 def refresh_exchange_rate(
@@ -222,31 +209,17 @@ def get_exchange_rate(
             quote_code=quote.code,
             db=db,
         )
+
         return Decimal(str(refreshed.rate))
 
-    except CurrencyServiceError as exc:
-        # Fallback : on préfère un taux ancien à un blocage complet
-        # du workflow commerçant.
-        fallback = _latest_known_rate(
-            base=base,
-            quote=quote,
-            db=db,
-        )
-
-        if fallback:
-            print(
-                "CURRENCY FALLBACK:",
-                {
-                    "base": base.code,
-                    "quote": quote.code,
-                    "rate": str(fallback.rate),
-                    "retrieved_at": str(fallback.retrieved_at),
-                    "reason": str(exc),
-                },
-            )
-            return Decimal(str(fallback.rate))
+    except CurrencyServiceError:
+        # Si l'API externe tombe mais qu'un ancien taux existe,
+        # Whatzabi continue avec le dernier taux connu.
+        if latest is not None:
+            return Decimal(str(latest.rate))
 
         raise
+
 
 def convert_currency(
     *,
@@ -375,16 +348,13 @@ def parse_currency_conversion(
     ).strip(" .!?")
 
     patterns = [
-        # 250000 nairas en CFA
         r"^([\d\s]+(?:[,.]\d+)?)\s+"
         r"(.+?)\s+(?:en|vers)\s+(.+)$",
 
-        # convertis 250000 nairas en CFA
         r"^(?:convertis?|convertir)\s+"
         r"([\d\s]+(?:[,.]\d+)?)\s+"
         r"(.+?)\s+(?:en|vers)\s+(.+)$",
 
-        # combien font 250000 nairas en CFA
         r"^(?:combien\s+(?:font|fait)|ça\s+fait\s+combien|"
         r"ca\s+fait\s+combien)\s+"
         r"([\d\s]+(?:[,.]\d+)?)\s+"
@@ -415,6 +385,7 @@ def parse_currency_conversion(
         from_code = _normalize_currency_alias(
             match.group(2)
         )
+
         to_code = _normalize_currency_alias(
             match.group(3)
         )
