@@ -3,8 +3,13 @@ from app.business.assistant import (
 )
 from app.services.read_only_query_router import (
     ReadOnlyQueryRoute,
+    SemanticReadOnlyIntent,
     _looks_like_analytics_question,
+    _resolve_semantic_decision,
     detect_read_only_query,
+)
+from app.services.inventory_queries_service import (
+    handle_inventory_query,
 )
 from app.services.sales_list_service import (
     is_sales_list_request,
@@ -136,3 +141,66 @@ def test_explicit_stock_write_is_blocked_from_semantic_gate():
     assert _looks_like_analytics_question(
         "Quels produits dois-je ajouter dans mon stock ?"
     ) is False
+
+
+def test_ambiguous_voice_accepts_lower_semantic_threshold():
+    decision = _resolve_semantic_decision(
+        text="Quels produits d'armes dans mon stock ?",
+        parsed=SemanticReadOnlyIntent(
+            intent="slow_movers",
+            confidence=0.72,
+            reason="Probable erreur de transcription vocale",
+        ),
+    )
+
+    assert decision.reason == "accepted"
+    assert decision.route is not None
+    assert decision.route.query_type == "slow_movers"
+    assert decision.route.source == "semantic"
+
+
+def test_ambiguous_unknown_returns_safe_clarification():
+    decision = _resolve_semantic_decision(
+        text="Quels produits d'armes dans mon stock ?",
+        parsed=SemanticReadOnlyIntent(
+            intent="unknown",
+            confidence=0.40,
+        ),
+    )
+
+    assert decision.route is not None
+    assert (
+        decision.route.query_type
+        == "inventory_clarification"
+    )
+
+
+def test_ambiguous_non_inventory_intent_is_rejected():
+    decision = _resolve_semantic_decision(
+        text="Quels produits d'armes dans mon stock ?",
+        parsed=SemanticReadOnlyIntent(
+            intent="business_advisor",
+            confidence=0.95,
+        ),
+    )
+
+    assert decision.route is not None
+    assert (
+        decision.route.query_type
+        == "inventory_clarification"
+    )
+    assert (
+        decision.reason
+        == "non_inventory_intent_rejected"
+    )
+
+
+def test_inventory_clarification_does_not_query_database():
+    response = handle_inventory_query(
+        query_type="inventory_clarification",
+        merchant_id=1,
+        db=None,
+    )
+
+    assert "Je veux vérifier" in response
+    assert "produits qui dorment" in response

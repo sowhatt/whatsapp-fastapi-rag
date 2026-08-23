@@ -170,6 +170,17 @@ def handle_inventory_query(
     merchant_id: int,
     db: Session,
 ) -> str:
+    if query_type == "inventory_clarification":
+        return (
+            "🤔 Je veux vérifier ta demande.\n\n"
+            "Parles-tu :\n"
+            "• des produits qui se vendent lentement ;\n"
+            "• de tout ton inventaire ;\n"
+            "• ou des risques de rupture ?\n\n"
+            "Tu peux simplement dire : "
+            "« produits qui dorment »."
+        )
+
     metrics = get_inventory_intelligence(
         merchant_id=merchant_id,
         db=db,

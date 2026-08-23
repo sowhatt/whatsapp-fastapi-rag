@@ -42,6 +42,7 @@ ReadOnlyIntent = Literal[
     "nigeria_purchases",
     "inventory_overview",
     "slow_movers",
+    "fast_movers",
     "stockout_risk",
     "replenishment_candidates",
     "month_forecast",
@@ -60,6 +61,10 @@ class SemanticReadOnlyIntent(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    reason: str = Field(
+        default="",
+        max_length=160,
+    )
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,15 @@ class ReadOnlyQueryRoute:
     confidence: float
 
 
+@dataclass(frozen=True)
+class SemanticRoutingDecision:
+    route: ReadOnlyQueryRoute | None
+    intent: str
+    confidence: float
+    threshold: float
+    reason: str
+
+
 FAMILY_BY_INTENT = {
     "product_profitability": "financial",
     "product_losses": "financial",
@@ -78,6 +92,7 @@ FAMILY_BY_INTENT = {
     "nigeria_purchases": "financial",
     "inventory_overview": "inventory",
     "slow_movers": "inventory",
+    "fast_movers": "inventory",
     "stockout_risk": "inventory",
     "replenishment_candidates": "inventory",
     "month_forecast": "forecast",
@@ -102,6 +117,7 @@ Intentions autorisées :
 - nigeria_purchases
 - inventory_overview
 - slow_movers
+- fast_movers
 - stockout_risk
 - replenishment_candidates
 - month_forecast
@@ -123,10 +139,15 @@ Règles :
    « quel produit risque » et « quels produits risquent ».
 6. « Compare mes ventes de cette semaine et la semaine dernière »
    signifie week_comparison.
-7. Une transcription comme « produits dorme », « produits d'horne »
-   ou une variante phonétique similaire dans le stock signifie
-   probablement slow_movers.
-8. En cas de doute, retourne unknown avec une faible confiance.
+7. Pour une question de forme « quels produits [mot mal transcrit]
+   dans mon stock », interprète le sens global et non le mot littéral.
+   Des mots incohérents comme « dorme », « d'horne », « d'armes » ou
+   « d'homme » peuvent être des transcriptions de « dorment » :
+   classe alors slow_movers.
+8. « Quels produits ai-je dans mon stock ? » signifie
+   inventory_overview, car aucune rotation lente n'est demandée.
+9. Si les produits se vendent rapidement, classe fast_movers.
+10. En cas de doute réel, retourne unknown avec une faible confiance.
 """
 
 
@@ -169,6 +190,155 @@ def _looks_like_analytics_question(text: str) -> bool:
     return bool(
         _STRONG_ANALYTICS_MARKERS.search(value)
         or _AMBIGUOUS_INVENTORY_QUESTION.search(value)
+    )
+
+
+def _is_ambiguous_inventory_question(
+    text: str,
+) -> bool:
+    value = " ".join(text.lower().split())
+
+    return bool(
+        _AMBIGUOUS_INVENTORY_QUESTION.search(value)
+    )
+
+
+def _inventory_clarification_route(
+    confidence: float = 0.0,
+) -> ReadOnlyQueryRoute:
+    return ReadOnlyQueryRoute(
+        family="inventory",
+        query_type="inventory_clarification",
+        source="semantic_clarification",
+        confidence=confidence,
+    )
+
+
+def _resolve_semantic_decision(
+    *,
+    text: str,
+    parsed: SemanticReadOnlyIntent | None,
+    default_threshold: float = 0.80,
+    ambiguous_inventory_threshold: float = 0.65,
+) -> SemanticRoutingDecision:
+    ambiguous_inventory = (
+        _is_ambiguous_inventory_question(text)
+    )
+
+    threshold = (
+        ambiguous_inventory_threshold
+        if ambiguous_inventory
+        else default_threshold
+    )
+
+    if parsed is None:
+        route = (
+            _inventory_clarification_route()
+            if ambiguous_inventory
+            else None
+        )
+
+        return SemanticRoutingDecision(
+            route=route,
+            intent="none",
+            confidence=0.0,
+            threshold=threshold,
+            reason="no_semantic_result",
+        )
+
+    confidence = float(parsed.confidence)
+
+    if parsed.intent == "unknown":
+        route = (
+            _inventory_clarification_route(
+                confidence
+            )
+            if ambiguous_inventory
+            else None
+        )
+
+        return SemanticRoutingDecision(
+            route=route,
+            intent=parsed.intent,
+            confidence=confidence,
+            threshold=threshold,
+            reason="unknown_intent",
+        )
+
+    family = FAMILY_BY_INTENT.get(
+        parsed.intent
+    )
+
+    if (
+        ambiguous_inventory
+        and family != "inventory"
+    ):
+        return SemanticRoutingDecision(
+            route=_inventory_clarification_route(
+                confidence
+            ),
+            intent=parsed.intent,
+            confidence=confidence,
+            threshold=threshold,
+            reason="non_inventory_intent_rejected",
+        )
+
+    if confidence < threshold:
+        route = (
+            _inventory_clarification_route(
+                confidence
+            )
+            if ambiguous_inventory
+            else None
+        )
+
+        return SemanticRoutingDecision(
+            route=route,
+            intent=parsed.intent,
+            confidence=confidence,
+            threshold=threshold,
+            reason="confidence_below_threshold",
+        )
+
+    if family is None:
+        return SemanticRoutingDecision(
+            route=None,
+            intent=parsed.intent,
+            confidence=confidence,
+            threshold=threshold,
+            reason="unknown_family",
+        )
+
+    return SemanticRoutingDecision(
+        route=ReadOnlyQueryRoute(
+            family=family,
+            query_type=parsed.intent,
+            source="semantic",
+            confidence=confidence,
+        ),
+        intent=parsed.intent,
+        confidence=confidence,
+        threshold=threshold,
+        reason="accepted",
+    )
+
+
+def _log_semantic_decision(
+    decision: SemanticRoutingDecision,
+) -> None:
+    print(
+        "SEMANTIC BI ROUTER DECISION:",
+        {
+            "intent": decision.intent,
+            "confidence": decision.confidence,
+            "threshold": decision.threshold,
+            "reason": decision.reason,
+            "route": (
+                decision.route.query_type
+                if decision.route
+                else None
+            ),
+        },
     )
 
 
@@ -222,10 +392,46 @@ def classify_semantic_read_only_query(
     if not _looks_like_analytics_question(text):
         return None
 
+    ambiguous_inventory = (
+        _is_ambiguous_inventory_question(text)
+    )
+
     api_key = os.getenv("OPENAI_API_KEY")
 
+    default_threshold = float(
+        os.getenv(
+            "OPENAI_BI_ROUTER_MIN_CONFIDENCE",
+            "0.80",
+        )
+    )
+
+    ambiguous_threshold = float(
+        os.getenv(
+            "OPENAI_BI_AMBIGUOUS_MIN_CONFIDENCE",
+            "0.65",
+        )
+    )
+
     if not api_key:
-        return None
+        decision = _resolve_semantic_decision(
+            text=text,
+            parsed=None,
+            default_threshold=default_threshold,
+            ambiguous_inventory_threshold=(
+                ambiguous_threshold
+            ),
+        )
+
+        decision = SemanticRoutingDecision(
+            route=decision.route,
+            intent=decision.intent,
+            confidence=decision.confidence,
+            threshold=decision.threshold,
+            reason="missing_api_key",
+        )
+
+        _log_semantic_decision(decision)
+        return decision.route
 
     model = os.getenv(
         "OPENAI_BI_ROUTER_MODEL",
@@ -235,12 +441,18 @@ def classify_semantic_read_only_query(
         ),
     )
 
-    minimum_confidence = float(
-        os.getenv(
-            "OPENAI_BI_ROUTER_MIN_CONFIDENCE",
-            "0.80",
+    semantic_input = text
+
+    if ambiguous_inventory:
+        semantic_input = (
+            "Transcription vocale potentiellement imparfaite. "
+            "Déduis l'intention métier globale. "
+            "Une expression incohérente entre « produits » et "
+            "« stock » peut être une mauvaise transcription de "
+            "« produits qui dorment dans mon stock ». "
+            "Transcription : "
+            f"{text}"
         )
-    )
 
     try:
         client = OpenAI(
@@ -258,7 +470,7 @@ def classify_semantic_read_only_query(
                 },
                 {
                     "role": "user",
-                    "content": text,
+                    "content": semantic_input,
                 },
             ],
             text_format=SemanticReadOnlyIntent,
@@ -270,33 +482,40 @@ def classify_semantic_read_only_query(
         print(
             "SEMANTIC BI ROUTER ERROR:",
             type(exc).__name__,
-            str(exc),
         )
-        return None
 
-    if parsed is None:
-        return None
+        decision = _resolve_semantic_decision(
+            text=text,
+            parsed=None,
+            default_threshold=default_threshold,
+            ambiguous_inventory_threshold=(
+                ambiguous_threshold
+            ),
+        )
 
-    if parsed.intent == "unknown":
-        return None
+        decision = SemanticRoutingDecision(
+            route=decision.route,
+            intent=decision.intent,
+            confidence=decision.confidence,
+            threshold=decision.threshold,
+            reason="semantic_call_error",
+        )
 
-    if parsed.confidence < minimum_confidence:
-        return None
+        _log_semantic_decision(decision)
+        return decision.route
 
-    family = FAMILY_BY_INTENT.get(
-        parsed.intent
+    decision = _resolve_semantic_decision(
+        text=text,
+        parsed=parsed,
+        default_threshold=default_threshold,
+        ambiguous_inventory_threshold=(
+            ambiguous_threshold
+        ),
     )
 
-    if family is None:
-        return None
+    _log_semantic_decision(decision)
 
-    return ReadOnlyQueryRoute(
-        family=family,
-        query_type=parsed.intent,
-        source="semantic",
-        confidence=float(parsed.confidence),
-    )
-
+    return decision.route
 
 def detect_read_only_query(
     text: str,
@@ -316,6 +535,13 @@ def handle_read_only_query(
     db: Session,
     original_text: str | None = None,
 ) -> str:
+    if route.query_type == "inventory_clarification":
+        return handle_inventory_query(
+            query_type=route.query_type,
+            merchant_id=merchant_id,
+            db=db,
+        )
+
     refresh_analytics(db)
 
     if route.family == "financial":
