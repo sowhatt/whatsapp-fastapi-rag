@@ -123,7 +123,10 @@ Règles :
    « quel produit risque » et « quels produits risquent ».
 6. « Compare mes ventes de cette semaine et la semaine dernière »
    signifie week_comparison.
-7. En cas de doute, retourne unknown avec une faible confiance.
+7. Une transcription comme « produits dorme », « produits d'horne »
+   ou une variante phonétique similaire dans le stock signifie
+   probablement slow_movers.
+8. En cas de doute, retourne unknown avec une faible confiance.
 """
 
 
@@ -142,11 +145,30 @@ _STRONG_ANALYTICS_MARKERS = re.compile(
 )
 
 
+_AMBIGUOUS_INVENTORY_QUESTION = re.compile(
+    r"\b(quel(?:s|le|les)?|quoi|qu.?est.?ce)\b"
+    r".*\b(produits?|articles?)\b"
+    r".*\b(stock|rayons?)\b",
+    re.IGNORECASE,
+)
+
+_EXPLICIT_WRITE_MARKERS = re.compile(
+    r"\b(ajoute|ajouter|supprime|supprimer|"
+    r"modifie|modifier|crée|cree|créer|creer|"
+    r"enregistre|enregistrer)\b",
+    re.IGNORECASE,
+)
+
+
 def _looks_like_analytics_question(text: str) -> bool:
     value = " ".join(text.lower().split())
 
+    if _EXPLICIT_WRITE_MARKERS.search(value):
+        return False
+
     return bool(
         _STRONG_ANALYTICS_MARKERS.search(value)
+        or _AMBIGUOUS_INVENTORY_QUESTION.search(value)
     )
 
 

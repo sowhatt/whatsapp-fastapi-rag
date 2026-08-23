@@ -3,6 +3,7 @@ from app.business.assistant import (
 )
 from app.services.read_only_query_router import (
     ReadOnlyQueryRoute,
+    _looks_like_analytics_question,
     detect_read_only_query,
 )
 from app.services.sales_list_service import (
@@ -123,3 +124,15 @@ def test_voice_transcription_produits_dorme():
     assert route.family == "inventory"
     assert route.query_type == "slow_movers"
     assert route.source == "deterministic"
+
+
+def test_ambiguous_voice_stock_question_reaches_semantic_gate():
+    assert _looks_like_analytics_question(
+        "Quels produits d'horne dans mon stock ?"
+    ) is True
+
+
+def test_explicit_stock_write_is_blocked_from_semantic_gate():
+    assert _looks_like_analytics_question(
+        "Quels produits dois-je ajouter dans mon stock ?"
+    ) is False
