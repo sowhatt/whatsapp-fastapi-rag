@@ -11,6 +11,11 @@ class SaleItem(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Coût d'achat figé au moment de la vente.
+    # Indispensable pour calculer une marge historique fiable.
+    unit_cost_snapshot: Mapped[int] = mapped_column(Integer, default=0)
+
     line_total: Mapped[int] = mapped_column(Integer, default=0)
     paid_amount: Mapped[int] = mapped_column(Integer, default=0)
     remaining_amount: Mapped[int] = mapped_column(Integer, default=0)

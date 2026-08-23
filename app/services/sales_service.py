@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.models.product import Product
 from app.schemas.sale import SaleCreate, SaleItemCreate
+from app.services.due_date_service import resolve_due_date
 
 
 class SaleServiceError(Exception):
@@ -149,14 +150,10 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
     payment_channel = normalize_channel(str(intent.get("payment", "cash")))
 
     due_date_raw = intent.get("due_date")
-    due_date: date | None = None
-    if isinstance(due_date_raw, date):
-        due_date = due_date_raw
-    elif isinstance(due_date_raw, str) and due_date_raw:
-        try:
-            due_date = date.fromisoformat(due_date_raw)
-        except ValueError:
-            due_date = None
+
+    due_date = resolve_due_date(
+        due_date_raw
+    )
 
     if quantity <= 0:
         raise SaleServiceError("Quantité invalide.")

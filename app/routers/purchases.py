@@ -117,6 +117,7 @@ def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         status=status,
+        due_date=payload.due_date,
         original_amount=(
             payload.original_amount
             if payload.original_amount is not None

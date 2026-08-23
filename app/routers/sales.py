@@ -101,7 +101,15 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             else unit_price * item.quantity
         )
         total_amount += line_total
-        resolved_items.append((product, item.quantity, unit_price, line_total))
+        resolved_items.append(
+            (
+                product,
+                item.quantity,
+                unit_price,
+                line_total,
+                int(product.purchase_price or 0),
+            )
+        )
 
     paid_amount = payload.paid_amount
     if paid_amount < 0:
@@ -136,7 +144,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     remaining_to_allocate = paid_amount
     created_sale_items: list[SaleItem] = []
 
-    for product, quantity, unit_price, line_total in resolved_items:
+    for product, quantity, unit_price, line_total, unit_cost_snapshot in resolved_items:
         product.stock -= quantity
 
         allocated_amount = min(remaining_to_allocate, line_total)
@@ -154,6 +162,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             product_id=product.id,
             quantity=quantity,
             unit_price=unit_price,
+            unit_cost_snapshot=unit_cost_snapshot,
             line_total=line_total,
             paid_amount=allocated_amount,
             remaining_amount=line_remaining,

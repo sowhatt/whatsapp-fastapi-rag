@@ -44,6 +44,14 @@ def ensure_catalog_schema() -> None:
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS variant VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_price INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS unit_cost_snapshot INTEGER NOT NULL DEFAULT 0",
+        """
+        UPDATE sale_items si
+        SET unit_cost_snapshot = COALESCE(p.purchase_price, 0)
+        FROM products p
+        WHERE p.id = si.product_id
+          AND si.unit_cost_snapshot = 0
+        """,
         "CREATE INDEX IF NOT EXISTS ix_products_category_id ON products(category_id)",
         "CREATE INDEX IF NOT EXISTS ix_products_product_type ON products(product_type)",
         """
@@ -75,6 +83,7 @@ def ensure_catalog_schema() -> None:
         "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS original_amount INTEGER NULL",
         "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS original_currency VARCHAR(3) NOT NULL DEFAULT 'XOF'",
         "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(20,8) NULL",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date DATE NULL",
         "ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",

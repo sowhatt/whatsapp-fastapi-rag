@@ -9,6 +9,22 @@ from sqlalchemy.orm import Session
 
 from app.db.tenant import set_current_merchant
 from app.services.merchant_service import get_or_create_merchant
+from app.services.business_advisor_query_service import (
+    detect_business_advisor_query,
+    handle_business_advisor_query,
+)
+from app.services.adaptive_forecast_query_service import (
+    detect_adaptive_forecast_query,
+    handle_adaptive_forecast_query,
+)
+from app.services.business_forecast_query_service import (
+    detect_business_forecast_query,
+    handle_business_forecast_query,
+)
+from app.services.time_intelligence_query_service import (
+    detect_time_intelligence_query,
+    handle_time_intelligence_query,
+)
 from app.services.shop_name_command import handle_shop_name_request
 from app.models.sale import Sale
 from app.models.customer import Customer
@@ -95,6 +111,21 @@ from app.services.currency_service import (
     looks_like_currency_conversion,
     seed_currencies,
 )
+from app.services.financial_intelligence_service import (
+    get_financial_intelligence,
+    render_financial_intelligence,
+)
+from app.services.financial_queries_service import (
+    detect_financial_query,
+    handle_financial_query,
+)
+from app.services.inventory_queries_service import (
+    detect_inventory_query,
+    extract_replenishment_product,
+    handle_inventory_query,
+    render_product_replenishment,
+)
+from app.services.analytics_service import refresh_analytics
 from app.state.pending_actions import pending_actions
 
 
@@ -183,14 +214,89 @@ def display_channel(value: str) -> str:
 def _format_due_date(value: Any) -> str:
     from datetime import date as _date
 
+    from app.services.due_date_service import (
+        resolve_due_date,
+    )
+
     if isinstance(value, _date):
         return value.strftime("%d/%m/%Y")
+
     if isinstance(value, str):
+        raw = value.strip()
+
+        # Date ISO déjà résolue.
         try:
-            return _date.fromisoformat(value).strftime("%d/%m/%Y")
+            return (
+                _date.fromisoformat(raw)
+                .strftime("%d/%m/%Y")
+            )
         except ValueError:
-            return value
+            pass
+
+        # Expression naturelle :
+        # vendredi, demain, après-demain...
+        resolved = resolve_due_date(raw)
+
+        if resolved is not None:
+            return (
+                f"{raw} "
+                f"{resolved.strftime('%d/%m/%Y')}"
+            )
+
+        return raw
+
     return str(value)
+
+
+def _extract_natural_due_date(
+    text: str,
+) -> str | None:
+    """Extrait une échéance naturelle simple d'une opération."""
+
+    lower = " ".join(
+        str(text or "").lower().split()
+    )
+
+    # Expressions relatives.
+    if re.search(
+        r"\baprès[- ]demain\b|\bapres[- ]demain\b",
+        lower,
+    ):
+        return "après-demain"
+
+    if re.search(
+        r"\bdemain\b",
+        lower,
+    ):
+        return "demain"
+
+    # Jours de la semaine.
+    weekdays = (
+        "lundi",
+        "mardi",
+        "mercredi",
+        "jeudi",
+        "vendredi",
+        "samedi",
+        "dimanche",
+    )
+
+    for weekday in weekdays:
+        if re.search(
+            rf"\b{weekday}\b",
+            lower,
+        ):
+            # On ne considère le jour comme échéance
+            # que dans un contexte futur de paiement.
+            if re.search(
+                rf"(paiera|payera|payerai|paierai|"
+                rf"r[èe]glera|r[èe]glerai|"
+                rf"reste).*\b{weekday}\b",
+                lower,
+            ):
+                return weekday
+
+    return None
 
 
 def _missing_items_warning(action: dict[str, Any], items: list[dict[str, Any]]) -> str | None:
@@ -312,9 +418,53 @@ def build_operation_summary(action: dict[str, Any], *, confirm: bool) -> str:
                 f"Montant : {format_currency(action['amount'])}"
             )
 
-        lines.append(
-            f"Paiement : {display_channel(str(action.get('payment') or 'unknown'))}"
+        paid_amount = int(
+            action.get("paid_amount")
+            or 0
         )
+
+        remaining_amount = int(
+            action.get("remaining")
+            or 0
+        )
+
+        payment_label = display_channel(
+            str(
+                action.get("payment")
+                or "unknown"
+            )
+        )
+
+        if (
+            paid_amount > 0
+            and remaining_amount > 0
+        ):
+            lines.extend(
+                [
+                    f"Déjà payé : {format_currency(paid_amount)}",
+                    f"Reste dû : {format_currency(remaining_amount)}",
+                    f"Paiement effectué : {payment_label}",
+                ]
+            )
+
+        elif remaining_amount > 0:
+            lines.extend(
+                [
+                    f"Reste dû : {format_currency(remaining_amount)}",
+                    f"Paiement : {payment_label}",
+                ]
+            )
+
+        else:
+            lines.append(
+                f"Paiement : {payment_label}"
+            )
+
+        if action.get("due_date"):
+            lines.append(
+                f"Échéance : "
+                f"{_format_due_date(action['due_date'])}"
+            )
     else:
         return "Action détectée. Confirmer ? Réponds oui ou non."
     for warning in action.get("_price_warnings") or []:
@@ -509,10 +659,24 @@ def _extract_due_date_from_text(text: str) -> "date | None":
 def advance_workflow(
     sender_id: str, action: dict[str, Any], db: Session, prefix: str = "", text: str | None = None
 ) -> dict[str, Any]:
-    if text and action.get("type") == "sale" and not action.get("due_date"):
+
+    # Toujours conserver le message ayant déclenché l'opération.
+    # C'est particulièrement important lorsque detect_intent est
+    # simulé dans les tests et ne renvoie pas _original_text.
+    if text:
+        action.setdefault("_original_text", text)
+
+    # Résolution déterministe des échéances historiques.
+    if (
+        text
+        and action.get("type") in {"sale", "purchase"}
+        and not action.get("due_date")
+    ):
         due_date = _extract_due_date_from_text(text)
+
         if due_date:
             action["due_date"] = due_date.isoformat()
+
     action = autofill_amount_from_catalog(action, db)
 
     # Pour un achat en devise étrangère, on garde le montant fournisseur
@@ -530,6 +694,56 @@ def advance_workflow(
                 ),
                 "action": action,
             }
+
+    # SALE/PURCHASE AUTO — résolution déterministe de l'échéance.
+    #
+    # Priorité 1 :
+    # conserver les formats historiques déjà supportés :
+    #
+    #   "échéance dans 15 jours"
+    #   "échéance le 30/08"
+    #   "échéance le 30/08/2026"
+    #
+    # Priorité 2 :
+    # compléter avec les formulations naturelles :
+    #
+    #   "je paierai vendredi"
+    #   "elle paiera demain"
+    #   "le reste après-demain"
+    #
+    # On ne remplace jamais une due_date déjà fournie par l'IntentAgent.
+    if (
+        action.get("type") in {"sale", "purchase"}
+        and not action.get("due_date")
+    ):
+        original_text = str(
+            action.get("_original_text")
+            or ""
+        )
+
+        # Parser historique : retourne directement une date.
+        parsed_due_date = (
+            _extract_due_date_from_text(
+                original_text
+            )
+        )
+
+        if parsed_due_date is not None:
+            action["due_date"] = parsed_due_date
+
+        else:
+            # Extension SALE/PURCHASE-AUTO :
+            # vendredi / demain / après-demain.
+            natural_due_date = (
+                _extract_natural_due_date(
+                    original_text
+                )
+            )
+
+            if natural_due_date:
+                action["due_date"] = (
+                    natural_due_date
+                )
 
     action, question = prepare_missing_field_workflow(action)
     if question:
@@ -705,6 +919,12 @@ def _detect_new_operation(
 
     if not action:
         return None
+
+    # L'orchestrateur est la source de vérité du message utilisateur.
+    # Même lorsqu'IntentAgent est simulé dans les tests ou qu'un autre
+    # détecteur ne fournit pas ce champ, on conserve toujours le texte
+    # original ayant déclenché l'opération.
+    action.setdefault("_original_text", text)
 
     if action.get("type") not in {"sale", "purchase"}:
         return None
@@ -1096,7 +1316,76 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         if payment is None:
             return {"status": "reply", "reply_text": "Cash, crédit, Moov ou MTN ?", "action": pending}
         pending["payment"] = payment
-        pending["remaining"] = int(pending["amount"]) if pending["type"] == "sale" and payment == "credit" else 0
+
+        total_amount = int(
+            pending.get("amount")
+            or 0
+        )
+
+        intent_paid_amount = pending.get(
+            "paid_amount"
+        )
+
+        intent_remaining = pending.get(
+            "remaining"
+        )
+
+        if intent_paid_amount is not None:
+            paid_amount = int(
+                intent_paid_amount
+            )
+
+            if paid_amount < 0:
+                paid_amount = 0
+
+            if paid_amount > total_amount:
+                paid_amount = total_amount
+
+            pending["paid_amount"] = (
+                paid_amount
+            )
+            pending["remaining"] = (
+                total_amount
+                - paid_amount
+            )
+
+        elif (
+            intent_remaining is not None
+            and int(intent_remaining) > 0
+            and int(intent_remaining) < total_amount
+        ):
+            # SALE-AUTO / PURCHASE-AUTO :
+            # le moteur a compris le reste dû mais
+            # n'a pas fourni explicitement paid_amount.
+            #
+            # On déduit alors le montant déjà versé :
+            #
+            # paid = total - remaining
+            remaining_amount = int(
+                intent_remaining
+            )
+
+            pending["remaining"] = (
+                remaining_amount
+            )
+
+            pending["paid_amount"] = (
+                total_amount
+                - remaining_amount
+            )
+
+        elif payment == "credit":
+            pending["paid_amount"] = 0
+            pending["remaining"] = (
+                total_amount
+            )
+
+        else:
+            pending["paid_amount"] = (
+                total_amount
+            )
+            pending["remaining"] = 0
+
         pending.pop("_awaiting", None)
         set_pending_action(sender_id, pending)
         return {"status": "reply", "reply_text": build_confirmation_message(pending), "action": pending}
@@ -1122,6 +1411,297 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             return {"status": "reply", "reply_text": f"❌ Impossible d’enregistrer l’action : {exc}", "action": pending}
         pending_actions.pop(sender_id, None)
         return {"status": "reply", "reply_text": reply, "action": None}
+
+    # BI-01.4 V2.3.4 — Business Advisor.
+    #
+    # Croise Finance + Forecast + Stock +
+    # Réapprovisionnement pour produire
+    # des recommandations actionnables.
+    advisor_query = detect_business_advisor_query(text)
+
+    if advisor_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_business_advisor_query(
+                query_type=advisor_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "BUSINESS ADVISOR ERROR:",
+                advisor_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible de générer "
+                    "le conseil business pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 V2.3.3 — Adaptive Forecast.
+    #
+    # Prévision avancée :
+    # tendances 7/14/30 jours,
+    # volatilité et scénarios.
+    adaptive_forecast_query = (
+        detect_adaptive_forecast_query(text)
+    )
+
+    if adaptive_forecast_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_adaptive_forecast_query(
+                query_type=adaptive_forecast_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "ADAPTIVE FORECAST ERROR:",
+                adaptive_forecast_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible de calculer "
+                    "la prévision intelligente "
+                    "pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 V2.3.2 — Business Forecast.
+    #
+    # Exemples :
+    # "prévision fin de mois"
+    # "combien vais-je vendre ce mois ?"
+    # "quelle sera ma marge fin de mois ?"
+    forecast_query = detect_business_forecast_query(text)
+
+    if forecast_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_business_forecast_query(
+                query_type=forecast_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "BUSINESS FORECAST ERROR:",
+                forecast_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible de calculer "
+                    "la prévision pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 V2.3 — Time Intelligence.
+    #
+    # Exemples :
+    # "compare ce mois au mois dernier"
+    # "mes ventes augmentent-elles ?"
+    # "compare cette semaine à la semaine dernière"
+    time_query = detect_time_intelligence_query(text)
+
+    if time_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_time_intelligence_query(
+                query_type=time_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "TIME INTELLIGENCE ERROR:",
+                time_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible de comparer "
+                    "les périodes pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 V2.2 — Forecast ciblé par produit.
+    #
+    # Exemple :
+    # "combien de riz dois-je commander ?"
+    replenishment_product = extract_replenishment_product(text)
+
+    if replenishment_product:
+        try:
+            refresh_analytics(db)
+
+            reply = render_product_replenishment(
+                product_name=replenishment_product,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "REPLENISHMENT FORECAST ERROR:",
+                replenishment_product,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible de calculer le "
+                    "réapprovisionnement pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 V2.1 — Inventory Intelligence.
+    #
+    # Prioritaire sur stock_view/catalogue :
+    # "rotation de mon stock" est une analyse BI,
+    # pas une simple consultation du stock.
+    inventory_query = detect_inventory_query(text)
+
+    if inventory_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_inventory_query(
+                query_type=inventory_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "INVENTORY INTELLIGENCE ERROR:",
+                inventory_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible d'analyser le stock "
+                    "pour le moment."
+                ),
+                "action": None,
+            }
+
+    # BI-01.4 — questions financières spécialisées.
+    #
+    # Ce bloc doit rester AVANT detect_business_intent :
+    # "mes achats au Nigeria" contient le mot "achat" et serait sinon
+    # interprété comme une nouvelle opération d'achat.
+    financial_query = detect_financial_query(text)
+
+    if financial_query:
+        try:
+            refresh_analytics(db)
+
+            reply = handle_financial_query(
+                query_type=financial_query,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "FINANCIAL QUERY ERROR:",
+                financial_query,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible d'analyser cette donnée "
+                    "financière pour le moment."
+                ),
+                "action": None,
+            }
 
     business_intent = detect_business_intent(text)
 
@@ -1151,6 +1731,45 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "reply_text": summary_reply,
             "action": None,
         }
+
+    if business_intent == "financial_intelligence":
+        try:
+            # BI-01 V1 :
+            # on rafraîchit les vues à la demande pour garantir que
+            # l'analyse reflète les dernières opérations.
+            #
+            # À grande échelle ce refresh sera déplacé vers un worker
+            # asynchrone / scheduler.
+            refresh_analytics(db)
+
+            intelligence = get_financial_intelligence(
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": render_financial_intelligence(
+                    intelligence
+                ),
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+            print(
+                "FINANCIAL INTELLIGENCE ERROR:",
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ L’analyse financière est temporairement "
+                    "indisponible. Réessaie dans un instant."
+                ),
+                "action": None,
+            }
 
     if business_intent == "sale_create":
         # Un choix de menu ou une commande courte ouvre le formulaire.

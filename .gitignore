@@ -8,3 +8,8 @@ __pycache__/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Local database backups and script cache
+*.dump
+before_merchant_merge.sql
+scripts/__pycache__/

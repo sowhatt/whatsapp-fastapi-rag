@@ -8,6 +8,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.schemas.purchase import PurchaseCreate, PurchaseItemCreate
 from app.services.sales_service import _allocate_total, find_product_by_name
+from app.services.due_date_service import resolve_due_date
 
 
 class PurchaseServiceError(Exception):
@@ -31,6 +32,7 @@ class ResolvedPurchase:
     paid_amount: int
     remaining_amount: int
     payment_channel: str
+    due_date: object | None = None
     original_amount: int | None = None
     original_currency: str = "XOF"
     exchange_rate: Decimal | None = None
@@ -48,16 +50,38 @@ class ResolvedPurchase:
 
 
 def normalize_channel(value: str) -> str:
-    lower = value.lower()
+    lower = str(value or "").strip().lower()
+
+    if lower in {
+        "",
+        "unknown",
+        "inconnu",
+        "non précisé",
+        "non precise",
+    }:
+        return "unknown"
+
     if "moov" in lower:
         return "moov_money"
+
     if "mtn" in lower or "momo" in lower:
         return "mtn_momo"
+
     if "bank" in lower or "banque" in lower or "virement" in lower:
         return "bank"
+
     if "credit" in lower or "crédit" in lower or "dette" in lower:
         return "credit"
-    return "cash"
+
+    if (
+        "cash" in lower
+        or "espèce" in lower
+        or "espece" in lower
+        or "comptant" in lower
+    ):
+        return "cash"
+
+    return "unknown"
 
 
 def find_supplier_by_name(name: str, db: Session) -> Supplier:
@@ -77,7 +101,9 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
         raise PurchaseServiceError("Montant invalide.")
 
     supplier = find_supplier_by_name(str(intent["supplier"]), db)
-    payment_channel = normalize_channel(str(intent.get("payment") or "cash"))
+    payment_channel = normalize_channel(
+        str(intent.get("payment") or "unknown")
+    )
 
     raw_items = [
         dict(entry)
@@ -126,8 +152,28 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
                 resolved_products, line_totals
             )
         ]
-        paid_amount = 0 if payment_channel == "credit" else total_amount
-        remaining_amount = total_amount - paid_amount
+        intent_paid_amount = intent.get("paid_amount")
+
+        if intent_paid_amount is not None:
+            paid_amount = int(intent_paid_amount)
+        elif payment_channel == "credit":
+            paid_amount = 0
+        else:
+            paid_amount = total_amount
+
+        if paid_amount < 0:
+            raise PurchaseServiceError(
+                "Montant payé invalide."
+            )
+
+        if paid_amount > total_amount:
+            raise PurchaseServiceError(
+                "Le montant payé dépasse le montant total."
+            )
+
+        remaining_amount = (
+            total_amount - paid_amount
+        )
         return ResolvedPurchase(
             supplier=supplier,
             product=lines[0].product,
@@ -137,6 +183,9 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
             paid_amount=paid_amount,
             remaining_amount=remaining_amount,
             payment_channel=payment_channel,
+            due_date=resolve_due_date(
+                intent.get("due_date")
+            ),
             original_amount=int(intent.get("original_amount") or total_amount),
             original_currency=str(
                 intent.get("original_currency")
@@ -155,8 +204,41 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
         raise PurchaseServiceError("Quantité invalide.")
 
     product = find_product_by_name(str(intent["product"]), db)
-    paid_amount = 0 if payment_channel == "credit" else total_amount
-    remaining_amount = total_amount - paid_amount
+
+    intent_paid_amount = intent.get("paid_amount")
+
+    if intent_paid_amount is not None:
+        paid_amount = int(intent_paid_amount)
+
+    elif payment_channel == "credit":
+        paid_amount = 0
+
+    elif payment_channel in {
+        "cash",
+        "moov_money",
+        "mtn_momo",
+        "bank",
+    }:
+        paid_amount = total_amount
+
+    else:
+        # Canal inconnu + aucun montant payé explicitement :
+        # ne jamais inventer un paiement complet.
+        paid_amount = 0
+
+    if paid_amount < 0:
+        raise PurchaseServiceError(
+            "Montant payé invalide."
+        )
+
+    if paid_amount > total_amount:
+        raise PurchaseServiceError(
+            "Le montant payé dépasse le montant total."
+        )
+
+    remaining_amount = (
+        total_amount - paid_amount
+    )
 
     return ResolvedPurchase(
         supplier=supplier,
@@ -167,6 +249,9 @@ def resolve_purchase_intent(intent: dict[str, Any], db: Session) -> ResolvedPurc
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
         payment_channel=payment_channel,
+        due_date=resolve_due_date(
+            intent.get("due_date")
+        ),
         original_amount=int(intent.get("original_amount") or total_amount),
         original_currency=str(
             intent.get("original_currency")
@@ -198,6 +283,7 @@ def build_purchase_create_payload(resolved: ResolvedPurchase) -> PurchaseCreate:
         ],
         paid_amount=resolved.paid_amount,
         payment_channel=resolved.payment_channel,
+        due_date=getattr(resolved, "due_date", None),
         original_amount=resolved.original_amount,
         original_currency=resolved.original_currency,
         exchange_rate=resolved.exchange_rate,

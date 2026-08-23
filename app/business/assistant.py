@@ -18,6 +18,7 @@ Que souhaites-tu faire ?
 8️⃣ Résumé du jour
 9️⃣ Paramètres
 🔟 Calculatrice
+1️⃣1️⃣ Analyse financière
 
 Réponds avec un numéro ou parle naturellement."""
 
@@ -33,6 +34,7 @@ MENU_INTENTS = {
     "8": "daily_summary",
     "9": "settings",
     "10": "calculator",
+    "11": "financial_intelligence",
 }
 
 
@@ -47,6 +49,12 @@ NATURAL_PATTERNS = [
     (r"\b(r[eé]sum[eé]|bilan|total du jour)\b", "daily_summary"),
     (r"\b(param[eè]tre|configuration)\b", "settings"),
     (r"\b(calculatrice|calculette|calculer)\b", "calculator"),
+    (
+        r"\b(analyse financière|analyse financiere|santé financière|"
+        r"sante financiere|performance financière|performance financiere|"
+        r"comment va mon commerce|rentabilité globale|rentabilite globale)\b",
+        "financial_intelligence",
+    ),
 ]
 
 

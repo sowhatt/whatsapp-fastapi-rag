@@ -60,6 +60,7 @@ class AIIntent(BaseModel):
     currency: str | None = None
     paid_amount: int | None = None
     remaining: int | None = None
+    due_date: str | None = None
     payment: PaymentChannel = "unknown"
     channel: PaymentChannel = "unknown"
     category: str | None = None
@@ -208,7 +209,33 @@ Règles impératives :
     cash », « encaisse la table 5 », « solde la table 2 en espèces »,
     « table 4 règle par Mobile Money ». Extrais table et payment (le
     canal de paiement).
-30. Pour tout montant d'achat, détecte la DEVISE explicitement mentionnée.
+30. Pour un achat, distingue toujours le montant TOTAL de l'achat et
+    le montant DÉJÀ PAYÉ au fournisseur.
+
+    Si le commerçant indique avoir déjà versé une partie du montant :
+    - amount = montant total de l'achat ;
+    - paid_amount = montant déjà payé ;
+    - remaining = amount - paid_amount ;
+    - si remaining > 0, il s'agit d'un paiement partiel ;
+    - payment représente uniquement le CANAL réellement indiqué
+      (cash, moov_money, mtn_momo, bank).
+    - si le commerçant donne le montant payé mais ne précise pas le
+      canal, payment="unknown". Ne transforme jamais automatiquement
+      un paiement partiel en cash ou credit.
+
+    Exemple :
+    « J'ai acheté 50 sacs de riz à 45 000 le sac et j'ai donné
+    1 000 000 »
+    ->
+    amount=2250000
+    paid_amount=1000000
+    remaining=1250000
+    payment="unknown".
+
+    Si le commerçant dit qu'il paiera le reste à une date ou un jour,
+    extrais cette information dans due_date.
+    Ne fabrique jamais une date absente.
+31. Pour tout montant d'achat, détecte la DEVISE explicitement mentionnée.
     Normalise obligatoirement ainsi :
     - CFA, FCFA, franc CFA, francs CFA, XOF -> currency="XOF"
     - naira, nairas, naïra, naïras, NGN -> currency="NGN"
@@ -405,14 +432,36 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "purchase":
+        amount = int(data.get("amount") or 0)
+        paid_amount = int(data.get("paid_amount") or 0)
+        payment = data.get("payment") or "unknown"
+
+        remaining = data.get("remaining")
+
+        if remaining is None:
+            if paid_amount > 0:
+                remaining = max(
+                    amount - paid_amount,
+                    0,
+                )
+            elif payment == "credit":
+                remaining = amount
+            else:
+                remaining = 0
+
         action.update(
             supplier=data.get("supplier"),
             product=data.get("product"),
             unit=data.get("unit"),
             quantity=int(data.get("quantity") or 0),
-            amount=int(data.get("amount") or 0),
-            currency=str(data.get("currency") or "XOF").strip().upper(),
-            payment=data.get("payment") or "unknown",
+            amount=amount,
+            paid_amount=paid_amount,
+            remaining=int(remaining or 0),
+            due_date=data.get("due_date"),
+            currency=str(
+                data.get("currency") or "XOF"
+            ).strip().upper(),
+            payment=payment,
         )
         purchase_items: list[dict[str, Any]] = []
         for item in parsed.items:
