@@ -101,3 +101,25 @@ def test_semantic_fallback_is_closed_and_read_only(
     )
 
     assert route == expected
+
+
+def test_voice_transcription_comment_evoluent_ventes():
+    route = detect_read_only_query(
+        "Comment évoluent mes ventes ?"
+    )
+
+    assert route is not None
+    assert route.family == "adaptive_forecast"
+    assert route.query_type == "adaptive_month_forecast"
+    assert route.source == "deterministic"
+
+
+def test_voice_transcription_produits_dorme():
+    route = detect_read_only_query(
+        "Quels produits dorme dans mon stock ?"
+    )
+
+    assert route is not None
+    assert route.family == "inventory"
+    assert route.query_type == "slow_movers"
+    assert route.source == "deterministic"

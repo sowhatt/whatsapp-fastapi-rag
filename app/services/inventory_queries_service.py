@@ -57,7 +57,8 @@ def detect_inventory_query(text: str) -> str | None:
         ),
         (
             r"(produits?|articles?).*"
-            r"(dorment|dormants?|ne (se )?vendent pas|"
+            r"(dorm(?:e|ent|ant|ants|ante|antes)|"
+            r"ne (se )?vendent pas|"
             r"rotation lente|tournent lentement)",
             "slow_movers",
         ),
