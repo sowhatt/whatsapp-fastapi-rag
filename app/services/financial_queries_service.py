@@ -36,6 +36,7 @@ def detect_financial_query(message: str) -> str | None:
         ),
         (
             r"(où est bloqué mon argent|ou est bloque mon argent|"
+            r"où est bloqué mon agent|ou est bloque mon agent|"
             r"argent immobilisé|argent immobilise|"
             r"stock immobilisé|stock immobilise|"
             r"capital immobilisé|capital immobilise)",

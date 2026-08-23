@@ -126,6 +126,10 @@ from app.services.inventory_queries_service import (
     render_product_replenishment,
 )
 from app.services.analytics_service import refresh_analytics
+from app.services.read_only_query_router import (
+    detect_read_only_query,
+    handle_read_only_query,
+)
 from app.state.pending_actions import pending_actions
 
 
@@ -957,6 +961,57 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # à l'étiquetage, l'isolation complète est un chantier séparé.
     merchant = get_or_create_merchant(sender_id, db)
     set_current_merchant(db, merchant.id)
+
+    # Routeur analytique central en lecture seule.
+    #
+    # Il est volontairement exécuté avant les raccourcis génériques
+    # « mes ventes », « mon stock » et avant la consommation d'une
+    # réponse de workflow en attente. Une question BI ne modifie
+    # aucune donnée et ne doit jamais être transformée en vente,
+    # achat ou nom de client.
+    read_only_route = detect_read_only_query(text)
+
+    if read_only_route is not None:
+        try:
+            reply = handle_read_only_query(
+                route=read_only_route,
+                merchant_id=merchant.id,
+                db=db,
+            )
+
+            print(
+                "READ-ONLY QUERY ROUTER:",
+                {
+                    "family": read_only_route.family,
+                    "query_type": read_only_route.query_type,
+                    "source": read_only_route.source,
+                    "confidence": read_only_route.confidence,
+                },
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": reply,
+                "action": None,
+            }
+
+        except Exception as exc:
+            db.rollback()
+
+            print(
+                "READ-ONLY QUERY ERROR:",
+                read_only_route,
+                str(exc),
+            )
+
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible d'analyser cette demande "
+                    "pour le moment."
+                ),
+                "action": None,
+            }
 
     # Nom de la boutique : détection déterministe (pas d'IA), écrite
     # et confirmée immédiatement — valeur unique à faible risque, pas

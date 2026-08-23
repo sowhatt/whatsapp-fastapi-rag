@@ -63,7 +63,7 @@ def detect_inventory_query(text: str) -> str | None:
         ),
         (
             r"(produits?|articles?).*"
-            r"(rupture|risquent.*rupture|bient[oô]t fini|"
+            r"(rupture|risqu(?:e|ent).*rupture|bient[oô]t fini|"
             r"bient[oô]t épuisé|bient[oô]t epuise)",
             "stockout_risk",
         ),
