@@ -13,3 +13,6 @@ __pycache__/
 *.dump
 before_merchant_merge.sql
 scripts/__pycache__/
+
+# One-off production data migration
+scripts/merge_legacy_merchant.py
