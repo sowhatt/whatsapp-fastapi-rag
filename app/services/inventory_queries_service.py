@@ -196,7 +196,9 @@ def handle_inventory_query(
             "",
         ]
 
-        for item in items[:10]:
+        displayed_items = items[:5]
+
+        for item in displayed_items:
             if item.days_of_cover is None:
                 cover = "aucune vente sur 30 jours"
             else:
@@ -208,6 +210,15 @@ def handle_inventory_query(
                 f"• {item.product_name} : "
                 f"{_money(item.stock_value)} — {cover}"
             )
+
+        remaining_count = len(items) - len(displayed_items)
+
+        if remaining_count > 0:
+            lines.extend([
+                "",
+                f"ℹ️ {remaining_count} autre(s) produit(s) "
+                "à rotation lente.",
+            ])
 
         return "\n".join(lines)
 

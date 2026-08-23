@@ -173,6 +173,33 @@ def _metric_forecast(
     )
 
 
+def _forecast_confidence(
+    *,
+    history_days: int,
+    revenue_volatility_pct: float,
+    margin_volatility_pct: float,
+) -> str:
+    if history_days >= 45:
+        confidence = "bonne"
+    elif history_days >= 20:
+        confidence = "moyenne"
+    else:
+        confidence = "faible"
+
+    maximum_volatility = max(
+        revenue_volatility_pct,
+        margin_volatility_pct,
+    )
+
+    if maximum_volatility >= 100:
+        return "faible"
+
+    if maximum_volatility >= 60 and confidence == "bonne":
+        return "moyenne"
+
+    return confidence
+
+
 def build_adaptive_month_forecast(
     *,
     merchant_id: int,
@@ -327,14 +354,11 @@ def build_adaptive_month_forecast(
 
     history_days = len(rows)
 
-    if history_days >= 45:
-        confidence = "bonne"
-
-    elif history_days >= 20:
-        confidence = "moyenne"
-
-    else:
-        confidence = "faible"
+    confidence = _forecast_confidence(
+        history_days=history_days,
+        revenue_volatility_pct=revenue.volatility_pct,
+        margin_volatility_pct=margin.volatility_pct,
+    )
 
     return AdaptiveBusinessForecast(
         merchant_id=merchant_id,

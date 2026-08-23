@@ -306,6 +306,8 @@ def _render_change(
 
 def render_time_comparison(
     result: TimeComparison,
+    *,
+    include_purchases: bool = True,
 ) -> str:
 
     lines = [
@@ -327,13 +329,17 @@ def render_time_comparison(
         f"Précédente : "
         f"{result.margin.previous:,} FCFA".replace(",", " "),
         _render_change(result.margin),
-        "",
-        "💸 Achats",
-        f"Actuels : "
-        f"{result.purchases.current:,} FCFA".replace(",", " "),
-        f"Précédents : "
-        f"{result.purchases.previous:,} FCFA".replace(",", " "),
-        _render_change(result.purchases),
     ]
+
+    if include_purchases:
+        lines.extend([
+            "",
+            "💸 Achats",
+            f"Actuels : "
+            f"{result.purchases.current:,} FCFA".replace(",", " "),
+            f"Précédents : "
+            f"{result.purchases.previous:,} FCFA".replace(",", " "),
+            _render_change(result.purchases),
+        ])
 
     return "\n".join(lines)

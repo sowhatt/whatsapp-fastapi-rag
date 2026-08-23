@@ -977,6 +977,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 route=read_only_route,
                 merchant_id=merchant.id,
                 db=db,
+                original_text=text,
             )
 
             print(

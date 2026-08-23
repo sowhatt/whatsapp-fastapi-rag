@@ -292,6 +292,7 @@ def handle_read_only_query(
     route: ReadOnlyQueryRoute,
     merchant_id: int,
     db: Session,
+    original_text: str | None = None,
 ) -> str:
     refresh_analytics(db)
 
@@ -328,6 +329,7 @@ def handle_read_only_query(
             query_type=route.query_type,
             merchant_id=merchant_id,
             db=db,
+            original_text=original_text,
         )
 
     if route.family == "advisor":

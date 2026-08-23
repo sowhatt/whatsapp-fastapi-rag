@@ -54,7 +54,23 @@ def handle_time_intelligence_query(
     query_type: str,
     merchant_id: int,
     db: Session,
+    original_text: str | None = None,
 ) -> str:
+    value = " ".join(
+        (original_text or "").lower().split()
+    )
+
+    sales_only = bool(
+        re.search(
+            r"\b(ventes?|chiffre d.affaires|ca|marge)\b",
+            value,
+        )
+    ) and not bool(
+        re.search(
+            r"\b(activité|activite|commerce|global|tout)\b",
+            value,
+        )
+    )
 
     if query_type == "month_comparison":
         result = build_month_comparison(
@@ -63,7 +79,8 @@ def handle_time_intelligence_query(
         )
 
         return render_time_comparison(
-            result
+            result,
+            include_purchases=not sales_only,
         )
 
     if query_type == "week_comparison":
@@ -73,7 +90,8 @@ def handle_time_intelligence_query(
         )
 
         return render_time_comparison(
-            result
+            result,
+            include_purchases=not sales_only,
         )
 
     return (

@@ -358,7 +358,7 @@ def render_business_advisor(
     lines = [
         "🧠 Conseiller Business Whatzabi",
         "",
-        "📊 Situation",
+        "📊 Situation cumulée — historique enregistré",
         (
             "CA : "
             f"{_money(result.revenue)}"
@@ -373,7 +373,7 @@ def render_business_advisor(
             f"{_money(result.stock_value)}"
         ),
         "",
-        "🔮 Projection",
+        "🔮 Projection — fin du mois en cours",
         (
             "CA fin de mois : "
             f"{_money(result.forecast_revenue)}"
