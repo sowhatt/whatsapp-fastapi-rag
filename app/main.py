@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -21,6 +21,7 @@ from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
 from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
+from app.security import require_admin_token
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
@@ -335,21 +336,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Routes publiques indispensables.
 app.include_router(health_router)
-app.include_router(categories_router)
-app.include_router(products_router)
-app.include_router(customers_router)
-app.include_router(sales_router)
-app.include_router(payments_router)
-app.include_router(suppliers_router)
-app.include_router(purchases_router)
-app.include_router(supplier_payments_router)
-app.include_router(financial_entries_router)
-app.include_router(summaries_router)
-app.include_router(customers_ledger_router)
-app.include_router(suppliers_ledger_router)
-app.include_router(allocations_router)
 app.include_router(whatsapp_webhook_router)
-app.include_router(whatsapp_send_router)
-app.include_router(debug_env_router)
-app.include_router(admin_router)
+
+# Routes internes : accessibles uniquement avec X-Admin-Token.
+_internal_routers = (
+    categories_router,
+    products_router,
+    customers_router,
+    sales_router,
+    payments_router,
+    suppliers_router,
+    purchases_router,
+    supplier_payments_router,
+    financial_entries_router,
+    summaries_router,
+    customers_ledger_router,
+    suppliers_ledger_router,
+    allocations_router,
+    whatsapp_send_router,
+    debug_env_router,
+    admin_router,
+)
+
+for internal_router in _internal_routers:
+    app.include_router(
+        internal_router,
+        dependencies=[Depends(require_admin_token)],
+    )
