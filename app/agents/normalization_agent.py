@@ -1,6 +1,9 @@
+import os
 import re
+import time
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
+from threading import Lock
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +30,43 @@ STATIC_REPLACEMENTS = {
     "franc cfa": "FCFA",
     "francs cfa": "FCFA",
 }
+
+# Cache très court utilisé uniquement pour le vocabulaire de
+# transcription et la normalisation phonétique.
+#
+# La clé contient obligatoirement merchant_id : aucun catalogue
+# ne peut être partagé entre deux commerçants.
+_catalog_ttl_cache: dict[
+    int,
+    tuple[float, dict[str, list[str]]],
+] = {}
+_catalog_ttl_cache_lock = Lock()
+
+
+def _catalog_cache_ttl_seconds() -> float:
+    raw = os.getenv(
+        "CATALOG_VOCABULARY_CACHE_TTL_SECONDS",
+        "30",
+    )
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return 30.0
+
+
+def clear_catalog_values_cache(
+    merchant_id: int | None = None,
+) -> None:
+    """Vide le cache complet ou celui d'un commerçant."""
+    with _catalog_ttl_cache_lock:
+        if merchant_id is None:
+            _catalog_ttl_cache.clear()
+        else:
+            _catalog_ttl_cache.pop(
+                int(merchant_id),
+                None,
+            )
+
 
 COMMON_ENTITY_ALIASES = {
     "avoir": "Awa",
@@ -71,6 +111,27 @@ def _catalog_values(db: Session) -> dict[str, list[str]]:
         if isinstance(cached, dict):
             return cached
 
+    # Cache inter-requêtes court, exclusivement disponible lorsque
+    # le tenant est déjà résolu.
+    if merchant_id is not None:
+        now = time.monotonic()
+        ttl = _catalog_cache_ttl_seconds()
+
+        with _catalog_ttl_cache_lock:
+            cached_entry = _catalog_ttl_cache.get(
+                int(merchant_id)
+            )
+
+        if cached_entry is not None:
+            cached_at, cached_values = cached_entry
+
+            if now - cached_at <= ttl:
+                if isinstance(session_info, dict):
+                    session_info[cache_key] = (
+                        cached_values
+                    )
+                return cached_values
+
     values = {
         "customer": [
             row[0]
@@ -96,6 +157,13 @@ def _catalog_values(db: Session) -> dict[str, list[str]]:
 
     if isinstance(session_info, dict):
         session_info[cache_key] = values
+
+    if merchant_id is not None:
+        with _catalog_ttl_cache_lock:
+            _catalog_ttl_cache[int(merchant_id)] = (
+                time.monotonic(),
+                values,
+            )
 
     return values
 
