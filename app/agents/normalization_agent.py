@@ -5,6 +5,7 @@ from difflib import SequenceMatcher
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
+from app.db.tenant import get_current_merchant
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.product import Product
@@ -58,7 +59,11 @@ def _catalog_values(db: Session) -> dict[str, list[str]]:
     pour un message. Ce cache évite donc quatre requêtes répétées tout en
     restant naturellement isolé par requête et par commerçant.
     """
-    cache_key = "_whatzabi_catalog_values"
+    merchant_id = get_current_merchant(db)
+    cache_key = (
+        "_whatzabi_catalog_values",
+        merchant_id,
+    )
     session_info = getattr(db, "info", None)
 
     if isinstance(session_info, dict):

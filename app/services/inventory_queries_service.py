@@ -74,6 +74,19 @@ def detect_inventory_query(text: str) -> str | None:
             r"se vendent le plus vite)",
             "fast_movers",
         ),
+        # PERF-03 : inventaire explicite sans routeur IA.
+        # Placé après les règles rotation lente, rupture et rotation
+        # rapide afin de conserver leur priorité.
+        (
+            r"(quel(?:s|le|les)?|liste|montre).*"
+            r"(produits?|articles?).*"
+            r"(ai-je|j'ai|avons-nous|avons).*stock|"
+            r"(liste|montre).*"
+            r"(produits?|articles?).*dans.*stock|"
+            r"(quel|combien).*stock.*"
+            r"(reste|disponible)",
+            "inventory_overview",
+        ),
         (
             r"(que|quoi).*(recommander|réapprovisionner|"
             r"reapprovisionner|racheter)|"
