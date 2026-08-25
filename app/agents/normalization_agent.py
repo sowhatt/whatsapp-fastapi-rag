@@ -51,12 +51,48 @@ def _replace_phrase(text: str, source: str, target: str) -> tuple[str, bool]:
 
 
 def _catalog_values(db: Session) -> dict[str, list[str]]:
-    return {
-        "customer": [row[0] for row in db.query(Customer.name).all() if row[0]],
-        "supplier": [row[0] for row in db.query(Supplier.name).all() if row[0]],
-        "product": [row[0] for row in db.query(Product.name).all() if row[0]],
-        "category": [row[0] for row in db.query(Category.name).all() if row[0]],
+    """
+    Charge les noms métier une seule fois par session SQL.
+
+    Le webhook audio et l'agent de normalisation utilisent la même session
+    pour un message. Ce cache évite donc quatre requêtes répétées tout en
+    restant naturellement isolé par requête et par commerçant.
+    """
+    cache_key = "_whatzabi_catalog_values"
+    session_info = getattr(db, "info", None)
+
+    if isinstance(session_info, dict):
+        cached = session_info.get(cache_key)
+        if isinstance(cached, dict):
+            return cached
+
+    values = {
+        "customer": [
+            row[0]
+            for row in db.query(Customer.name).all()
+            if row[0]
+        ],
+        "supplier": [
+            row[0]
+            for row in db.query(Supplier.name).all()
+            if row[0]
+        ],
+        "product": [
+            row[0]
+            for row in db.query(Product.name).all()
+            if row[0]
+        ],
+        "category": [
+            row[0]
+            for row in db.query(Category.name).all()
+            if row[0]
+        ],
     }
+
+    if isinstance(session_info, dict):
+        session_info[cache_key] = values
+
+    return values
 
 
 def _candidate_phrases(text: str, max_words: int = 4) -> list[str]:

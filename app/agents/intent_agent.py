@@ -251,6 +251,53 @@ class IntentAgentError(Exception):
     pass
 
 
+_intent_client: OpenAI | None = None
+_intent_client_api_key: str | None = None
+_intent_client_factory_id: int | None = None
+
+
+def _get_intent_client(api_key: str) -> OpenAI:
+    """
+    Réutilise le client HTTP OpenAI entre les messages.
+
+    La clé et l'identité de la factory sont contrôlées afin de rester
+    compatibles avec les changements de configuration et les mocks de tests.
+    """
+    global _intent_client
+    global _intent_client_api_key
+    global _intent_client_factory_id
+
+    factory_id = id(OpenAI)
+
+    if (
+        _intent_client is None
+        or _intent_client_api_key != api_key
+        or _intent_client_factory_id != factory_id
+    ):
+        timeout = float(
+            os.getenv(
+                "OPENAI_INTENT_TIMEOUT_SECONDS",
+                "10",
+            )
+        )
+        max_retries = int(
+            os.getenv(
+                "OPENAI_INTENT_MAX_RETRIES",
+                "0",
+            )
+        )
+
+        _intent_client = OpenAI(
+            api_key=api_key,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        _intent_client_api_key = api_key
+        _intent_client_factory_id = factory_id
+
+    return _intent_client
+
+
 def _clean_name(value: str | None) -> str | None:
     if not value:
         return None
@@ -739,7 +786,7 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
     minimum_confidence = float(os.getenv("OPENAI_INTENT_MIN_CONFIDENCE", "0.65"))
 
     try:
-        client = OpenAI(api_key=api_key)
+        client = _get_intent_client(api_key)
         _t0 = time.monotonic()
         parsed = _call_ai(client, model, text)
         _t1 = time.monotonic()
@@ -774,6 +821,9 @@ def parse_with_ai(text: str) -> dict[str, Any] | None:
                 "retry_triggered": retry_triggered,
                 "retry_call_s": round(_t2 - _t1, 2) if retry_triggered else 0.0,
                 "total_s": round(_t2 - _t0, 2),
+                "model": model,
+                "input_chars": len(text),
+                "system_prompt_chars": len(SYSTEM_PROMPT),
             },
         )
     except Exception as exc:
