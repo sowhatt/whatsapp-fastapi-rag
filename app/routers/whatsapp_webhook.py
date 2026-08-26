@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.tenant import set_current_merchant
-from app.services.merchant_service import get_or_create_merchant
+from app.services.merchant_service import (
+    MerchantAccessError,
+    resolve_authorized_merchant,
+)
 from app.services.message_orchestrator import process_incoming_message
 from app.services.voice_transcriber import (
     VoiceTranscriptionError,
@@ -81,14 +84,28 @@ async def receive_whatsapp_webhook(
                         continue
 
                     # PERF-03 : tenant résolu avant le catalogue audio.
-                    merchant = get_or_create_merchant(
-                        from_number,
-                        db,
-                    )
-                    set_current_merchant(
-                        db,
-                        merchant.id,
-                    )
+                    try:
+                        merchant = resolve_authorized_merchant(
+                            from_number,
+                            db,
+                        )
+                        set_current_merchant(
+                            db,
+                            merchant.id,
+                        )
+                    except MerchantAccessError as access_error:
+                        print(
+                            "SAAS ACCESS BLOCKED:",
+                            {
+                                "sender_suffix": from_number[-4:],
+                                "reason": access_error.code,
+                            },
+                        )
+                        send_whatsapp_text_message(
+                            from_number,
+                            access_error.user_message,
+                        )
+                        continue
 
                     text_body = None
 

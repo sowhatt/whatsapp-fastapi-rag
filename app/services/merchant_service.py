@@ -3,6 +3,112 @@ from sqlalchemy.orm import Session
 from app.models.merchant import Merchant
 
 
+
+ALLOWED_SUBSCRIPTION_STATUSES = {
+    "pilot",
+    "trialing",
+    "active",
+    "grace",
+}
+
+
+class MerchantAccessError(Exception):
+    def __init__(
+        self,
+        code: str,
+        user_message: str,
+    ) -> None:
+        super().__init__(code)
+        self.code = code
+        self.user_message = user_message
+
+
+def resolve_authorized_merchant(
+    whatsapp_number: str,
+    db: Session,
+) -> Merchant:
+    """
+    Résout un commerçant déjà autorisé.
+
+    Cette fonction ne crée jamais automatiquement de compte.
+    Un numéro inconnu ou un abonnement inactif est bloqué avant
+    la transcription audio et avant tout appel à l'IA.
+    """
+    from datetime import datetime, timezone
+
+    normalized = whatsapp_number.strip()
+
+    merchant = (
+        db.query(Merchant)
+        .filter(Merchant.whatsapp_number == normalized)
+        .first()
+    )
+
+    if merchant is None:
+        raise MerchantAccessError(
+            "unknown_number",
+            (
+                "🔒 Ton numéro n'est pas encore activé sur "
+                "Whatzabi.\n\n"
+                "Contacte l'administrateur pour créer ou "
+                "activer ton commerce."
+            ),
+        )
+
+    status = str(
+        getattr(
+            merchant,
+            "subscription_status",
+            "",
+        )
+        or ""
+    ).strip().casefold()
+
+    if status not in ALLOWED_SUBSCRIPTION_STATUSES:
+        raise MerchantAccessError(
+            "inactive_subscription",
+            (
+                "⛔ Ton abonnement Whatzabi n'est pas actif.\n\n"
+                "Contacte l'administrateur pour régulariser "
+                "ton abonnement."
+            ),
+        )
+
+    ends_at = getattr(
+        merchant,
+        "subscription_ends_at",
+        None,
+    )
+
+    if ends_at is not None:
+        # PostgreSQL retourne actuellement un TIMESTAMP sans
+        # fuseau. Dans ce cas, on compare deux dates locales
+        # naïves. Si une future migration utilise une date avec
+        # fuseau, la comparaison est effectuée en UTC.
+        if ends_at.tzinfo is None:
+            now_for_comparison = datetime.now()
+        else:
+            now_for_comparison = datetime.now(
+                timezone.utc,
+            )
+
+        if ends_at < now_for_comparison:
+            raise MerchantAccessError(
+                "expired_subscription",
+                (
+                    "⏳ Ton abonnement Whatzabi a expiré.\n\n"
+                    "Contacte l'administrateur pour le "
+                    "renouveler."
+                ),
+            )
+
+    # Le cache reste limité à la session SQLAlchemy courante.
+    db.info["resolved_merchant"] = merchant
+    db.info["resolved_merchant_number"] = normalized
+
+    return merchant
+
+
 def get_or_create_merchant(
     whatsapp_number: str,
     db: Session,

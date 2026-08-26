@@ -75,6 +75,36 @@ def ensure_catalog_schema() -> None:
             created_at TIMESTAMP DEFAULT NOW()
         )
         """,
+        """
+        ALTER TABLE merchants
+        ADD COLUMN IF NOT EXISTS
+        subscription_status VARCHAR(20)
+        """,
+        """
+        UPDATE merchants
+        SET subscription_status = 'pilot'
+        WHERE subscription_status IS NULL
+        """,
+        """
+        ALTER TABLE merchants
+        ALTER COLUMN subscription_status
+        SET DEFAULT 'pilot'
+        """,
+        """
+        ALTER TABLE merchants
+        ALTER COLUMN subscription_status
+        SET NOT NULL
+        """,
+        """
+        ALTER TABLE merchants
+        ADD COLUMN IF NOT EXISTS
+        subscription_ends_at TIMESTAMP NULL
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+        ix_merchants_subscription_status
+        ON merchants (subscription_status)
+        """,
         "ALTER TABLE customers ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
