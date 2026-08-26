@@ -99,7 +99,7 @@ def render_receipt(
 
     parts = [
         f"🧾 REÇU — {shop_name}",
-        f"Réf : vente n°{sale.id} · {created.strftime('%d/%m/%Y %H:%M')}",
+        f"Réf : vente n°{sale.reference_number} · {created.strftime('%d/%m/%Y %H:%M')}",
         f"Client : {customer_name}",
         "━━━━━━━━━━━━━━",
     ]
@@ -134,7 +134,7 @@ def handle_receipt_request(text: str, db: Session) -> str:
     if reference is not None:
         sale = (
             db.query(Sale)
-            .filter(Sale.id == reference, Sale.status != "cancelled")
+            .filter(Sale.reference_number == reference, Sale.status != "cancelled")
             .first()
         )
         if not sale:

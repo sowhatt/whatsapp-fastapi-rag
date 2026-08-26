@@ -20,6 +20,7 @@ class SaleCreate(BaseModel):
 
 class SaleRead(BaseModel):
     id: int
+    sale_number: int | None = None
     customer_id: int | None
     total_amount: int
     paid_amount: int

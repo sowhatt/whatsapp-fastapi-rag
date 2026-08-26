@@ -351,6 +351,39 @@ def ensure_catalog_schema() -> None:
             END IF;
         END $$
         """,
+        """
+        ALTER TABLE sales
+        ADD COLUMN IF NOT EXISTS sale_number INTEGER NULL
+        """,
+        """
+        WITH numbered_sales AS (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY merchant_id
+                    ORDER BY created_at, id
+                ) AS local_number
+            FROM sales
+            WHERE merchant_id IS NOT NULL
+        )
+        UPDATE sales AS target
+        SET sale_number = numbered_sales.local_number
+        FROM numbered_sales
+        WHERE target.id = numbered_sales.id
+          AND target.sale_number IS NULL
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS
+        uq_sales_merchant_sale_number
+        ON sales (merchant_id, sale_number)
+        WHERE merchant_id IS NOT NULL
+          AND sale_number IS NOT NULL
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS
+        ix_sales_merchant_sale_number
+        ON sales (merchant_id, sale_number)
+        """,
         "ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date DATE NULL",
     ]
     with engine.begin() as connection:

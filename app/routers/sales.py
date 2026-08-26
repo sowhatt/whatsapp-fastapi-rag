@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.db.tenant import get_current_merchant
 from app.models.customer import Customer
+from app.models.merchant import Merchant
 from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
@@ -57,6 +60,36 @@ def add_stock_movement(
             note=note,
         )
     )
+
+
+def allocate_sale_number(
+    db: Session,
+    merchant_id: int | None,
+) -> int | None:
+    """
+    Attribue le prochain numéro local.
+
+    Le verrou sur la ligne Merchant sérialise deux ventes simultanées
+    du même commerçant. Deux commerçants différents ne se bloquent
+    pas mutuellement.
+    """
+    if merchant_id is None:
+        return None
+
+    (
+        db.query(Merchant.id)
+        .filter(Merchant.id == merchant_id)
+        .with_for_update()
+        .one()
+    )
+
+    current_max = (
+        db.query(func.max(Sale.sale_number))
+        .filter(Sale.merchant_id == merchant_id)
+        .scalar()
+    )
+
+    return int(current_max or 0) + 1
 
 
 @router.get("/sales", response_model=list[SaleRead])
@@ -130,7 +163,17 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     else:
         status = "partial"
 
+    merchant_id = (
+        get_current_merchant(db)
+        or getattr(customer, "merchant_id", None)
+    )
+
     sale = Sale(
+        merchant_id=merchant_id,
+        sale_number=allocate_sale_number(
+            db,
+            merchant_id,
+        ),
         customer_id=payload.customer_id,
         total_amount=total_amount,
         paid_amount=paid_amount,

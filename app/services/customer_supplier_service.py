@@ -107,7 +107,7 @@ def render_customer_detail(name: str, db: Session) -> str:
         lines.append(f"Ventes avec dette ({len(unpaid_sales)}) :")
         for sale in unpaid_sales:
             date_label = sale.created_at.strftime("%d/%m/%Y") if sale.created_at else "?"
-            ligne = f"🔴 #{sale.id} du {date_label} — dû : {_format_currency(sale.remaining_amount)}"
+            ligne = f"🔴 #{sale.reference_number} du {date_label} — dû : {_format_currency(sale.remaining_amount)}"
             if sale.due_date:
                 echeance_label = sale.due_date.strftime("%d/%m/%Y")
                 if sale.due_date < _date.today():

@@ -111,7 +111,7 @@ def render_sale_detail(sale_id: int, db: Session) -> str:
     qui ne montre qu'un résumé des ventes récentes). Utile pour
     revoir le détail avant de décider de l'annuler, par exemple.
     """
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    sale = db.query(Sale).filter(Sale.reference_number == sale_id).first()
     if not sale:
         return f"Vente n°{sale_id} introuvable."
 
@@ -134,7 +134,7 @@ def render_sale_detail(sale_id: int, db: Session) -> str:
         "cancelled": "Annulée",
     }.get(sale.status, sale.status)
 
-    lines = [f"🧾 Vente n°{sale.id}", ""]
+    lines = [f"🧾 Vente n°{sale.reference_number}", ""]
     lines.append(f"Date : {date_label}")
     lines.append(f"Client : {customer_name or 'Non renseigné'}")
     lines.append(f"Statut : {status_label}")
@@ -202,7 +202,7 @@ def _render_chronological(text: str, db: Session, limit: int) -> str:
         icone = "🔴" if (sale.remaining_amount or 0) > 0 else "🟢"
         table_rows.append(
             [
-                f"#{sale.id}",
+                f"#{sale.reference_number}",
                 date_label,
                 (customer_name or "Client")[:12],
                 items_summary[:18],

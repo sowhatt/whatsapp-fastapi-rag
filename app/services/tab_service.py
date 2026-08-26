@@ -149,5 +149,5 @@ def close_tab(
 
     return (
         f"✅ Addition de {table_name} soldée — {_format_currency(tab.total_amount)} ({payment_channel}).\n"
-        f"Référence : vente n°{sale.id}."
+        f"Référence : vente n°{sale.reference_number}."
     )

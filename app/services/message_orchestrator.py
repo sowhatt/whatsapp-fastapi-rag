@@ -575,7 +575,7 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
 
     if action["type"] == "sale":
         item = create_sale_from_intent(action, db, create_sale)
-        message = f"✅ Vente enregistrée. Référence : vente n°{item.id}."
+        message = f"✅ Vente enregistrée. Référence : vente n°{item.reference_number}."
         for warning in low_stock_warnings_for_sale(item.id, db):
             message += "\n\n" + warning
         return message
@@ -623,7 +623,7 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
         except HTTPException as exc:
             db.rollback()
             return f"❌ {exc.detail}"
-        return f"✅ Vente n°{sale.id} annulée. Stock remis, dette corrigée si besoin."
+        return f"✅ Vente n°{sale.reference_number} annulée. Stock remis, dette corrigée si besoin."
     raise ValueError("Type d'action non pris en charge.")
 
 
@@ -1138,7 +1138,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     cancel_match = sale_id is not None
     if cancel_match or cancel_last_match:
         if cancel_match:
-            sale = db.query(Sale).filter(Sale.id == sale_id).first()
+            sale = db.query(Sale).filter(Sale.reference_number == sale_id).first()
         else:
             sale = db.query(Sale).filter(Sale.status != "cancelled").order_by(Sale.created_at.desc()).first()
             sale_id = sale.id if sale else None
@@ -1148,7 +1148,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 return {"status": "reply", "reply_text": f"Vente n°{sale_id} introuvable.", "action": None}
             return {"status": "reply", "reply_text": "Aucune vente à annuler pour l'instant.", "action": None}
         if sale.status == "cancelled":
-            return {"status": "reply", "reply_text": f"La vente n°{sale.id} est déjà annulée.", "action": None}
+            return {"status": "reply", "reply_text": f"La vente n°{sale.reference_number} est déjà annulée.", "action": None}
 
         customer_name = None
         if sale.customer_id:
@@ -1165,7 +1165,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {
             "status": "reply",
             "reply_text": (
-                f"Annuler la vente n°{sale.id}{detail} ({format_currency(sale.total_amount)}) ?\n"
+                f"Annuler la vente n°{sale.reference_number}{detail} ({format_currency(sale.total_amount)}) ?\n"
                 "Le stock sera remis et la dette du client corrigée si besoin.\n\n"
                 "Réponds oui ou non."
             ),
