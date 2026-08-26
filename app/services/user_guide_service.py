@@ -472,6 +472,26 @@ def resolve_guide_section(
 ) -> str | None:
     normalized = _normalize(raw_section)
 
+    # La transcription vocale ajoute fréquemment un article :
+    # « Guide de vente », « Guide du stock » ou
+    # « Guide des analyses ». Ces mots grammaticaux ne
+    # changent pas la rubrique demandée.
+    words = normalized.split()
+
+    while words and words[0] in {
+        "de",
+        "du",
+        "des",
+        "d",
+        "le",
+        "la",
+        "les",
+        "l",
+    }:
+        words.pop(0)
+
+    normalized = " ".join(words)
+
     for section_name, section in (
         GUIDE_SECTIONS.items()
     ):

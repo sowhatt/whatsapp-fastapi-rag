@@ -173,3 +173,125 @@ def test_documented_calculation_is_recognized():
         "Calcule vingt pour cent "
         "de cinquante mille."
     )
+
+
+
+@pytest.mark.parametrize(
+    ("spoken_request", "expected_title"),
+    [
+        ("Guide vente", "🛒 Ventes"),
+        ("Guide de vente", "🛒 Ventes"),
+        ("Guide des ventes", "🛒 Ventes"),
+        ("Guide achat", "📦 Achats"),
+        ("Guide des achats", "📦 Achats"),
+        ("Guide stock", "📦 Stock et catalogue"),
+        ("Guide du stock", "📦 Stock et catalogue"),
+        ("Guide catalogue", "📦 Stock et catalogue"),
+        ("Guide des clients", "👥 Clients"),
+        ("Guide de caisse", "💰 Caisse"),
+        ("Guide des analyses", "📊 Analyses"),
+        ("Guide du commerce", "🏪 Mon commerce"),
+    ],
+)
+def test_natural_guide_section_variants(
+    spoken_request,
+    expected_title,
+):
+    response = handle_user_guide_request(
+        spoken_request
+    )
+
+    assert response is not None
+    assert "Rubrique inconnue" not in response
+    assert expected_title in response
+
+
+def test_guide_stock_bypasses_bi_router(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    import app.services.message_orchestrator as mo
+
+    monkeypatch.setattr(
+        mo,
+        "get_or_create_merchant",
+        lambda sender_id, db: SimpleNamespace(
+            id=901,
+        ),
+    )
+    monkeypatch.setattr(
+        mo,
+        "set_current_merchant",
+        lambda db, merchant_id: None,
+    )
+
+    def forbidden_bi_router(text):
+        pytest.fail(
+            "Le routeur BI ne doit pas recevoir "
+            "une commande de guide."
+        )
+
+    monkeypatch.setattr(
+        mo,
+        "detect_read_only_query",
+        forbidden_bi_router,
+    )
+
+    result = mo.process_incoming_message(
+        channel="whatsapp",
+        sender_id="guide-order-test",
+        message_type="audio",
+        text="Guide, stock.",
+        db=None,
+    )
+
+    assert result["status"] == "reply"
+    assert "📦 Stock et catalogue" in (
+        result["reply_text"]
+    )
+    assert "Produit Initial Actuel" not in (
+        result["reply_text"]
+    )
+
+
+def test_guide_de_vente_opens_sales_section(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    import app.services.message_orchestrator as mo
+
+    monkeypatch.setattr(
+        mo,
+        "get_or_create_merchant",
+        lambda sender_id, db: SimpleNamespace(
+            id=902,
+        ),
+    )
+    monkeypatch.setattr(
+        mo,
+        "set_current_merchant",
+        lambda db, merchant_id: None,
+    )
+    monkeypatch.setattr(
+        mo,
+        "detect_read_only_query",
+        lambda text: pytest.fail(
+            "Le guide doit passer avant le routeur BI."
+        ),
+    )
+
+    result = mo.process_incoming_message(
+        channel="whatsapp",
+        sender_id="guide-sales-test",
+        message_type="audio",
+        text="Guide de vente.",
+        db=None,
+    )
+
+    assert result["status"] == "reply"
+    assert "🛒 Ventes" in result["reply_text"]
+    assert "Rubrique inconnue" not in (
+        result["reply_text"]
+    )

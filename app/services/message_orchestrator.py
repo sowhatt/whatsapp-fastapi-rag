@@ -1009,6 +1009,21 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     merchant = get_or_create_merchant(sender_id, db)
     set_current_merchant(db, merchant.id)
 
+
+
+    # Le guide doit être traité avant tous les routeurs métier.
+    # Sans cette priorité, « Guide stock » est interprété comme
+    # une consultation immédiate de l'inventaire.
+    guide_reply = handle_user_guide_request(text)
+
+    if guide_reply is not None:
+        pending_actions.pop(sender_id, None)
+        return {
+            "status": "reply",
+            "reply_text": guide_reply,
+            "action": None,
+        }
+
     # Routeur analytique central en lecture seule.
     #
     # Il est volontairement exécuté avant les raccourcis génériques
@@ -1281,19 +1296,6 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "reply_text": render_period_summary(
                 get_period_summary_data(db, since=since, until=until, label=label)
             ),
-            "action": None,
-        }
-
-    # Guide utilisateur progressif. Une demande de guide
-    # est une lecture seule et abandonne l'éventuelle opération
-    # précédente, comme le retour au menu.
-    guide_reply = handle_user_guide_request(text)
-
-    if guide_reply is not None:
-        pending_actions.pop(sender_id, None)
-        return {
-            "status": "reply",
-            "reply_text": guide_reply,
             "action": None,
         }
 
