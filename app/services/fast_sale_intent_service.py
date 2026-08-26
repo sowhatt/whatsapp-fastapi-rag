@@ -231,6 +231,15 @@ def parse_fast_sale_intent(
             customer_and_details.strip()
         )
 
+    # Whisper ajoute fréquemment une virgule avant le canal :
+    # « à Awa, cash ». Cette ponctuation ne fait pas partie du nom.
+    product_text = product_text.strip(
+        " ,.;:-"
+    )
+    customer_text = customer_text.strip(
+        " ,.;:-"
+    )
+
     if (
         not product_text
         or not customer_text

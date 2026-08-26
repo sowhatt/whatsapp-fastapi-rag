@@ -272,3 +272,20 @@ def test_detect_intent_keeps_ai_fallback(
 
     assert action is not None
     assert action["_source"] == "ai"
+
+
+def test_fast_sale_accepts_whisper_comma_before_payment(
+    known_catalog,
+):
+    action = parse_fast_sale_intent(
+        "Vends deux sacs de riz à Awa, cash.",
+        FakeDB(),
+    )
+
+    assert action is not None
+    assert action["customer"] == "Awa"
+    assert action["product"] == "Riz"
+    assert action["quantity"] == 2
+    assert action["amount"] == 100_000
+    assert action["payment"] == "cash"
+    assert action["_source"] == "fast_rules"
