@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.agents.normalization_agent import normalize_transcription
 from app.business.parser.number_parser import parse_french_number
 from app.services.intent_parser import parse_message
+from app.services.fast_sale_intent_service import parse_fast_sale_intent
 
 
 IntentType = Literal[
@@ -858,6 +859,48 @@ def detect_intent(text: str, db: Session | None = None) -> dict[str, Any] | None
     """
     normalization = normalize_transcription(text, db)
     normalized_text = normalization.normalized_text
+
+    # PERF-07 : une vente mono-produit certaine, dont le
+    # client et le produit existent déjà, ne nécessite pas
+    # d'appel OpenAI. Le workflow de validation et la confirmation
+    # explicite restent strictement inchangés.
+    fast_action = (
+        parse_fast_sale_intent(
+            normalized_text,
+            db,
+        )
+        if db is not None
+        else None
+    )
+
+    if fast_action is not None:
+        fast_action["_original_text"] = (
+            normalization.original_text
+        )
+        fast_action["_normalized_text"] = (
+            normalized_text
+        )
+        fast_action[
+            "_normalization_corrections"
+        ] = normalization.corrections
+
+        print(
+            "FAST SALE INTENT:",
+            {
+                "source": "fast_rules",
+                "product": fast_action.get(
+                    "product"
+                ),
+                "quantity": fast_action.get(
+                    "quantity"
+                ),
+                "payment": fast_action.get(
+                    "payment"
+                ),
+            },
+        )
+
+        return fast_action
 
     action: dict[str, Any] | None = None
 
