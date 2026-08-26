@@ -110,7 +110,29 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     }
 
     _stage_started = time.monotonic()
-    customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
+    cached_customer = db.info.get(
+        "_whatzabi_resolved_sale_customer"
+    )
+
+    if (
+        cached_customer is not None
+        and cached_customer.id == payload.customer_id
+    ):
+        customer = cached_customer
+        customer_source = "request_cache"
+    else:
+        customer = (
+            db.query(Customer)
+            .filter(
+                Customer.id == payload.customer_id
+            )
+            .first()
+        )
+        customer_source = "database"
+
+    _sale_audit["customer_source"] = (
+        customer_source
+    )
     _sale_audit["customer_lookup_s"] = round(
         time.monotonic() - _stage_started,
         3,
@@ -130,7 +152,22 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="La quantité doit être supérieure à zéro")
 
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+        cached_products = db.info.get(
+            "_whatzabi_resolved_sale_products",
+            {},
+        )
+        product = cached_products.get(
+            item.product_id
+        )
+
+        if product is None:
+            product = (
+                db.query(Product)
+                .filter(
+                    Product.id == item.product_id
+                )
+                .first()
+            )
         if not product:
             raise HTTPException(status_code=404, detail=f"Produit introuvable : {item.product_id}")
 
@@ -306,18 +343,27 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     )
 
     _stage_started = time.monotonic()
-    db.commit()
+
+    # PERF-09A : garder les attributs de cette vente
+    # chargés pendant le commit afin d'éviter un SELECT
+    # immédiat avec db.refresh(sale).
+    previous_expire_on_commit = (
+        db.expire_on_commit
+    )
+    db.expire_on_commit = False
+
+    try:
+        db.commit()
+    finally:
+        db.expire_on_commit = (
+            previous_expire_on_commit
+        )
+
     _sale_audit["commit_s"] = round(
         time.monotonic() - _stage_started,
         3,
     )
-
-    _stage_started = time.monotonic()
-    db.refresh(sale)
-    _sale_audit["refresh_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    _sale_audit["refresh_s"] = 0.0
 
     _sale_audit["sale_id"] = sale.id
     _sale_audit["sale_number"] = (

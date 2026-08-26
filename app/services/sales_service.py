@@ -284,7 +284,31 @@ def create_sale_from_intent(
 ) -> Any:
     resolved = resolve_sale_intent(intent, db)
     payload = build_sale_create_payload(resolved)
-    return create_sale_func(payload, db)
+
+    # PERF-09A : resolve_sale_intent vient de charger et de
+    # valider le client et les produits dans cette même session.
+    # create_sale peut donc réutiliser ces instances au lieu de
+    # refaire immédiatement les mêmes SELECT par identifiant.
+    cache_customer_key = (
+        "_whatzabi_resolved_sale_customer"
+    )
+    cache_products_key = (
+        "_whatzabi_resolved_sale_products"
+    )
+
+    resolved_products = {
+        line.product.id: line.product
+        for line in resolved.lines
+    }
+
+    db.info[cache_customer_key] = resolved.customer
+    db.info[cache_products_key] = resolved_products
+
+    try:
+        return create_sale_func(payload, db)
+    finally:
+        db.info.pop(cache_customer_key, None)
+        db.info.pop(cache_products_key, None)
 
 
 def preview_sale_from_intent(intent: dict[str, Any], db: Session) -> dict[str, Any]:
