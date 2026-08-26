@@ -613,10 +613,55 @@ def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
     from app.routers.supplier_payments import create_supplier_payment
 
     if action["type"] == "sale":
-        item = create_sale_from_intent(action, db, create_sale)
-        message = f"✅ Vente enregistrée. Référence : vente n°{item.reference_number}."
-        for warning in low_stock_warnings_for_sale(item.id, db):
+        _confirmed_sale_started = time.monotonic()
+
+        _stage_started = time.monotonic()
+        item = create_sale_from_intent(
+            action,
+            db,
+            create_sale,
+        )
+        sale_write_s = round(
+            time.monotonic() - _stage_started,
+            3,
+        )
+
+        message = (
+            "✅ Vente enregistrée. "
+            f"Référence : vente n°{item.reference_number}."
+        )
+
+        _stage_started = time.monotonic()
+        warnings = low_stock_warnings_for_sale(
+            item.id,
+            db,
+        )
+        low_stock_warnings_s = round(
+            time.monotonic() - _stage_started,
+            3,
+        )
+
+        for warning in warnings:
             message += "\n\n" + warning
+
+        print(
+            "CONFIRMED SALE AUDIT:",
+            {
+                "sale_id": item.id,
+                "sale_number": item.reference_number,
+                "sale_write_s": sale_write_s,
+                "low_stock_warnings_s": (
+                    low_stock_warnings_s
+                ),
+                "warning_count": len(warnings),
+                "total_s": round(
+                    time.monotonic()
+                    - _confirmed_sale_started,
+                    3,
+                ),
+            },
+        )
+
         return message
     if action["type"] == "purchase":
         item = create_purchase_from_intent(action, db, create_purchase)

@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -101,7 +103,18 @@ def list_sales(db: Session = Depends(get_db)):
 @router.post("/sales", response_model=SaleRead)
 def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     """Crée une vente multi-produits, diminue le stock et met à jour la dette client."""
+    _sale_audit_started = time.monotonic()
+    _sale_audit: dict[str, float | int | None] = {
+        "merchant_id": get_current_merchant(db),
+        "item_count": len(payload.items),
+    }
+
+    _stage_started = time.monotonic()
     customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
+    _sale_audit["customer_lookup_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
     if not customer:
         raise HTTPException(status_code=404, detail="Client introuvable")
 
@@ -110,6 +123,8 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
 
     total_amount = 0
     resolved_items = []
+
+    _stage_started = time.monotonic()
 
     for item in payload.items:
         if item.quantity <= 0:
@@ -144,6 +159,11 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             )
         )
 
+    _sale_audit["product_resolution_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
     paid_amount = payload.paid_amount
     if paid_amount < 0:
         raise HTTPException(status_code=400, detail="Le montant payé ne peut pas être négatif")
@@ -168,12 +188,19 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         or getattr(customer, "merchant_id", None)
     )
 
+    _stage_started = time.monotonic()
+    sale_number = allocate_sale_number(
+        db,
+        merchant_id,
+    )
+    _sale_audit["number_allocation_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
     sale = Sale(
         merchant_id=merchant_id,
-        sale_number=allocate_sale_number(
-            db,
-            merchant_id,
-        ),
+        sale_number=sale_number,
         customer_id=payload.customer_id,
         total_amount=total_amount,
         paid_amount=paid_amount,
@@ -181,11 +208,18 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         status=status,
         due_date=payload.due_date,
     )
+    _stage_started = time.monotonic()
     db.add(sale)
     db.flush()
+    _sale_audit["sale_flush_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
 
     remaining_to_allocate = paid_amount
     created_sale_items: list[SaleItem] = []
+
+    _stage_started = time.monotonic()
 
     for product, quantity, unit_price, line_total, unit_cost_snapshot in resolved_items:
         product.stock -= quantity
@@ -227,6 +261,13 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             note=f"Vente au client {customer.name}",
         )
 
+    _sale_audit["items_stage_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
+    _stage_started = time.monotonic()
+
     if paid_amount > 0:
         payment = Payment(
             sale_id=sale.id,
@@ -248,6 +289,11 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
                     )
                 )
 
+    _sale_audit["payment_stage_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
     customer.debt += remaining_amount
 
     add_event(
@@ -259,8 +305,34 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         note="Vente créée",
     )
 
+    _stage_started = time.monotonic()
     db.commit()
+    _sale_audit["commit_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
+    _stage_started = time.monotonic()
     db.refresh(sale)
+    _sale_audit["refresh_s"] = round(
+        time.monotonic() - _stage_started,
+        3,
+    )
+
+    _sale_audit["sale_id"] = sale.id
+    _sale_audit["sale_number"] = (
+        sale.reference_number
+    )
+    _sale_audit["total_s"] = round(
+        time.monotonic() - _sale_audit_started,
+        3,
+    )
+
+    print(
+        "SALE WRITE AUDIT:",
+        _sale_audit,
+    )
+
     return sale
 
 
