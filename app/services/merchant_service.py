@@ -120,6 +120,29 @@ def get_or_create_merchant(
     cache_key = "_whatzabi_current_merchant"
     session_info = getattr(db, "info", None)
 
+    # PERF-06A : le webhook a déjà chargé le commerçant et contrôlé
+    # son abonnement avec resolve_authorized_merchant(). Comme
+    # l'orchestrateur utilise la même session SQLAlchemy, cette
+    # instance peut être réutilisée sans une seconde requête SQL.
+    #
+    # La correspondance exacte du numéro est obligatoire afin de
+    # préserver l'isolation entre commerçants.
+    if isinstance(session_info, dict):
+        authorized = session_info.get(
+            "resolved_merchant"
+        )
+        authorized_number = session_info.get(
+            "resolved_merchant_number"
+        )
+
+        if (
+            authorized is not None
+            and authorized_number == normalized
+            and authorized.whatsapp_number == normalized
+        ):
+            session_info[cache_key] = authorized
+            return authorized
+
     if isinstance(session_info, dict):
         cached = session_info.get(cache_key)
         if (
