@@ -566,7 +566,46 @@ def normalize_payment_answer(text: str) -> str | None:
     return None
 
 
+CONFIRMATION_STATE_KEY = "_confirmation_state"
+AWAITING_CONFIRMATION = "awaiting_explicit_confirmation"
+EXECUTING_CONFIRMATION = "executing"
+
+
+def mark_ready_for_confirmation(
+    action: dict[str, Any],
+) -> None:
+    action[CONFIRMATION_STATE_KEY] = (
+        AWAITING_CONFIRMATION
+    )
+
+
+def is_ready_for_confirmation(
+    action: dict[str, Any] | None,
+) -> bool:
+    return bool(
+        action
+        and action.get(CONFIRMATION_STATE_KEY)
+        == AWAITING_CONFIRMATION
+    )
+
+
 def execute_confirmed_action(action: dict[str, Any], db: Session) -> str:
+    # Verrou de dernier recours : aucune écriture ne peut passer
+    # par cette fonction sans une étape de confirmation affichée
+    # auparavant au même expéditeur.
+    if not is_ready_for_confirmation(action):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cette action n'a pas encore reçu "
+                "de confirmation explicite."
+            ),
+        )
+
+    action[CONFIRMATION_STATE_KEY] = (
+        EXECUTING_CONFIRMATION
+    )
+
     from app.routers.financial_entries import create_financial_entry
     from app.routers.payments import create_payment
     from app.routers.purchases import create_purchase
@@ -773,8 +812,16 @@ def advance_workflow(
             "action": action,
         }
 
+    mark_ready_for_confirmation(action)
     set_pending_action(sender_id, action)
-    return {"status": "reply", "reply_text": (prefix + "\n\n" if prefix else "") + build_confirmation_message(action), "action": action}
+    return {
+        "status": "reply",
+        "reply_text": (
+            (prefix + "\n\n" if prefix else "")
+            + build_confirmation_message(action)
+        ),
+        "action": action,
+    }
 
 
 def _sale_command_to_action(command: SaleCommand) -> dict[str, Any]:
@@ -1157,10 +1204,19 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
 
         cancel_action = {
             "type": "cancel_sale",
+            # L'identifiant stocké reste l'id technique.
+            # Le numéro local sert uniquement à la recherche
+            # et à l'affichage.
             "sale_id": sale.id,
             "_missing_fields": [],
         }
-        set_pending_action(sender_id, cancel_action)
+        mark_ready_for_confirmation(
+            cancel_action,
+        )
+        set_pending_action(
+            sender_id,
+            cancel_action,
+        )
         detail = f" à {customer_name}" if customer_name else ""
         return {
             "status": "reply",
@@ -1443,8 +1499,15 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             pending["remaining"] = 0
 
         pending.pop("_awaiting", None)
+        mark_ready_for_confirmation(pending)
         set_pending_action(sender_id, pending)
-        return {"status": "reply", "reply_text": build_confirmation_message(pending), "action": pending}
+        return {
+            "status": "reply",
+            "reply_text": (
+                build_confirmation_message(pending)
+            ),
+            "action": pending,
+        }
 
     if lower in {"oui", "ok", "confirmer", "valider"}:
         if not pending:
@@ -1457,14 +1520,35 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 db.rollback()
                 return {"status": "reply", "reply_text": f"❌ Impossible de créer l’entité : {exc}", "action": pending}
             return advance_workflow(sender_id, pending, db, message + "\nJe reprends l’opération.")
+        if not is_ready_for_confirmation(pending):
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "L'action n'est pas encore prête "
+                    "à être confirmée. Je reprends "
+                    "les informations manquantes."
+                ),
+                "action": pending,
+            }
+
         try:
             reply = execute_confirmed_action(pending, db)
         except HTTPException as exc:
+            mark_ready_for_confirmation(pending)
             db.rollback()
             return {"status": "reply", "reply_text": f"❌ {exc.detail}", "action": pending}
         except Exception as exc:
             db.rollback()
-            return {"status": "reply", "reply_text": f"❌ Impossible d’enregistrer l’action : {exc}", "action": pending}
+            mark_ready_for_confirmation(pending)
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "❌ Impossible d’enregistrer "
+                    f"l’action : {exc}"
+                ),
+                "action": pending,
+            }
+
         pending_actions.pop(sender_id, None)
         return {"status": "reply", "reply_text": reply, "action": None}
 
