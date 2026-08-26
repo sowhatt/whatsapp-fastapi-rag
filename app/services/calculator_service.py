@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation
 
+from app.business.parser.number_parser import parse_french_number
+
 
 class CalculatorError(ValueError):
     pass
@@ -59,8 +61,57 @@ def calculator_help() -> str:
     )
 
 
+
+def _normalize_spoken_percentage(text: str) -> str:
+    """
+    Transforme un pourcentage dicté en expression numérique.
+
+    Exemples :
+    - Calcule vingt pour cent de cinquante mille
+    - Combien font dix pour cent de cent mille ?
+    - 15 pour cent de 80 000
+    - Calcule 15 % de 80 000
+    """
+    normalized = " ".join(
+        text.lower().split()
+    ).strip(" .!?")
+
+    normalized = re.sub(
+        r"^(?:calcule(?:r)?|combien\s+"
+        r"(?:font|fait|fais))\s+",
+        "",
+        normalized,
+    )
+
+    match = re.fullmatch(
+        r"(.+?)\s*(?:%|pour\s+cent)\s*"
+        r"(?:de|sur)\s*(.+)",
+        normalized,
+    )
+
+    if match is None:
+        return normalized
+
+    rate = parse_french_number(
+        match.group(1).strip()
+    )
+    base = parse_french_number(
+        match.group(2).strip()
+    )
+
+    if rate is None or base is None:
+        return normalized
+
+    def plain(value: Decimal) -> str:
+        if value == value.to_integral_value():
+            return str(int(value))
+        return format(value, "f")
+
+    return f"{plain(rate)} % de {plain(base)}"
+
+
 def looks_like_calculation(text: str) -> bool:
-    normalized = " ".join(text.lower().split())
+    normalized = _normalize_spoken_percentage(text)
 
     return bool(
         re.search(r"\d\s*[+×x*/÷-]\s*\d", normalized)
@@ -75,7 +126,7 @@ def looks_like_calculation(text: str) -> bool:
 
 
 def calculate(text: str) -> CalculationResult:
-    normalized = " ".join(text.lower().split()).strip(" .!?")
+    normalized = _normalize_spoken_percentage(text)
 
     # --------------------------------------------------------------
     # Monnaie à rendre :

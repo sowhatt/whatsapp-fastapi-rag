@@ -26,6 +26,11 @@ from app.services.time_intelligence_query_service import (
     handle_time_intelligence_query,
 )
 from app.services.shop_name_command import handle_shop_name_request
+from app.services.user_guide_service import (
+    handle_user_guide_request,
+    render_guide_index,
+)
+
 from app.models.sale import Sale
 from app.models.customer import Customer
 from app.schemas.cancel_sale import CancelSalePayload
@@ -521,12 +526,7 @@ def build_confirmation_message(action: dict[str, Any]) -> str:
 
 
 def build_help_message() -> str:
-    return (
-        "Bonjour 👋 Je suis Whatzabi.\n"
-        "Vente : « Vente 1 sac riz Awa 83 000 cash »\n"
-        "Achat : « Achat 5 sacs riz Soglo 350 000 crédit »\n"
-        "Autres : Résumé du jour, Awa a payé 10 000."
-    )
+    return render_guide_index()
 
 
 def get_pending_action(sender_id: str) -> dict[str, Any] | None:
@@ -1281,6 +1281,19 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             "reply_text": render_period_summary(
                 get_period_summary_data(db, since=since, until=until, label=label)
             ),
+            "action": None,
+        }
+
+    # Guide utilisateur progressif. Une demande de guide
+    # est une lecture seule et abandonne l'éventuelle opération
+    # précédente, comme le retour au menu.
+    guide_reply = handle_user_guide_request(text)
+
+    if guide_reply is not None:
+        pending_actions.pop(sender_id, None)
+        return {
+            "status": "reply",
+            "reply_text": guide_reply,
             "action": None,
         }
 

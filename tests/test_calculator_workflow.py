@@ -88,3 +88,40 @@ def test_workflow_can_exit():
 
     assert state.step == "cancelled"
     assert response == "Action annulée."
+
+
+
+def test_spoken_percentage_in_french():
+    assert looks_like_calculation(
+        "Calcule vingt pour cent "
+        "de cinquante mille."
+    )
+
+    result = calculate(
+        "Calcule vingt pour cent "
+        "de cinquante mille."
+    )
+
+    assert result.result == Decimal("10000")
+
+
+def test_spoken_percentage_question():
+    assert looks_like_calculation(
+        "Combien font dix pour cent "
+        "de cent mille ?"
+    )
+
+    result = calculate(
+        "Combien font dix pour cent "
+        "de cent mille ?"
+    )
+
+    assert result.result == Decimal("10000")
+
+
+def test_percentage_with_digits_and_voice_prefix():
+    result = calculate(
+        "Calcule 15 % de 80 000."
+    )
+
+    assert result.result == Decimal("12000")
