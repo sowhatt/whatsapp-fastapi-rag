@@ -82,8 +82,29 @@ async def receive_whatsapp_webhook(
 
                     if not from_number:
                         continue
+                    # PERF-05 : trace consolidée d'un message.
+                    _perf_started = time.monotonic()
+                    _perf_request_id = str(
+                        message.get("id")
+                        or f"local-{time.time_ns()}"
+                    )
+                    _perf = {
+                        "event": "PERF_AUDIT",
+                        "request_id": _perf_request_id,
+                        "message_type": message_type,
+                        "sender_suffix": from_number[-4:],
+                        "tenant_s": 0.0,
+                        "media_url_fetch_s": 0.0,
+                        "media_download_s": 0.0,
+                        "catalog_query_s": 0.0,
+                        "transcription_s": 0.0,
+                        "business_processing_s": 0.0,
+                        "send_reply_s": 0.0,
+                        "backend_total_s": 0.0,
+                    }
 
                     # PERF-03 : tenant résolu avant le catalogue audio.
+                    _tenant_started = time.monotonic()
                     try:
                         merchant = resolve_authorized_merchant(
                             from_number,
@@ -93,6 +114,12 @@ async def receive_whatsapp_webhook(
                             db,
                             merchant.id,
                         )
+                        _perf["tenant_s"] = round(
+                            time.monotonic()
+                            - _tenant_started,
+                            3,
+                        )
+                        _perf["merchant_id"] = merchant.id
                     except MerchantAccessError as access_error:
                         print(
                             "SAAS ACCESS BLOCKED:",
@@ -163,6 +190,29 @@ async def receive_whatsapp_webhook(
                                 vocabulary=vocabulary,
                             )
                             _t4 = time.monotonic()
+                            _perf.update(
+                                {
+                                    "media_url_fetch_s": round(
+                                        _t1 - _t0,
+                                        3,
+                                    ),
+                                    "media_download_s": round(
+                                        _t2 - _t1,
+                                        3,
+                                    ),
+                                    "catalog_query_s": round(
+                                        _t3 - _t2,
+                                        3,
+                                    ),
+                                    "transcription_s": round(
+                                        _t4 - _t3,
+                                        3,
+                                    ),
+                                    "audio_bytes": len(
+                                        audio_bytes
+                                    ),
+                                }
+                            )
 
                             print(
                                 "WHATSAPP TIMING (audio):",
@@ -224,6 +274,24 @@ async def receive_whatsapp_webhook(
                         db=db,
                     )
                     _t6 = time.monotonic()
+                    _perf["business_processing_s"] = round(
+                        _t6 - _t5,
+                        3,
+                    )
+                    _perf["result_status"] = result.get(
+                        "status"
+                    )
+                    _perf["input_chars"] = len(
+                        text_body or ""
+                    )
+
+                    action = result.get("action")
+                    if isinstance(action, dict):
+                        _perf["action_type"] = action.get(
+                            "type"
+                        )
+                    else:
+                        _perf["action_type"] = None
 
                     reply_text = result.get("reply_text")
 
@@ -246,6 +314,26 @@ async def receive_whatsapp_webhook(
                             reply_text,
                         )
                         _t7 = time.monotonic()
+                        _perf["send_reply_s"] = round(
+                            _t7 - _t6,
+                            3,
+                        )
+                        _perf["backend_total_s"] = round(
+                            _t7 - _perf_started,
+                            3,
+                        )
+                        _perf["reply_chars"] = len(
+                            reply_text
+                        )
+
+                        print(
+                            "PERF_AUDIT:",
+                            json.dumps(
+                                _perf,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                        )
 
                         print(
                             "WHATSAPP TIMING (message processing):",
