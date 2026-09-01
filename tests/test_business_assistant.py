@@ -1,3 +1,5 @@
+import pytest
+
 from app.business.assistant import BUSINESS_MENU, detect_business_intent, is_menu_request
 from app.business.registry import WorkflowRegistry
 from app.business.router import WorkflowRouter
@@ -25,6 +27,24 @@ def test_business_menu_and_intents() -> None:
     assert detect_business_intent("2") == "catalog_manage"
     assert detect_business_intent("Je veux créer un fournisseur") == "supplier_manage"
     assert detect_business_intent("Résumé du jour") == "daily_summary"
+
+
+def test_sale_verb_has_priority_over_product_keyword() -> None:
+    assert (
+        detect_business_intent("Vends produit appartement à Fataï")
+        == "sale_create"
+    )
+    assert (
+        detect_business_intent("Vente produit appartement à Fataï")
+        == "sale_create"
+    )
+
+
+def test_catalog_price_wording_is_not_misrouted_as_sale() -> None:
+    assert (
+        detect_business_intent("Modifie le prix de vente du produit Riz")
+        == "catalog_manage"
+    )
 
 
 def test_registry_and_router_start_workflow() -> None:
@@ -109,6 +129,183 @@ def test_message_orchestrator_routes_purchase_menu_choice():
 
     assert result["status"] == "reply"
     assert "Décris ton achat" in result["reply_text"]
+
+
+def test_menu_choice_one_creates_shop_name_workflow():
+    from app.models.merchant import Merchant
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-create-shop"
+    db = FakeDB()
+
+    first = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="1",
+        db=db,
+    )
+
+    assert first["status"] == "reply"
+    assert "nom de ta boutique" in first["reply_text"]
+
+    second = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="Chez Fataï",
+        db=db,
+    )
+
+    assert second["status"] == "reply"
+    assert second["reply_text"] == "✅ Commerce créé : Chez Fataï."
+    merchant = (
+        db.query(Merchant)
+        .filter(Merchant.whatsapp_number == sender_id)
+        .one()
+    )
+    assert merchant.shop_name == "Chez Fataï"
+    assert sender_id not in pending_actions
+
+
+@pytest.mark.parametrize(
+    "menu_reply",
+    ["1️⃣", "Option 1", "1 - Créer mon commerce"],
+)
+def test_menu_choice_one_accepts_whatsapp_variants(menu_reply):
+    from app.models.merchant import Merchant
+    from app.state.pending_actions import pending_actions
+
+    sender_id = f"test-create-shop-{menu_reply}"
+    db = FakeDB()
+
+    first = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text=menu_reply,
+        db=db,
+    )
+    assert "nom de ta boutique" in first["reply_text"]
+
+    second = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="Marché Central",
+        db=db,
+    )
+    assert second["reply_text"] == "✅ Commerce créé : Marché Central."
+    merchant = db.query(Merchant).filter(Merchant.whatsapp_number == sender_id).one()
+    assert merchant.shop_name == "Marché Central"
+    assert sender_id not in pending_actions
+
+
+def test_sale_phrase_with_product_enters_sale_workflow(monkeypatch):
+    from app.services import message_orchestrator
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-sale-product-word"
+    db = FakeDB()
+
+    monkeypatch.setattr(
+        message_orchestrator,
+        "detect_intent",
+        lambda text, active_db: {
+            "type": "sale",
+            "customer": "Fataï",
+            "product": "Appartement",
+            "unit": "Pièce",
+            "quantity": 0,
+            "amount": 0,
+            "payment": "unknown",
+            "remaining": 0,
+            "_missing_fields": ["quantity", "amount"],
+        },
+    )
+
+    result = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="audio",
+        text="Vends produit appartement à Fataï",
+        db=db,
+    )
+
+    assert result["status"] == "reply"
+    assert result["action"]["type"] == "sale"
+    assert result["reply_text"] == "Quelle est la quantité ?"
+    pending_actions.pop(sender_id, None)
+
+
+def test_menu_choice_two_starts_guided_catalog_creation():
+    from app.models.product import Product
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-guided-catalog"
+    db = FakeDB()
+
+    messages = [
+        ("2", "Quel est le produit ?"),
+        ("Riz local", "Quel est le prix de vente ?"),
+        ("22000", "Quel est le prix d'achat ?"),
+        ("zéro", "Quel est le stock (nombre) ?"),
+        ("40", "Quelle est l’unité"),
+    ]
+
+    for text, expected in messages:
+        result = process_incoming_message(
+            channel="whatsapp",
+            sender_id=sender_id,
+            message_type="text",
+            text=text,
+            db=db,
+        )
+        assert expected in result["reply_text"]
+
+    confirmation = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="audio",
+        text="sac",
+        db=db,
+    )
+    assert "Nouveau produit : Riz local (Sac)" in confirmation["reply_text"]
+    assert "Prix de vente : 22 000 FCFA" in confirmation["reply_text"]
+    assert "Prix d'achat : 0 FCFA" in confirmation["reply_text"]
+    assert "Stock initial : 40" in confirmation["reply_text"]
+
+    created = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="text",
+        text="oui",
+        db=db,
+    )
+    assert "Produit Riz local créé" in created["reply_text"]
+
+    product = db.query(Product).filter(Product.name == "Riz local").one()
+    assert product.price == 22000
+    assert product.purchase_price == 0
+    assert product.stock == 40
+    assert product.unit == "Sac"
+    assert sender_id not in pending_actions
+
+
+def test_catalog_word_starts_guided_catalog_creation():
+    from app.state.pending_actions import pending_actions
+
+    sender_id = "test-guided-catalog-word"
+    result = process_incoming_message(
+        channel="whatsapp",
+        sender_id=sender_id,
+        message_type="audio",
+        text="Catalogue",
+        db=FakeDB(),
+    )
+
+    assert result["reply_text"] == "Quel est le produit ?"
+    pending_actions.pop(sender_id, None)
 
 
 def test_new_sale_replaces_pending_sale_first_scenario(monkeypatch):
