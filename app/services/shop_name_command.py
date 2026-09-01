@@ -61,6 +61,23 @@ def set_shop_name(merchant: Merchant, shop_name: str, db: Session) -> Merchant:
     return merchant
 
 
+def handle_shop_name_answer(text: str, merchant: Merchant, db: Session) -> str:
+    """Enregistre la réponse courte du workflow « Créer mon commerce »."""
+    name = _clean_shop_name(text)
+    if not name:
+        return (
+            "Je n'ai pas compris le nom. Écris ou dis simplement "
+            "le nom de ta boutique."
+        )
+
+    old_name = merchant.shop_name
+    set_shop_name(merchant, name, db)
+
+    if old_name and old_name != name:
+        return f"✅ Nom de la boutique mis à jour : {old_name} → {name}."
+    return f"✅ Commerce créé : {name}."
+
+
 def handle_shop_name_request(text: str, merchant: Merchant, db: Session) -> str | None:
     """
     Traite le message si c'est une demande de nom de boutique, sinon
