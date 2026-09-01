@@ -25,7 +25,10 @@ from app.services.time_intelligence_query_service import (
     detect_time_intelligence_query,
     handle_time_intelligence_query,
 )
-from app.services.shop_name_command import handle_shop_name_request
+from app.services.shop_name_command import (
+    handle_shop_name_answer,
+    handle_shop_name_request,
+)
 from app.services.user_guide_service import (
     handle_user_guide_request,
     render_guide_index,
@@ -1054,6 +1057,33 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     merchant = get_or_create_merchant(sender_id, db)
     set_current_merchant(db, merchant.id)
 
+    # Réponse au choix 1 du menu. Elle doit être consommée avant les
+    # routeurs de lecture : un nom comme « Bilan Market » ou « Stock
+    # Express » ne doit pas être pris pour une demande de bilan/stock.
+    if pending and pending.get("_awaiting") == "merchant_shop_name":
+        if lower in {"non", "annuler", "cancel"}:
+            return {
+                "status": "reply",
+                "reply_text": cancel_pending_action(sender_id),
+                "action": None,
+            }
+        if is_menu_request(text):
+            pending_actions.pop(sender_id, None)
+            return {
+                "status": "reply",
+                "reply_text": BUSINESS_MENU,
+                "action": None,
+            }
+
+        reply = handle_shop_name_answer(text, merchant, db)
+        if reply.startswith("✅"):
+            pending_actions.pop(sender_id, None)
+        return {
+            "status": "reply",
+            "reply_text": reply,
+            "action": None,
+        }
+
 
 
     # Le guide doit être traité avant tous les routeurs métier.
@@ -2080,6 +2110,41 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "reply", "reply_text": render_stock_overview(db), "action": None}
 
     if business_intent == "catalog_manage":
+        # Le choix 2 et la commande courte « Catalogue » ouvrent un
+        # véritable formulaire conversationnel. Le même parcours est
+        # utilisé après transcription d'un vocal.
+        if lower in {
+            "2",
+            "catalogue",
+            "catalog",
+            "gérer le catalogue",
+            "gerer le catalogue",
+            "mon catalogue",
+        }:
+            catalog_action = {
+                "type": "catalog_create",
+                "product": None,
+                "price": 0,
+                "purchase_price": 0,
+                "stock": 0,
+                "unit": None,
+                "product_category": None,
+                "_source": "guided",
+                "_confidence": 1.0,
+                "_missing_fields": [
+                    "product",
+                    "price",
+                    "purchase_price",
+                    "stock",
+                    "unit",
+                ],
+            }
+            return advance_workflow(
+                sender_id,
+                catalog_action,
+                db,
+            )
+
         # Filet de sécurité : si le mot-clé rapide ("crée le produit"...)
         # n'a pas matché plus haut (transcription qui reformule sans le
         # verbe, ex. "Produit : X, prix de vente : Y"), on tente quand
@@ -2111,17 +2176,27 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         return {"status": "reply", "reply_text": render_supplier_list(db), "action": None}
 
     business_messages = {
-        "merchant_create": (
-            "🏪 Création du commerce\n\n"
-            "Le workflow d'inscription du commerce sera activé "
-            "dans la prochaine étape."
-        ),
         "catalog_manage": (
             "📚 Gestion du catalogue\n\n"
             "Tu pourras créer des catégories et ajouter tes produits."
         ),
         "settings": "⚙️ Paramètres du commerce bientôt disponibles.",
     }
+
+    if business_intent == "merchant_create":
+        action = {
+            "type": "merchant_profile",
+            "_awaiting": "merchant_shop_name",
+        }
+        set_pending_action(sender_id, action)
+        return {
+            "status": "reply",
+            "reply_text": (
+                "🏪 Création du commerce\n\n"
+                "Quel est le nom de ta boutique ?"
+            ),
+            "action": action,
+        }
 
     if business_intent in business_messages:
         return {
