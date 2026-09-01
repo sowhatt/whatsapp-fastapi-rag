@@ -150,6 +150,15 @@ def _parse_number_answer(value: str) -> int:
     return int(parsed)
 
 
+def _parse_non_negative_number_answer(value: str) -> int:
+    parsed = parse_french_number(value)
+    if parsed is None or parsed < 0 or parsed != parsed.to_integral_value():
+        raise ValueError(
+            "Réponds avec un nombre entier positif ou zéro, par exemple : 0."
+        )
+    return int(parsed)
+
+
 def _parse_unit_answer(value: str) -> str:
     words = re.findall(r"[a-zà-ÿ]+", value.lower())
     for word in words:
@@ -163,7 +172,9 @@ def _parse_unit_answer(value: str) -> str:
 def apply_field_answer(action: dict[str, Any], text: str) -> dict[str, Any]:
     field = str(action.get("_awaiting_field") or "")
     value = " ".join(text.split()).strip(" .!?\n\t")
-    if field in {"quantity", "amount", "price", "purchase_price", "stock", "threshold", "initial_stock"}:
+    if field in {"purchase_price", "stock", "threshold", "initial_stock"}:
+        action[field] = _parse_non_negative_number_answer(value)
+    elif field in {"quantity", "amount", "price"}:
         action[field] = _parse_number_answer(value)
     elif field == "unit":
         action[field] = _parse_unit_answer(value)
