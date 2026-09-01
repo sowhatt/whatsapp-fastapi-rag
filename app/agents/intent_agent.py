@@ -308,6 +308,30 @@ def _clean_name(value: str | None) -> str | None:
     return cleaned[:1].upper() + cleaned[1:]
 
 
+def _extract_explicit_catalog_product(text: str) -> str | None:
+    """Extrait sans réinterprétation le nom dicté dans une fiche produit.
+
+    Les transcriptions WhatsApp structurées comme « Produit : Appartement 1,
+    Prix de vente : ... » sont déjà explicites. Le LLM ne doit pas pouvoir
+    remplacer le chiffre faisant partie du nom (par exemple 1 par 2) avant la
+    confirmation utilisateur.
+    """
+    field_boundary = (
+        r"(?=\s*[,;\n]\s*(?:prix\s+(?:de\s+)?vente|prix\s+d['’]?achat|"
+        r"stock|unit[ée]|cat[ée]gorie)\s*:|\s*$)"
+    )
+    patterns = (
+        rf"\bproduit\s*:\s*(?P<product>.+?){field_boundary}",
+        rf"\b(?:cr[ée]e|ajoute|nouveau)\s+(?:le\s+)?produit\s+"
+        rf"(?P<product>.+?){field_boundary}",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return _clean_name(match.group("product"))
+    return None
+
+
 
 def detect_explicit_currency(text: str) -> str | None:
     """
@@ -342,7 +366,17 @@ def _required_fields(intent_type: str) -> list[str]:
         "supplier_payment": ["supplier", "amount"],
         "expense": ["label", "amount"],
         "summary": [],
-        "catalog_create": ["product", "unit", "price"],
+        # Ordre du formulaire guidé catalogue : on commence par les
+        # informations commerciales, puis on termine par l'unité.
+        # purchase_price et stock sont obligatoires dans ce parcours,
+        # mais la valeur explicite zéro reste valide.
+        "catalog_create": [
+            "product",
+            "price",
+            "purchase_price",
+            "stock",
+            "unit",
+        ],
         "catalog_update_price": ["product", "price"],
         "catalog_update_purchase_price": ["product", "purchase_price"],
         "catalog_update_stock": ["product", "stock"],
@@ -403,9 +437,23 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
     # channel ?") au lieu d'être simplement ignoré.
     required = set(_required_fields(parsed.type))
     missing = set(parsed.missing_fields) & required
+    zero_allowed_fields = {
+        "purchase_price",
+        "stock",
+        "threshold",
+        "initial_stock",
+    }
     for field_name in required:
         value = data.get(field_name)
-        if value is None or value == "" or (isinstance(value, int) and value <= 0):
+        if (
+            value is None
+            or value == ""
+            or (
+                isinstance(value, int)
+                and value <= 0
+                and field_name not in zero_allowed_fields
+            )
+        ):
             missing.add(field_name)
 
     action: dict[str, Any] = {
@@ -919,6 +967,15 @@ def detect_intent(text: str, db: Session | None = None) -> dict[str, Any] | None
             action.setdefault("_missing_fields", [])
 
     if action:
+        if action.get("type") == "catalog_create":
+            explicit_product = _extract_explicit_catalog_product(
+                normalization.original_text
+            )
+            if explicit_product and action.get("product") != explicit_product:
+                action["product"] = explicit_product
+                action.setdefault("_deterministic_overrides", []).append(
+                    "product_from_explicit_catalog_field"
+                )
         action["_original_text"] = normalization.original_text
         action["_normalized_text"] = normalized_text
         action["_normalization_corrections"] = normalization.corrections
