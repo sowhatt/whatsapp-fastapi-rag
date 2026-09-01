@@ -108,8 +108,71 @@ def is_menu_request(text: str) -> bool:
 
 def detect_business_intent(text: str) -> str | None:
     normalized = " ".join(text.lower().split()).strip(" .!?")
-    if normalized in MENU_INTENTS:
-        return MENU_INTENTS[normalized]
+
+    # WhatsApp peut transmettre le numéro seul, le glyphe keycap affiché
+    # dans le menu ("1️⃣"), ou une réponse comme "option 1" / "1 - Créer
+    # mon commerce". On extrait uniquement un numéro placé au début afin
+    # de ne pas confondre les quantités et montants des commandes métier.
+    menu_text = normalized.replace("\ufe0f", "").replace("\u20e3", "")
+    menu_match = re.fullmatch(
+        r"(?:option\s+)?(10|11|[1-9])(?:\s*[-:.)]\s*|\s+)?(?:.*)?",
+        menu_text,
+        re.IGNORECASE,
+    )
+    if menu_match:
+        menu_number = menu_match.group(1)
+        # Une longue saisie commençant par un chiffre est probablement une
+        # opération (quantité, prix...), pas un choix de menu. Les libellés
+        # acceptés après le numéro doivent correspondre au menu affiché.
+        remainder = menu_text[menu_match.end(1):].strip(" -:.)")
+        known_labels = {
+            "1": ("créer mon commerce", "creer mon commerce"),
+            "2": ("gérer le catalogue", "gerer le catalogue"),
+            "3": ("gérer les clients", "gerer les clients"),
+            "4": ("gérer les fournisseurs", "gerer les fournisseurs"),
+            "5": ("enregistrer une vente",),
+            "6": ("enregistrer un achat",),
+            "7": ("consulter mon stock",),
+            "8": ("résumé du jour", "resume du jour"),
+            "9": ("paramètres", "parametres"),
+            "10": ("calculatrice",),
+            "11": ("analyse financière", "analyse financiere"),
+        }
+        if not remainder or remainder in known_labels[menu_number]:
+            return MENU_INTENTS[menu_number]
+
+    # Les verbes d'opération ont priorité sur les noms de référentiel.
+    # Ainsi « vends produit appartement à Fataï » reste une vente : le
+    # mot « produit » décrit l'objet vendu et ne doit pas ouvrir le
+    # catalogue. On exclut toutefois « prix de vente/d'achat », qui est
+    # bien une formulation de gestion du catalogue.
+    if (
+        re.search(
+            r"\b(vendre|vends?|vendu|vendue|vendus|vendues)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+        or (
+            re.search(r"\bventes?\b", normalized, re.IGNORECASE)
+            and "prix de vente" not in normalized
+        )
+    ):
+        return "sale_create"
+
+    if (
+        re.search(
+            r"\b(acheter|ach[eè]tes?|achet[ée]e?s?)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+        or (
+            re.search(r"\bachats?\b", normalized, re.IGNORECASE)
+            and "prix d'achat" not in normalized
+            and "prix d achat" not in normalized
+        )
+    ):
+        return "purchase_create"
+
     for pattern, intent in NATURAL_PATTERNS:
         if re.search(pattern, normalized, re.IGNORECASE):
             return intent

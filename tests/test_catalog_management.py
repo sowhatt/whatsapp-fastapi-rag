@@ -15,6 +15,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.agents.validation_agent import validate_before_confirmation
+from app.agents import intent_agent
+from app.agents.normalization_agent import clear_catalog_values_cache
 from app.db.base import Base
 from app.models.product import Product
 from app.services.catalog_service import (
@@ -39,6 +41,13 @@ def db():
     session = SessionLocal()
     yield session
     session.close()
+
+
+@pytest.fixture()
+def clean_normalization_cache():
+    clear_catalog_values_cache()
+    yield
+    clear_catalog_values_cache()
 
 
 def teardown_function():
@@ -92,6 +101,76 @@ def test_creation_refuse_un_produit_deja_existant(db):
     action = {"type": "catalog_create", "product": "Riz", "unit": "Sac", "price": 60000}
     with pytest.raises(ValueError, match="existe déjà"):
         create_product_from_action(action, db)
+
+
+def test_nom_produit_explicite_ne_peut_pas_etre_modifie_par_ia(
+    db, monkeypatch, clean_normalization_cache
+):
+    monkeypatch.setattr(
+        intent_agent,
+        "parse_with_ai",
+        lambda text: {
+            "type": "catalog_create",
+            "product": "Appartement 2",
+            "unit": "Pièce",
+            "price": 12000,
+            "purchase_price": 0,
+            "stock": 30,
+            "_source": "ai",
+            "_confidence": 0.99,
+            "_missing_fields": [],
+        },
+    )
+
+    action = intent_agent.detect_intent(
+        "Produit : Appartement 1, Prix de vente : 12 000, "
+        "Prix d'achat : 0, Stock : 30, Unité : pièce.",
+        db,
+    )
+
+    assert action is not None
+    assert action["product"] == "Appartement 1"
+    assert action["_deterministic_overrides"] == [
+        "product_from_explicit_catalog_field"
+    ]
+
+
+def test_confirmation_whatsapp_conserve_appartement_1(
+    db, monkeypatch, clean_normalization_cache
+):
+    # Plusieurs tests historiques remplacent directement mo.detect_intent.
+    # Ce scénario doit toujours exercer le vrai détecteur, quelle que soit
+    # l'ordre d'exécution de la suite complète.
+    monkeypatch.setattr(mo, "detect_intent", intent_agent.detect_intent)
+    monkeypatch.setattr(
+        intent_agent,
+        "parse_with_ai",
+        lambda text: {
+            "type": "catalog_create",
+            "product": "Appartement 2",
+            "unit": "Pièce",
+            "price": 12000,
+            "purchase_price": 0,
+            "stock": 30,
+            "_source": "ai",
+            "_confidence": 0.99,
+            "_missing_fields": [],
+        },
+    )
+
+    result = mo.process_incoming_message(
+        channel="whatsapp",
+        sender_id=SENDER,
+        message_type="audio",
+        text=(
+            "Produit : Appartement 1, Prix de vente : 12 000, "
+            "Prix d'achat : 0, Stock : 30, Unité : pièce."
+        ),
+        db=db,
+    )
+
+    assert "Nouveau produit : Appartement 1 (Pièce)" in result["reply_text"]
+    assert "Appartement 2" not in result["reply_text"]
 
 
 # ── Mises à jour ───────────────────────────────────────────────────
