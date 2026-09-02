@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.db.schema import create_base_schema
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.products import router as products_router
@@ -30,6 +31,10 @@ app = FastAPI(title="WhatsApp FastAPI Railway")
 @app.on_event("startup")
 def ensure_catalog_schema() -> None:
     """Migration légère et idempotente pour le catalogue existant."""
+    # Une base de staging neuve ne contient aucune table. Le schéma courant
+    # doit exister avant les ALTER/UPDATE historiques ci-dessous.
+    create_base_schema(engine)
+
     statements = [
         """
         CREATE TABLE IF NOT EXISTS categories (
