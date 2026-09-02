@@ -47,6 +47,44 @@ def test_catalog_price_wording_is_not_misrouted_as_sale() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        (
+            "Produit : Riz, prix de vente : 12 000, prix d'achat : 9 000, "
+            "stock : 30, unité : sac"
+        ),
+        (
+            "Produit : Riz, prix d'achat : 9 000, prix de vente : 12 000, "
+            "stock : 30, unité : sac"
+        ),
+        (
+            "Prix d'achat : 9 000, prix de vente : 12 000, produit : Riz, "
+            "stock : 30, unité : sac"
+        ),
+        (
+            "Prix d’achat : 9 000, prix de vente : 12 000, produit : Riz, "
+            "stock : 30, unité : sac"
+        ),
+        (
+            "Prix achat : 9 000, prix de vente : 12 000, produit : Riz, "
+            "stock : 30, unité : sac"
+        ),
+    ],
+)
+def test_catalog_fields_are_order_and_apostrophe_independent(message: str) -> None:
+    assert detect_business_intent(message) == "catalog_manage"
+
+
+def test_real_purchase_is_not_misrouted_to_catalog() -> None:
+    assert (
+        detect_business_intent(
+            "Achat 5 sacs de riz chez Soglo, prix unitaire 9 000"
+        )
+        == "purchase_create"
+    )
+
+
 def test_registry_and_router_start_workflow() -> None:
     registry = WorkflowRegistry()
     registry.register("demo", DemoWorkflow)

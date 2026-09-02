@@ -107,7 +107,11 @@ def is_menu_request(text: str) -> bool:
 
 
 def detect_business_intent(text: str) -> str | None:
-    normalized = " ".join(text.lower().split()).strip(" .!?")
+    normalized = (
+        " ".join(text.lower().split())
+        .replace("’", "'")
+        .strip(" .!?")
+    )
 
     # WhatsApp peut transmettre le numéro seul, le glyphe keycap affiché
     # dans le menu ("1️⃣"), ou une réponse comme "option 1" / "1 - Créer
@@ -141,6 +145,25 @@ def detect_business_intent(text: str) -> str | None:
         if not remainder or remainder in known_labels[menu_number]:
             return MENU_INTENTS[menu_number]
 
+    # Une fiche produit dictée contient plusieurs libellés de catalogue.
+    # Leur ordre et la forme de l'apostrophe ne doivent jamais la transformer
+    # en achat fournisseur. On exige au moins le prix de vente et un second
+    # champ caractéristique afin de ne pas détourner une vraie vente qui
+    # mentionnerait simplement le mot « produit ».
+    catalog_fields = {
+        "purchase_price": bool(
+            re.search(r"\bprix\s+(?:d[' ]\s*|de\s+)?achat\b", normalized)
+        ),
+        "stock": bool(re.search(r"\bstock(?:\s+initial)?\s*:", normalized)),
+        "unit": bool(re.search(r"\bunit[ée]\s*:", normalized)),
+        "product": bool(re.search(r"\bproduit\s*:", normalized)),
+    }
+    has_sale_price = bool(
+        re.search(r"\bprix\s+(?:de\s+)?vente\b", normalized)
+    )
+    if has_sale_price and sum(catalog_fields.values()) >= 1:
+        return "catalog_manage"
+
     # Les verbes d'opération ont priorité sur les noms de référentiel.
     # Ainsi « vends produit appartement à Fataï » reste une vente : le
     # mot « produit » décrit l'objet vendu et ne doit pas ouvrir le
@@ -169,6 +192,7 @@ def detect_business_intent(text: str) -> str | None:
             re.search(r"\bachats?\b", normalized, re.IGNORECASE)
             and "prix d'achat" not in normalized
             and "prix d achat" not in normalized
+            and "prix achat" not in normalized
         )
     ):
         return "purchase_create"
