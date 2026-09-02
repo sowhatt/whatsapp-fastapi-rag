@@ -173,6 +173,55 @@ def test_confirmation_whatsapp_conserve_appartement_1(
     assert "Appartement 2" not in result["reply_text"]
 
 
+def test_fiche_catalogue_commencant_par_prix_achat_nest_pas_une_consultation(
+    db, monkeypatch, clean_normalization_cache
+):
+    with_merchant(db, SENDER)
+    db.add(
+        Product(
+            name="Riz",
+            unit="Sac",
+            price=50000,
+            purchase_price=45000,
+            stock=100,
+        )
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        mo,
+        "detect_intent",
+        lambda text, active_db: {
+            "type": "catalog_create",
+            "product": "Riz test",
+            "unit": "Sac",
+            "price": 12000,
+            "purchase_price": 9000,
+            "stock": 30,
+            "_source": "ai",
+            "_confidence": 0.99,
+            "_missing_fields": [],
+        },
+    )
+
+    result = mo.process_incoming_message(
+        channel="whatsapp",
+        sender_id=SENDER,
+        message_type="audio",
+        text=(
+            "Prix d'achat : 9000, prix de vente : 12000, "
+            "produit : riz test, stock : 30 unités, sac."
+        ),
+        db=db,
+    )
+
+    assert result["action"]["type"] == "catalog_create"
+    assert "Nouveau produit : Riz test (Sac)" in result["reply_text"]
+    assert "Prix de vente : 12 000 FCFA" in result["reply_text"]
+    assert "Prix d'achat : 9 000 FCFA" in result["reply_text"]
+    assert "💰 Riz" not in result["reply_text"]
+
+
 # ── Mises à jour ───────────────────────────────────────────────────
 
 def test_mise_a_jour_prix_de_vente(db):

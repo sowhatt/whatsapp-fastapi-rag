@@ -65,6 +65,7 @@ from app.business.assistant import (
     BUSINESS_MENU,
     detect_business_intent,
     is_menu_request,
+    is_structured_catalog_message,
     is_stock_view_request,
     is_summary_keyword_request,
 )
@@ -1213,7 +1214,7 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
         # lieu d'être reconnue comme une création de produit.
         lower_catalog.strip().startswith("produit ")
         and "prix de vente" in lower_catalog
-    )
+    ) or is_structured_catalog_message(text)
     catalog_update_cue = (
         any(verb in lower_catalog for verb in ("modifie", "change", "corrige", "mets à jour", "met à jour", "mettre à jour"))
         and any(field in lower_catalog for field in ("prix", "stock", "seuil", "niveau"))
@@ -1349,11 +1350,18 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
     # "prix de vente du riz", "combien coûte le riz") : simple
     # lecture, consultable à tout moment, comme le stock et le bilan.
     price_query_match = re.search(
-        r"(?:prix(?:\s+de\s+vente|\s+d'achat|\s+d achat)?|combien\s+co[uû]te)\s+(?:du|de\s+la|de\s+l'|des|de|le|la|l')\s+(.+)",
+        r"(?:prix\s+de\s+vente|prix\s+d['’]achat|prix\s+d\s+achat|"
+        r"prix(?!\s+(?:de\s+vente|d['’]achat|d\s+achat))|"
+        r"combien\s+co[uû]te)\s+"
+        r"(?:du|de\s+la|de\s+l['’]|des|de|le|la|l['’])\s+(.+)",
         text,
         re.IGNORECASE,
     )
-    if price_query_match and not lower.startswith(("modifie", "change", "corrige", "crée", "cree")):
+    if (
+        price_query_match
+        and not is_structured_catalog_message(text)
+        and not lower.startswith(("modifie", "change", "corrige", "crée", "cree"))
+    ):
         product_query = price_query_match.group(1).strip(" ?.!")
         if product_query:
             return {"status": "reply", "reply_text": render_product_price(product_query, db), "action": None}
