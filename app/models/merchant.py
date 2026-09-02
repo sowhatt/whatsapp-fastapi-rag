@@ -17,6 +17,7 @@ class Merchant(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     whatsapp_number: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     shop_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
     # État de l'abonnement SaaS.

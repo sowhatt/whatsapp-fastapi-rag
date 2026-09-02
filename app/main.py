@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.db.schema import create_base_schema
 from app.db.session import engine
 from app.routers.health import router as health_router
+from app.routers.auth import router as auth_router
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
@@ -84,6 +85,11 @@ def ensure_catalog_schema() -> None:
         ALTER TABLE merchants
         ADD COLUMN IF NOT EXISTS
         subscription_status VARCHAR(20)
+        """,
+        """
+        ALTER TABLE merchants
+        ADD COLUMN IF NOT EXISTS
+        password_hash VARCHAR(255) NULL
         """,
         """
         UPDATE merchants
@@ -407,6 +413,7 @@ app.add_middleware(
 # Routes publiques indispensables.
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
+app.include_router(auth_router)
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (

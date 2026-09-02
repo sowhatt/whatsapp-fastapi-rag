@@ -8,3 +8,4 @@ python-dotenv
 python-multipart
 requests
 openai
+PyJWT>=2.9,<3
