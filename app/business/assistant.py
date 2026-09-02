@@ -106,6 +106,27 @@ def is_menu_request(text: str) -> bool:
     return normalized in {"bonjour", "salut", "hello", "bjr", "menu", "aide", "help"}
 
 
+def is_structured_catalog_message(text: str) -> bool:
+    """Reconnaît une fiche produit, indépendamment de l'ordre des champs."""
+    normalized = (
+        " ".join(text.lower().split())
+        .replace("’", "'")
+        .strip(" .!?")
+    )
+    catalog_fields = {
+        "purchase_price": bool(
+            re.search(r"\bprix\s+(?:d[' ]\s*|de\s+)?achat\b", normalized)
+        ),
+        "stock": bool(re.search(r"\bstock(?:\s+initial)?\s*:", normalized)),
+        "unit": bool(re.search(r"\bunit[ée]s?\s*[:,]", normalized)),
+        "product": bool(re.search(r"\bproduit\s*:", normalized)),
+    }
+    has_sale_price = bool(
+        re.search(r"\bprix\s+(?:de\s+)?vente\b", normalized)
+    )
+    return has_sale_price and sum(catalog_fields.values()) >= 1
+
+
 def detect_business_intent(text: str) -> str | None:
     normalized = (
         " ".join(text.lower().split())
@@ -150,18 +171,7 @@ def detect_business_intent(text: str) -> str | None:
     # en achat fournisseur. On exige au moins le prix de vente et un second
     # champ caractéristique afin de ne pas détourner une vraie vente qui
     # mentionnerait simplement le mot « produit ».
-    catalog_fields = {
-        "purchase_price": bool(
-            re.search(r"\bprix\s+(?:d[' ]\s*|de\s+)?achat\b", normalized)
-        ),
-        "stock": bool(re.search(r"\bstock(?:\s+initial)?\s*:", normalized)),
-        "unit": bool(re.search(r"\bunit[ée]\s*:", normalized)),
-        "product": bool(re.search(r"\bproduit\s*:", normalized)),
-    }
-    has_sale_price = bool(
-        re.search(r"\bprix\s+(?:de\s+)?vente\b", normalized)
-    )
-    if has_sale_price and sum(catalog_fields.values()) >= 1:
+    if is_structured_catalog_message(normalized):
         return "catalog_manage"
 
     # Les verbes d'opération ont priorité sur les noms de référentiel.
