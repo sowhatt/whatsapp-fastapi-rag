@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, require_pwa_merchant, verify_password
 from app.db.session import get_db
 from app.models.merchant import Merchant
+from app.models.merchant_user import MerchantUser
+from app.models.user_phone import UserPhone
+from app.services.merchant_service import phone_lookup_candidates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
@@ -23,6 +26,9 @@ class MerchantRead(BaseModel):
     whatsapp_number: str
     shop_name: str | None
     subscription_status: str
+    user_id: int | None = None
+    shop_id: int | None = None
+    role: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -48,10 +54,7 @@ def pwa_script():
 
 @router.get("/manifest.webmanifest", include_in_schema=False)
 def pwa_manifest():
-    return FileResponse(
-        PWA_DIR / "manifest.webmanifest",
-        media_type="application/manifest+json",
-    )
+    return FileResponse(PWA_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -70,39 +73,69 @@ def pwa_icon():
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginPayload, db: Session = Depends(get_db)):
-    merchant = (
-        db.query(Merchant)
-        .filter(Merchant.whatsapp_number == payload.whatsapp_number.strip())
+    candidates = phone_lookup_candidates(payload.whatsapp_number)
+    phone = (
+        db.query(UserPhone)
+        .filter(UserPhone.phone_number.in_(candidates), UserPhone.is_active.is_(True))
         .first()
     )
 
-    if merchant is None or not verify_password(
-        payload.password,
-        merchant.password_hash,
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Identifiants invalides",
+    user = None
+    merchant = None
+    shop_id = None
+    role = None
+
+    if phone is not None:
+        user = (
+            db.query(MerchantUser)
+            .filter(MerchantUser.id == phone.user_id, MerchantUser.is_active.is_(True))
+            .first()
+        )
+        if user is not None:
+            merchant = db.query(Merchant).filter(Merchant.id == phone.merchant_id).first()
+            shop_id = phone.shop_id
+            role = user.role
+            valid_password = verify_password(payload.password, user.password_hash)
+        else:
+            valid_password = False
+    else:
+        merchant = (
+            db.query(Merchant)
+            .filter(Merchant.whatsapp_number.in_(candidates))
+            .first()
+        )
+        valid_password = bool(merchant) and verify_password(
+            payload.password, merchant.password_hash if merchant else None
         )
 
+    if merchant is None or not valid_password:
+        raise HTTPException(status_code=401, detail="Identifiants invalides")
+
+    user_id = user.id if user is not None else None
     return LoginResponse(
-        access_token=create_access_token(merchant),
+        access_token=create_access_token(
+            merchant, user_id=user_id, shop_id=shop_id, role=role
+        ),
         merchant=MerchantRead(
             id=merchant.id,
-            whatsapp_number=merchant.whatsapp_number,
+            whatsapp_number=payload.whatsapp_number.strip(),
             shop_name=merchant.shop_name,
             subscription_status=merchant.subscription_status,
+            user_id=user_id,
+            shop_id=shop_id,
+            role=role,
         ),
     )
 
 
 @router.get("/me", response_model=MerchantRead)
-def me(
-    merchant: Merchant = Depends(require_pwa_merchant),
-):
+def me(merchant: Merchant = Depends(require_pwa_merchant), db: Session = Depends(get_db)):
     return MerchantRead(
         id=merchant.id,
         whatsapp_number=merchant.whatsapp_number,
         shop_name=merchant.shop_name,
         subscription_status=merchant.subscription_status,
+        user_id=db.info.get("pwa_user_id"),
+        shop_id=db.info.get("pwa_shop_id"),
+        role=db.info.get("pwa_role"),
     )
