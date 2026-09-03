@@ -418,11 +418,16 @@ app.include_router(auth_router)
 
 # Routes PWA : authentification JWT + isolation automatique
 # par merchant_id sur la session SQLAlchemy.
-app.include_router(
+for pwa_router in (
+    categories_router,
     products_router,
-    prefix="/pwa",
-    dependencies=[Depends(require_pwa_merchant)],
-)
+    customers_router,
+):
+    app.include_router(
+        pwa_router,
+        prefix="/pwa",
+        dependencies=[Depends(require_pwa_merchant)],
+    )
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (
