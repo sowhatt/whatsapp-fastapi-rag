@@ -6,6 +6,7 @@ from app.db.schema import create_base_schema
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.auth import router as auth_router
+from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
@@ -414,6 +415,14 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
 app.include_router(auth_router)
+
+# Routes PWA : authentification JWT + isolation automatique
+# par merchant_id sur la session SQLAlchemy.
+app.include_router(
+    products_router,
+    prefix="/pwa",
+    dependencies=[Depends(require_pwa_merchant)],
+)
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (

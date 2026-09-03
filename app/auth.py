@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.db.tenant import set_current_merchant
 from app.models.merchant import Merchant
 
 
@@ -97,4 +98,5 @@ def require_pwa_merchant(
     if merchant is None:
         raise HTTPException(status_code=401, detail="Commerçant introuvable")
 
+    set_current_merchant(db, merchant.id)
     return merchant
