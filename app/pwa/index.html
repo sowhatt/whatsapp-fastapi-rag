@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Whatzabi</title>
+  <link rel="manifest" href="/auth/manifest.webmanifest">
+  <link rel="stylesheet" href="/auth/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="card login-card">
+      <div class="brand">W</div>
+      <h1>Whatzabi</h1>
+      <p class="muted">Votre activité, partout.</p>
+      <form id="loginForm" class="stack">
+        <label>Numéro WhatsApp<input id="phone" autocomplete="username" placeholder="+336..." required></label>
+        <label>Mot de passe<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <button type="submit">Se connecter</button>
+      </form>
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="appView" hidden>
+      <header class="topbar">
+        <div><strong id="shopName">Whatzabi</strong><div id="merchantPhone" class="muted small"></div></div>
+        <button id="logoutBtn" class="ghost">Déconnexion</button>
+      </header>
+
+      <nav class="tabs" aria-label="Navigation">
+        <button data-tab="dashboard" class="active">Accueil</button>
+        <button data-tab="products">Produits</button>
+        <button data-tab="customers">Clients</button>
+        <button data-tab="sales">Ventes</button>
+      </nav>
+
+      <section id="dashboard" class="panel active">
+        <div class="grid stats">
+          <article class="card"><span>Produits</span><strong id="statProducts">0</strong></article>
+          <article class="card"><span>Clients</span><strong id="statCustomers">0</strong></article>
+          <article class="card"><span>Ventes</span><strong id="statSales">0</strong></article>
+          <article class="card"><span>À encaisser</span><strong id="statDue">0 FCFA</strong></article>
+        </div>
+        <article class="card">
+          <h2>Actions rapides</h2>
+          <div class="quick-actions">
+            <button data-open-tab="products">+ Produit</button>
+            <button data-open-tab="customers">+ Client</button>
+            <button data-open-tab="sales">+ Vente</button>
+          </div>
+        </article>
+      </section>
+
+      <section id="products" class="panel">
+        <article class="card">
+          <h2>Nouveau produit</h2>
+          <form id="productForm" class="form-grid">
+            <input id="productName" placeholder="Nom" required>
+            <input id="productUnit" placeholder="Unité (sac, kg...)" value="unité" required>
+            <input id="productStock" type="number" min="0" placeholder="Stock" value="0">
+            <input id="productPrice" type="number" min="0" placeholder="Prix de vente" value="0">
+            <input id="productPurchasePrice" type="number" min="0" placeholder="Prix d'achat" value="0">
+            <input id="productThreshold" type="number" min="0" placeholder="Seuil d'alerte" value="0">
+            <button type="submit">Ajouter</button>
+          </form>
+        </article>
+        <div id="productList" class="list"></div>
+      </section>
+
+      <section id="customers" class="panel">
+        <article class="card">
+          <h2>Nouveau client</h2>
+          <form id="customerForm" class="form-grid">
+            <input id="customerName" placeholder="Nom" required>
+            <input id="customerPhone" placeholder="Téléphone">
+            <button type="submit">Ajouter</button>
+          </form>
+        </article>
+        <div id="customerList" class="list"></div>
+      </section>
+
+      <section id="sales" class="panel">
+        <article class="card">
+          <h2>Nouvelle vente</h2>
+          <form id="saleForm" class="form-grid">
+            <select id="saleCustomer" required><option value="">Client</option></select>
+            <select id="saleProduct" required><option value="">Produit</option></select>
+            <input id="saleQty" type="number" min="1" value="1" required>
+            <input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé">
+            <select id="saleChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select>
+            <button type="submit">Enregistrer la vente</button>
+          </form>
+        </article>
+        <div id="saleList" class="list"></div>
+      </section>
+
+      <div id="toast" class="toast" hidden></div>
+    </section>
+  </main>
+  <script src="/auth/app.js" defer></script>
+</body>
+</html>
