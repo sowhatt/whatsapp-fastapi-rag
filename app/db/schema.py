@@ -8,6 +8,7 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     exchange_rate,
     financial_entry,
     merchant,
+    merchant_user,
     open_tab,
     payment,
     payment_allocation,
@@ -18,11 +19,14 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     purchase_item,
     sale,
     sale_item,
+    shop,
     stock_movement,
     supplier,
     supplier_payment,
     supplier_payment_allocation,
     transaction_event,
+    user_phone,
+    user_shop_membership,
 )
 
 
