@@ -422,6 +422,8 @@ for pwa_router in (
     categories_router,
     products_router,
     customers_router,
+    sales_router,
+    payments_router,
 ):
     app.include_router(
         pwa_router,

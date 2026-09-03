@@ -46,6 +46,27 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     if payload.amount > sale.remaining_amount:
         raise HTTPException(status_code=400, detail="Le montant du paiement dépasse le reste dû")
 
+    customer = None
+
+    if payload.customer_id is not None:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.id == payload.customer_id)
+            .first()
+        )
+
+        if customer is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Client introuvable",
+            )
+
+        if sale.customer_id != customer.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Le client ne correspond pas à la vente",
+            )
+
     payment = Payment(
         sale_id=payload.sale_id,
         customer_id=payload.customer_id,
@@ -100,10 +121,11 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     else:
         sale.status = "partial"
 
-    if payload.customer_id:
-        customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
-        if customer:
-            customer.debt = max(0, customer.debt - payload.amount)
+    if customer is not None:
+        customer.debt = max(
+            0,
+            customer.debt - payload.amount,
+        )
 
     add_event(
         db,
