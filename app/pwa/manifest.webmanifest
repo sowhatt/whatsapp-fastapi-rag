@@ -1,0 +1,1 @@
+{"name":"Whatzabi","short_name":"Whatzabi","description":"Assistant de gestion pour commerçants et TPE","lang":"fr","start_url":"/auth/app","scope":"/auth/","display":"standalone","background_color":"#f4f7f6","theme_color":"#0f766e","icons":[{"src":"/auth/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
