@@ -235,3 +235,81 @@ def test_me_rejects_wrong_token_type(
     assert response.json() == {
         "detail": "Jeton invalide",
     }
+
+
+def test_auth_rejects_token_with_mismatched_subject(
+    auth_client,
+    monkeypatch,
+):
+    import jwt
+    import time
+
+    monkeypatch.setenv(
+        "PWA_JWT_SECRET",
+        TEST_SECRET,
+    )
+
+    now = int(time.time())
+
+    token = jwt.encode(
+        {
+            "sub": "999999",
+            "merchant_id": 1,
+            "iat": now,
+            "exp": now + 3600,
+            "type": "access",
+        },
+        TEST_SECRET,
+        algorithm="HS256",
+    )
+
+    response = auth_client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "detail": "Jeton invalide",
+    }
+
+
+def test_auth_rejects_expired_token(
+    auth_client,
+    monkeypatch,
+):
+    import jwt
+    import time
+
+    monkeypatch.setenv(
+        "PWA_JWT_SECRET",
+        TEST_SECRET,
+    )
+
+    now = int(time.time())
+
+    token = jwt.encode(
+        {
+            "sub": "1",
+            "merchant_id": 1,
+            "iat": now - 7200,
+            "exp": now - 3600,
+            "type": "access",
+        },
+        TEST_SECRET,
+        algorithm="HS256",
+    )
+
+    response = auth_client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "detail": "Jeton invalide",
+    }

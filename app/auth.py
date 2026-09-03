@@ -87,9 +87,11 @@ def require_pwa_merchant(
         )
         if payload.get("type") != "access":
             raise ValueError("type de jeton invalide")
-        if payload.get("type") != "access":
-            raise ValueError("type de jeton invalide")
+
         merchant_id = int(payload["merchant_id"])
+
+        if payload.get("sub") != str(merchant_id):
+            raise ValueError("identité de jeton incohérente")
     except (jwt.PyJWTError, KeyError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="Jeton invalide")
 
