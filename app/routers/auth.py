@@ -1,5 +1,8 @@
-from pydantic import BaseModel, Field
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, require_pwa_merchant, verify_password
@@ -7,6 +10,7 @@ from app.db.session import get_db
 from app.models.merchant import Merchant
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
 
 
 class LoginPayload(BaseModel):
@@ -25,6 +29,43 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     merchant: MerchantRead
+
+
+@router.get("/app", include_in_schema=False)
+def pwa_app():
+    return FileResponse(PWA_DIR / "index.html", media_type="text/html")
+
+
+@router.get("/styles.css", include_in_schema=False)
+def pwa_styles():
+    return FileResponse(PWA_DIR / "styles.css", media_type="text/css")
+
+
+@router.get("/app.js", include_in_schema=False)
+def pwa_script():
+    return FileResponse(PWA_DIR / "app.js", media_type="application/javascript")
+
+
+@router.get("/manifest.webmanifest", include_in_schema=False)
+def pwa_manifest():
+    return FileResponse(
+        PWA_DIR / "manifest.webmanifest",
+        media_type="application/manifest+json",
+    )
+
+
+@router.get("/sw.js", include_in_schema=False)
+def pwa_service_worker():
+    return FileResponse(
+        PWA_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/auth/"},
+    )
+
+
+@router.get("/icon.svg", include_in_schema=False)
+def pwa_icon():
+    return FileResponse(PWA_DIR / "icon.svg", media_type="image/svg+xml")
 
 
 @router.post("/login", response_model=LoginResponse)
