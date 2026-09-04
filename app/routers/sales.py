@@ -13,16 +13,35 @@ from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.shop_operation import ShopOperation
 from app.schemas.cancel_sale import CancelSalePayload
 from app.schemas.sale import SaleCreate, SaleRead
 from app.services.shop_context_service import (
     adjust_stock,
+    get_current_shop_id,
     get_effective_stock,
     record_shop_operation,
 )
 
 
 router = APIRouter(tags=["ventes"])
+
+
+def _sales_query(db: Session):
+    """Scope sales to the active shop when a shop context is selected."""
+    query = db.query(Sale)
+    shop_id = get_current_shop_id(db)
+    if shop_id is None:
+        return query
+    return query.join(
+        ShopOperation,
+        (ShopOperation.entity_type == "sale")
+        & (ShopOperation.entity_id == Sale.id),
+    ).filter(ShopOperation.shop_id == shop_id)
+
+
+def _sale_in_current_shop(db: Session, sale_id: int):
+    return _sales_query(db).filter(Sale.id == sale_id).first()
 
 
 def add_event(
@@ -94,7 +113,7 @@ def allocate_sale_number(
 
 @router.get("/sales", response_model=list[SaleRead])
 def list_sales(db: Session = Depends(get_db)):
-    return db.query(Sale).all()
+    return _sales_query(db).all()
 
 
 @router.post("/sales", response_model=SaleRead)
@@ -299,7 +318,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
 
 @router.get("/sales/{sale_id}/items")
 def get_sale_items(sale_id: int, db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
     return db.query(SaleItem).filter(SaleItem.sale_id == sale_id).all()
@@ -307,7 +326,7 @@ def get_sale_items(sale_id: int, db: Session = Depends(get_db)):
 
 @router.get("/sales/{sale_id}/payments")
 def get_sale_payments(sale_id: int, db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
     return db.query(Payment).filter(Payment.sale_id == sale_id).all()
@@ -315,7 +334,7 @@ def get_sale_payments(sale_id: int, db: Session = Depends(get_db)):
 
 @router.post("/sales/{sale_id}/cancel", response_model=SaleRead)
 def cancel_sale(sale_id: int, payload: CancelSalePayload, db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
+    sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
     if sale.status == "cancelled":
