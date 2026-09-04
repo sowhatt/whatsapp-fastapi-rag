@@ -9,8 +9,7 @@ from app.auth import create_access_token, require_pwa_merchant, verify_password
 from app.db.session import get_db
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
-from app.models.user_phone import UserPhone
-from app.services.merchant_service import phone_lookup_candidates
+from app.services.merchant_service import _find_user_phone, phone_lookup_candidates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
@@ -74,11 +73,7 @@ def pwa_icon():
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginPayload, db: Session = Depends(get_db)):
     candidates = phone_lookup_candidates(payload.whatsapp_number)
-    phone = (
-        db.query(UserPhone)
-        .filter(UserPhone.phone_number.in_(candidates), UserPhone.is_active.is_(True))
-        .first()
-    )
+    phone = _find_user_phone(payload.whatsapp_number, db)
 
     user = None
     merchant = None
@@ -99,11 +94,7 @@ def login(payload: LoginPayload, db: Session = Depends(get_db)):
         else:
             valid_password = False
     else:
-        merchant = (
-            db.query(Merchant)
-            .filter(Merchant.whatsapp_number.in_(candidates))
-            .first()
-        )
+        merchant = db.query(Merchant).filter(Merchant.whatsapp_number.in_(candidates)).first()
         valid_password = bool(merchant) and verify_password(
             payload.password, merchant.password_hash if merchant else None
         )
