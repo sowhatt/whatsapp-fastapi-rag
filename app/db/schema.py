@@ -20,6 +20,8 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     sale,
     sale_item,
     shop,
+    shop_inventory,
+    shop_operation,
     stock_movement,
     supplier,
     supplier_payment,
