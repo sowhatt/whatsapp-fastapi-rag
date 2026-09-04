@@ -15,6 +15,11 @@ from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.schemas.cancel_sale import CancelSalePayload
 from app.schemas.sale import SaleCreate, SaleRead
+from app.services.shop_context_service import (
+    adjust_stock,
+    get_effective_stock,
+    record_shop_operation,
+)
 
 
 router = APIRouter(tags=["ventes"])
@@ -68,13 +73,6 @@ def allocate_sale_number(
     db: Session,
     merchant_id: int | None,
 ) -> int | None:
-    """
-    Attribue le prochain numéro local.
-
-    Le verrou sur la ligne Merchant sérialise deux ventes simultanées
-    du même commerçant. Deux commerçants différents ne se bloquent
-    pas mutuellement.
-    """
     if merchant_id is None:
         return None
 
@@ -96,13 +94,11 @@ def allocate_sale_number(
 
 @router.get("/sales", response_model=list[SaleRead])
 def list_sales(db: Session = Depends(get_db)):
-    """Liste toutes les ventes."""
     return db.query(Sale).all()
 
 
 @router.post("/sales", response_model=SaleRead)
 def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
-    """Crée une vente multi-produits, diminue le stock et met à jour la dette client."""
     _sale_audit_started = time.monotonic()
     _sale_audit: dict[str, float | int | None] = {
         "merchant_id": get_current_merchant(db),
@@ -110,33 +106,17 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     }
 
     _stage_started = time.monotonic()
-    cached_customer = db.info.get(
-        "_whatzabi_resolved_sale_customer"
-    )
+    cached_customer = db.info.get("_whatzabi_resolved_sale_customer")
 
-    if (
-        cached_customer is not None
-        and cached_customer.id == payload.customer_id
-    ):
+    if cached_customer is not None and cached_customer.id == payload.customer_id:
         customer = cached_customer
         customer_source = "request_cache"
     else:
-        customer = (
-            db.query(Customer)
-            .filter(
-                Customer.id == payload.customer_id
-            )
-            .first()
-        )
+        customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
         customer_source = "database"
 
-    _sale_audit["customer_source"] = (
-        customer_source
-    )
-    _sale_audit["customer_lookup_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    _sale_audit["customer_source"] = customer_source
+    _sale_audit["customer_lookup_s"] = round(time.monotonic() - _stage_started, 3)
     if not customer:
         raise HTTPException(status_code=404, detail="Client introuvable")
 
@@ -145,46 +125,29 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
 
     total_amount = 0
     resolved_items = []
-
     _stage_started = time.monotonic()
 
     for item in payload.items:
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="La quantité doit être supérieure à zéro")
 
-        cached_products = db.info.get(
-            "_whatzabi_resolved_sale_products",
-            {},
-        )
-        product = cached_products.get(
-            item.product_id
-        )
+        cached_products = db.info.get("_whatzabi_resolved_sale_products", {})
+        product = cached_products.get(item.product_id)
 
         if product is None:
-            product = (
-                db.query(Product)
-                .filter(
-                    Product.id == item.product_id
-                )
-                .first()
-            )
+            product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Produit introuvable : {item.product_id}")
 
-        if product.stock < item.quantity:
+        available_stock = get_effective_stock(product, db)
+        if available_stock < item.quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Stock insuffisant pour le produit {product.name}",
             )
 
-        unit_price = (
-            item.unit_price if item.unit_price is not None else product.price
-        )
-        line_total = (
-            item.line_total
-            if item.line_total is not None
-            else unit_price * item.quantity
-        )
+        unit_price = item.unit_price if item.unit_price is not None else product.price
+        line_total = item.line_total if item.line_total is not None else unit_price * item.quantity
         total_amount += line_total
         resolved_items.append(
             (
@@ -196,23 +159,15 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             )
         )
 
-    _sale_audit["product_resolution_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    _sale_audit["product_resolution_s"] = round(time.monotonic() - _stage_started, 3)
 
     paid_amount = payload.paid_amount
     if paid_amount < 0:
         raise HTTPException(status_code=400, detail="Le montant payé ne peut pas être négatif")
-
     if paid_amount > total_amount:
-        raise HTTPException(
-            status_code=400,
-            detail="Le montant payé ne peut pas dépasser le montant total",
-        )
+        raise HTTPException(status_code=400, detail="Le montant payé ne peut pas dépasser le montant total")
 
     remaining_amount = total_amount - paid_amount
-
     if remaining_amount == 0:
         status = "paid"
     elif paid_amount == 0:
@@ -220,20 +175,11 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     else:
         status = "partial"
 
-    merchant_id = (
-        get_current_merchant(db)
-        or getattr(customer, "merchant_id", None)
-    )
+    merchant_id = get_current_merchant(db) or getattr(customer, "merchant_id", None)
 
     _stage_started = time.monotonic()
-    sale_number = allocate_sale_number(
-        db,
-        merchant_id,
-    )
-    _sale_audit["number_allocation_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    sale_number = allocate_sale_number(db, merchant_id)
+    _sale_audit["number_allocation_s"] = round(time.monotonic() - _stage_started, 3)
 
     sale = Sale(
         merchant_id=merchant_id,
@@ -248,18 +194,18 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     _stage_started = time.monotonic()
     db.add(sale)
     db.flush()
-    _sale_audit["sale_flush_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    record_shop_operation("sale", sale.id, db)
+    _sale_audit["sale_flush_s"] = round(time.monotonic() - _stage_started, 3)
 
     remaining_to_allocate = paid_amount
     created_sale_items: list[SaleItem] = []
-
     _stage_started = time.monotonic()
 
     for product, quantity, unit_price, line_total, unit_cost_snapshot in resolved_items:
-        product.stock -= quantity
+        try:
+            adjust_stock(product, -quantity, db)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Stock insuffisant pour le produit {product.name}") from exc
 
         allocated_amount = min(remaining_to_allocate, line_total)
         line_remaining = line_total - allocated_amount
@@ -285,7 +231,6 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
         db.add(sale_item)
         db.flush()
         created_sale_items.append(sale_item)
-
         remaining_to_allocate -= allocated_amount
 
         add_stock_movement(
@@ -298,11 +243,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
             note=f"Vente au client {customer.name}",
         )
 
-    _sale_audit["items_stage_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
-
+    _sale_audit["items_stage_s"] = round(time.monotonic() - _stage_started, 3)
     _stage_started = time.monotonic()
 
     if paid_amount > 0:
@@ -326,11 +267,7 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
                     )
                 )
 
-    _sale_audit["payment_stage_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
-
+    _sale_audit["payment_stage_s"] = round(time.monotonic() - _stage_started, 3)
     customer.debt += remaining_amount
 
     add_event(
@@ -343,72 +280,44 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
     )
 
     _stage_started = time.monotonic()
-
-    # PERF-09A : garder les attributs de cette vente
-    # chargés pendant le commit afin d'éviter un SELECT
-    # immédiat avec db.refresh(sale).
-    previous_expire_on_commit = (
-        db.expire_on_commit
-    )
+    previous_expire_on_commit = db.expire_on_commit
     db.expire_on_commit = False
-
     try:
         db.commit()
     finally:
-        db.expire_on_commit = (
-            previous_expire_on_commit
-        )
+        db.expire_on_commit = previous_expire_on_commit
 
-    _sale_audit["commit_s"] = round(
-        time.monotonic() - _stage_started,
-        3,
-    )
+    _sale_audit["commit_s"] = round(time.monotonic() - _stage_started, 3)
     _sale_audit["refresh_s"] = 0.0
-
     _sale_audit["sale_id"] = sale.id
-    _sale_audit["sale_number"] = (
-        sale.reference_number
-    )
-    _sale_audit["total_s"] = round(
-        time.monotonic() - _sale_audit_started,
-        3,
-    )
+    _sale_audit["sale_number"] = sale.reference_number
+    _sale_audit["total_s"] = round(time.monotonic() - _sale_audit_started, 3)
 
-    print(
-        "SALE WRITE AUDIT:",
-        _sale_audit,
-    )
-
+    print("SALE WRITE AUDIT:", _sale_audit)
     return sale
 
 
 @router.get("/sales/{sale_id}/items")
 def get_sale_items(sale_id: int, db: Session = Depends(get_db)):
-    """Affiche les lignes produit d’une vente."""
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
-
     return db.query(SaleItem).filter(SaleItem.sale_id == sale_id).all()
 
 
 @router.get("/sales/{sale_id}/payments")
 def get_sale_payments(sale_id: int, db: Session = Depends(get_db)):
-    """Affiche les paiements liés à une vente."""
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
-
     return db.query(Payment).filter(Payment.sale_id == sale_id).all()
 
 
 @router.post("/sales/{sale_id}/cancel", response_model=SaleRead)
 def cancel_sale(sale_id: int, payload: CancelSalePayload, db: Session = Depends(get_db)):
-    """Annule une vente sans la supprimer, remet le stock et corrige la dette."""
     sale = db.query(Sale).filter(Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
-
     if sale.status == "cancelled":
         raise HTTPException(status_code=400, detail="Cette vente est déjà annulée")
 
@@ -423,7 +332,7 @@ def cancel_sale(sale_id: int, payload: CancelSalePayload, db: Session = Depends(
     for item in sale_items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if product:
-            product.stock += item.quantity
+            adjust_stock(product, item.quantity, db)
             add_stock_movement(
                 db=db,
                 product_id=product.id,
