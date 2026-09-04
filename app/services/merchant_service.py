@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.models.merchant import Merchant
@@ -17,10 +18,12 @@ class MerchantAccessError(Exception):
 
 
 def normalize_whatsapp_number(value: str) -> str:
-    """Canonical WhatsApp identity: digits only when the value is a phone number."""
+    """Normalize real phone numbers while preserving non-phone test/channel IDs."""
     raw = (value or "").strip()
     digits = "".join(ch for ch in raw if ch.isdigit())
-    return digits if digits else raw
+    phone_chars = set("+ -()./")
+    looks_like_phone = bool(raw) and all(ch.isdigit() or ch in phone_chars for ch in raw)
+    return digits if looks_like_phone and digits else raw
 
 
 def phone_lookup_candidates(value: str) -> tuple[str, ...]:
@@ -52,16 +55,34 @@ def _assert_subscription(merchant: Merchant) -> None:
             )
 
 
-def resolve_authorized_merchant(whatsapp_number: str, db: Session) -> Merchant:
-    """Resolve a known phone identity to its merchant, with legacy fallback."""
-    normalized = normalize_whatsapp_number(whatsapp_number)
-    candidates = phone_lookup_candidates(whatsapp_number)
+def _user_phone_table_available(db: Session) -> bool:
+    """Keep legacy/test databases working while the new identity tables roll out."""
+    try:
+        bind = db.get_bind()
+    except (AttributeError, TypeError):
+        return False
+    try:
+        return inspect(bind).has_table(UserPhone.__tablename__)
+    except Exception:
+        return False
 
-    phone = (
+
+def _find_user_phone(whatsapp_number: str, db: Session):
+    if not _user_phone_table_available(db):
+        return None
+    candidates = phone_lookup_candidates(whatsapp_number)
+    return (
         db.query(UserPhone)
         .filter(UserPhone.phone_number.in_(candidates), UserPhone.is_active.is_(True))
         .first()
     )
+
+
+def resolve_authorized_merchant(whatsapp_number: str, db: Session) -> Merchant:
+    """Resolve a known phone identity to its merchant, with legacy fallback."""
+    normalized = normalize_whatsapp_number(whatsapp_number)
+    candidates = phone_lookup_candidates(whatsapp_number)
+    phone = _find_user_phone(whatsapp_number, db)
 
     merchant = None
     if phone is not None:
@@ -70,11 +91,7 @@ def resolve_authorized_merchant(whatsapp_number: str, db: Session) -> Merchant:
         db.info["resolved_shop_id"] = phone.shop_id
         db.info["resolved_phone_id"] = phone.id
     else:
-        merchant = (
-            db.query(Merchant)
-            .filter(Merchant.whatsapp_number.in_(candidates))
-            .first()
-        )
+        merchant = db.query(Merchant).filter(Merchant.whatsapp_number.in_(candidates)).first()
 
     if merchant is None:
         raise MerchantAccessError(
@@ -93,9 +110,20 @@ def get_or_create_merchant(whatsapp_number: str, db: Session) -> Merchant:
     session_info = getattr(db, "info", None)
     if isinstance(session_info, dict):
         authorized = session_info.get("resolved_merchant")
-        if authorized is not None:
+        authorized_number = normalize_whatsapp_number(
+            str(session_info.get("resolved_merchant_number") or "")
+        )
+        if authorized is not None and authorized_number == normalized:
             session_info["_whatzabi_current_merchant"] = authorized
+            session_info["_whatzabi_current_merchant_number"] = normalized
             return authorized
+
+        current = session_info.get("_whatzabi_current_merchant")
+        current_number = normalize_whatsapp_number(
+            str(session_info.get("_whatzabi_current_merchant_number") or "")
+        )
+        if current is not None and current_number == normalized:
+            return current
 
     merchant = (
         db.query(Merchant)
@@ -110,6 +138,7 @@ def get_or_create_merchant(whatsapp_number: str, db: Session) -> Merchant:
 
     if isinstance(session_info, dict):
         session_info["_whatzabi_current_merchant"] = merchant
+        session_info["_whatzabi_current_merchant_number"] = normalized
     return merchant
 
 
