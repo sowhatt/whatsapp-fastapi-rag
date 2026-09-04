@@ -26,9 +26,23 @@
 
     <section id="appView" hidden>
       <header class="topbar">
-        <div><strong id="shopName">Whatzabi</strong><div id="merchantPhone" class="muted small"></div></div>
+        <div>
+          <strong id="shopName">Whatzabi</strong>
+          <div id="merchantPhone" class="muted small"></div>
+        </div>
         <button id="logoutBtn" class="ghost">Déconnexion</button>
       </header>
+
+      <section id="identityCard" class="card identity-card">
+        <div>
+          <span class="eyebrow">Boutique active</span>
+          <strong id="activeShopName">Commerce principal</strong>
+        </div>
+        <div class="identity-meta">
+          <span id="userName">Compte commerçant</span>
+          <span id="roleBadge" class="badge">PROPRIÉTAIRE</span>
+        </div>
+      </section>
 
       <nav class="tabs" aria-label="Navigation">
         <button data-tab="dashboard" class="active">Accueil</button>
