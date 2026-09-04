@@ -1,13 +1,27 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.db.session import get_db
 from app.models.category import Category
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
+from app.services.shop_context_service import (
+    get_current_shop_id,
+    get_effective_stock,
+    set_initial_shop_stock,
+)
 
 router = APIRouter(tags=["produits"])
+
+
+def _apply_shop_stock_view(products: list[Product], db: Session) -> list[Product]:
+    if get_current_shop_id(db) is None:
+        return products
+    for product in products:
+        set_committed_value(product, "stock", get_effective_stock(product, db))
+    return products
 
 
 @router.get("/products", response_model=list[ProductRead])
@@ -18,7 +32,8 @@ def list_products(
     query = db.query(Product)
     if category_id is not None:
         query = query.filter(Product.category_id == category_id)
-    return query.order_by(Product.name.asc()).all()
+    products = query.order_by(Product.name.asc()).all()
+    return _apply_shop_stock_view(products, db)
 
 
 @router.post("/products", response_model=ProductRead)
@@ -36,6 +51,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     if payload.category_id is not None and not db.get(Category, payload.category_id):
         raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
+    shop_id = get_current_shop_id(db)
     product = Product(
         category_id=payload.category_id,
         name=name[:1].upper() + name[1:],
@@ -44,14 +60,21 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
         variant=payload.variant,
         packaging=payload.packaging,
         unit=payload.unit,
-        stock=payload.stock,
+        stock=0 if shop_id is not None else payload.stock,
         purchase_price=payload.purchase_price,
         price=payload.price,
         threshold=payload.threshold,
     )
     db.add(product)
+    db.flush()
+
+    if shop_id is not None:
+        set_initial_shop_stock(product, payload.stock, db)
+
     db.commit()
     db.refresh(product)
+    if shop_id is not None:
+        set_committed_value(product, "stock", get_effective_stock(product, db))
     return product
 
 
@@ -81,9 +104,17 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
             raise HTTPException(status_code=400, detail="Un autre produit porte déjà ce nom")
         changes["name"] = new_name[:1].upper() + new_name[1:]
 
+    shop_id = get_current_shop_id(db)
+    requested_stock = changes.pop("stock", None) if shop_id is not None else None
+
     for field, value in changes.items():
         setattr(product, field, value)
 
+    if shop_id is not None and requested_stock is not None:
+        set_initial_shop_stock(product, int(requested_stock), db)
+
     db.commit()
     db.refresh(product)
+    if shop_id is not None:
+        set_committed_value(product, "stock", get_effective_stock(product, db))
     return product
