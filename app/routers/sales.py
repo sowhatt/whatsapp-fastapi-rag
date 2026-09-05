@@ -14,6 +14,7 @@ from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.shop_operation import ShopOperation
+from app.rbac import require_permission
 from app.schemas.cancel_sale import CancelSalePayload
 from app.schemas.sale import SaleCreate, SaleRead
 from app.services.shop_context_service import (
@@ -112,12 +113,19 @@ def allocate_sale_number(
 
 
 @router.get("/sales", response_model=list[SaleRead])
-def list_sales(db: Session = Depends(get_db)):
+def list_sales(
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.read")),
+):
     return _sales_query(db).all()
 
 
 @router.post("/sales", response_model=SaleRead)
-def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
+def create_sale(
+    payload: SaleCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.create")),
+):
     _sale_audit_started = time.monotonic()
     _sale_audit: dict[str, float | int | None] = {
         "merchant_id": get_current_merchant(db),
@@ -317,7 +325,11 @@ def create_sale(payload: SaleCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/sales/{sale_id}/items")
-def get_sale_items(sale_id: int, db: Session = Depends(get_db)):
+def get_sale_items(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.read")),
+):
     sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
@@ -325,7 +337,11 @@ def get_sale_items(sale_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/sales/{sale_id}/payments")
-def get_sale_payments(sale_id: int, db: Session = Depends(get_db)):
+def get_sale_payments(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.read")),
+):
     sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
@@ -333,7 +349,12 @@ def get_sale_payments(sale_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sales/{sale_id}/cancel", response_model=SaleRead)
-def cancel_sale(sale_id: int, payload: CancelSalePayload, db: Session = Depends(get_db)):
+def cancel_sale(
+    sale_id: int,
+    payload: CancelSalePayload,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.cancel")),
+):
     sale = _sale_in_current_shop(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
