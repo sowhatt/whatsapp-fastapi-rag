@@ -6,6 +6,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.db.session import get_db
 from app.models.category import Category
 from app.models.product import Product
+from app.rbac import require_permission
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
 from app.services.shop_context_service import (
     get_current_shop_id,
@@ -28,6 +29,7 @@ def _apply_shop_stock_view(products: list[Product], db: Session) -> list[Product
 def list_products(
     category_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.read")),
 ):
     query = db.query(Product)
     if category_id is not None:
@@ -37,7 +39,11 @@ def list_products(
 
 
 @router.post("/products", response_model=ProductRead)
-def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
+def create_product(
+    payload: ProductCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.create")),
+):
     name = " ".join(payload.name.split()).strip()
     if not name:
         raise HTTPException(status_code=400, detail="Le nom du produit est obligatoire")
@@ -79,7 +85,12 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/products/{product_id}", response_model=ProductRead)
-def update_product(product_id: int, payload: ProductUpdate, db: Session = Depends(get_db)):
+def update_product(
+    product_id: int,
+    payload: ProductUpdate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.update")),
+):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Produit introuvable")
