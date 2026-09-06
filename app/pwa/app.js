@@ -8,6 +8,65 @@ const ROLE_LABELS = {
   ACCOUNTANT: 'Comptable',
 };
 
+const ROLE_PERMISSIONS = {
+  OWNER: ['*'],
+  MANAGER: [
+    'sale.create',
+    'sale.cancel',
+    'sale.read',
+    'stock.read',
+    'stock.adjust',
+    'product.read',
+    'product.create',
+    'product.update',
+    'customer.read',
+    'customer.create',
+    'payment.create',
+    'report.read',
+    'staff.read',
+  ],
+  SELLER: [
+    'sale.create',
+    'sale.read',
+    'stock.read',
+    'product.read',
+    'customer.read',
+    'customer.create',
+    'payment.create',
+  ],
+  STOCK_MANAGER: [
+    'stock.read',
+    'stock.adjust',
+    'product.read',
+    'product.create',
+    'product.update',
+  ],
+  ACCOUNTANT: [
+    'sale.read',
+    'stock.read',
+    'product.read',
+    'customer.read',
+    'report.read',
+  ],
+};
+
+function can(permission) {
+  const role = state.merchant?.role;
+  const permissions = ROLE_PERMISSIONS[role] || [];
+  return permissions.includes('*') || permissions.includes(permission);
+}
+
+function renderPermissions() {
+  const productCreate = can('product.create');
+  const customerCreate = can('customer.create');
+  const saleCreate = can('sale.create');
+
+  $('productCreateCard').hidden = !productCreate;
+  $('quickAddProduct').hidden = !productCreate;
+  $('quickAddCustomer').hidden = !customerCreate;
+  $('quickAddSale').hidden = !saleCreate;
+}
+
 let token = localStorage.getItem('whatzabi_token') || '';
 let state = { products: [], customers: [], sales: [], merchant: null, shops: [] };
 
@@ -74,6 +133,7 @@ function render() {
   const sales = state.sales;
 
   renderIdentity();
+  renderPermissions();
   $('statProducts').textContent = products.length;
   $('statCustomers').textContent = customers.length;
   $('statSales').textContent = sales.length;

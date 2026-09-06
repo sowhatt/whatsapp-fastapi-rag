@@ -65,24 +65,55 @@
         <article class="card">
           <h2>Actions rapides</h2>
           <div class="quick-actions">
-            <button data-open-tab="products">+ Produit</button>
-            <button data-open-tab="customers">+ Client</button>
-            <button data-open-tab="sales">+ Vente</button>
+            <button id="quickAddProduct" data-open-tab="products">+ Produit</button>
+            <button id="quickAddCustomer" data-open-tab="customers">+ Client</button>
+            <button id="quickAddSale" data-open-tab="sales">+ Vente</button>
           </div>
         </article>
       </section>
 
       <section id="products" class="panel">
-        <article class="card">
-          <h2>Nouveau produit</h2>
-          <form id="productForm" class="form-grid">
-            <input id="productName" placeholder="Nom" required>
-            <input id="productUnit" placeholder="Unité (sac, kg...)" value="unité" required>
-            <input id="productStock" type="number" min="0" placeholder="Stock" value="0">
-            <input id="productPrice" type="number" min="0" placeholder="Prix de vente" value="0">
-            <input id="productPurchasePrice" type="number" min="0" placeholder="Prix d'achat" value="0">
-            <input id="productThreshold" type="number" min="0" placeholder="Seuil d'alerte" value="0">
-            <button type="submit">Ajouter</button>
+        <article id="productCreateCard" class="card">
+          <h2>Ajouter un produit</h2>
+          <form id="productForm" class="product-form">
+            <label class="field field-wide">
+              <span>Nom du produit</span>
+              <input id="productName" placeholder="Ex. Riz parfumé 5 kg" required>
+            </label>
+
+            <label class="field">
+              <span>Prix de vente</span>
+              <div class="input-with-suffix">
+                <input id="productPrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0" required>
+                <span>FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Prix d'achat</span>
+              <div class="input-with-suffix">
+                <input id="productPurchasePrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+                <span>FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Stock initial</span>
+              <input id="productStock" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+            </label>
+
+            <label class="field">
+              <span>Unité</span>
+              <input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required>
+            </label>
+
+            <label class="field field-wide">
+              <span>Seuil d'alerte</span>
+              <input id="productThreshold" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+              <small>Whatzabi vous alertera quand le stock atteindra ce niveau.</small>
+            </label>
+
+            <button type="submit" class="primary-action">Ajouter le produit</button>
           </form>
         </article>
         <div id="productList" class="list"></div>
