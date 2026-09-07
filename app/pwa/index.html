@@ -135,7 +135,9 @@
         <article class="card">
           <h2>Nouvelle vente</h2>
           <form id="saleForm" class="form-grid">
-            <select id="saleCustomer" required><option value="">Client</option></select>
+            <select id="saleCustomer">
+              <option value="">Vente comptoir — sans client</option>
+            </select>
             <select id="saleProduct" required><option value="">Produit</option></select>
             <input id="saleQty" type="number" min="1" value="1" required>
             <input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé">

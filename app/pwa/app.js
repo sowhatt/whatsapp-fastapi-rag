@@ -164,7 +164,7 @@ function render() {
     : '<article class="card muted">Aucune vente.</article>';
 
   $('saleCustomer').innerHTML =
-    '<option value="">Client</option>' +
+    '<option value="">Vente comptoir — sans client</option>' +
     customers.map((customer) => `<option value="${customer.id}">${esc(customer.name)}</option>`).join('');
 
   $('saleProduct').innerHTML =
@@ -330,12 +330,21 @@ $('saleForm').addEventListener('submit', async (event) => {
   try {
     const product = state.products.find((item) => item.id === Number($('saleProduct').value));
     if (!product) throw new Error('Choisissez un produit');
+    const quantity = Number($('saleQty').value);
+    const selectedCustomer = $('saleCustomer').value;
+    const customerId = selectedCustomer ? Number(selectedCustomer) : null;
+
+    let paidAmount = Number($('salePaid').value);
+    if (customerId === null) {
+      paidAmount = Number(product.price) * quantity;
+    }
+
     await api('/pwa/sales', {
       method: 'POST',
       body: JSON.stringify({
-        customer_id: Number($('saleCustomer').value),
-        items: [{ product_id: product.id, quantity: Number($('saleQty').value) }],
-        paid_amount: Number($('salePaid').value),
+        customer_id: customerId,
+        items: [{ product_id: product.id, quantity }],
+        paid_amount: paidAmount,
         payment_channel: $('saleChannel').value,
       }),
     });

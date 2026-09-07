@@ -134,18 +134,26 @@ def create_sale(
 
     _stage_started = time.monotonic()
     cached_customer = db.info.get("_whatzabi_resolved_sale_customer")
+    customer = None
+    customer_source = "none"
 
-    if cached_customer is not None and cached_customer.id == payload.customer_id:
-        customer = cached_customer
-        customer_source = "request_cache"
-    else:
-        customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
-        customer_source = "database"
+    if payload.customer_id is not None:
+        if cached_customer is not None and cached_customer.id == payload.customer_id:
+            customer = cached_customer
+            customer_source = "request_cache"
+        else:
+            customer = (
+                db.query(Customer)
+                .filter(Customer.id == payload.customer_id)
+                .first()
+            )
+            customer_source = "database"
+
+        if not customer:
+            raise HTTPException(status_code=404, detail="Client introuvable")
 
     _sale_audit["customer_source"] = customer_source
     _sale_audit["customer_lookup_s"] = round(time.monotonic() - _stage_started, 3)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Client introuvable")
 
     if not payload.items:
         raise HTTPException(status_code=400, detail="Au moins une ligne produit est requise")
@@ -195,6 +203,13 @@ def create_sale(
         raise HTTPException(status_code=400, detail="Le montant payé ne peut pas dépasser le montant total")
 
     remaining_amount = total_amount - paid_amount
+
+    if remaining_amount > 0 and customer is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Un client est obligatoire pour une vente à crédit ou partiellement payée",
+        )
+
     if remaining_amount == 0:
         status = "paid"
     elif paid_amount == 0:
@@ -267,7 +282,11 @@ def create_sale(
             quantity=-quantity,
             reference_type="sale",
             reference_id=sale.id,
-            note=f"Vente au client {customer.name}",
+            note=(
+                f"Vente au client {customer.name}"
+                if customer is not None
+                else "Vente comptoir"
+            ),
         )
 
     _sale_audit["items_stage_s"] = round(time.monotonic() - _stage_started, 3)
@@ -276,7 +295,7 @@ def create_sale(
     if paid_amount > 0:
         payment = Payment(
             sale_id=sale.id,
-            customer_id=customer.id,
+            customer_id=customer.id if customer is not None else None,
             amount=paid_amount,
             channel=payload.payment_channel,
             reference=None,
@@ -295,7 +314,8 @@ def create_sale(
                 )
 
     _sale_audit["payment_stage_s"] = round(time.monotonic() - _stage_started, 3)
-    customer.debt += remaining_amount
+    if customer is not None:
+        customer.debt += remaining_amount
 
     add_event(
         db,

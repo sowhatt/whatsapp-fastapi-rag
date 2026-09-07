@@ -11,7 +11,7 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    customer_id: int
+    customer_id: int | None = None
     items: list[SaleItemCreate]
     paid_amount: int = 0
     payment_channel: str = "cash"
