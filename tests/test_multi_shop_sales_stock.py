@@ -9,10 +9,13 @@ from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.payment import Payment
 from app.models.product import Product
+from app.models.sale import Sale
 from app.models.shop import Shop
 from app.models.shop_inventory import ShopInventory
+from app.routers.payments import create_payment
 from app.routers.sales import cancel_sale, create_sale, get_sale_items, get_sale_payments, list_sales
 from app.schemas.cancel_sale import CancelSalePayload
+from app.schemas.payment import PaymentCreate
 from app.schemas.sale import SaleCreate, SaleItemCreate
 from app.services.shop_context_service import set_initial_shop_stock
 
@@ -265,3 +268,66 @@ def test_identified_customer_sale_still_supports_credit():
 
     db.refresh(customer)
     assert customer.debt == 6000
+
+
+
+def test_cross_shop_payment_cannot_modify_sale():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+
+    sale = create_sale(
+        SaleCreate(
+            customer_id=customer.id,
+            items=[
+                SaleItemCreate(
+                    product_id=product.id,
+                    quantity=1,
+                )
+            ],
+            paid_amount=4000,
+            payment_channel="cash",
+        ),
+        db,
+    )
+
+    original_paid = sale.paid_amount
+    original_remaining = sale.remaining_amount
+    original_debt = customer.debt
+
+    db.info["pwa_shop_id"] = shop_two.id
+
+    try:
+        create_payment(
+            PaymentCreate(
+                sale_id=sale.id,
+                customer_id=customer.id,
+                amount=1000,
+                channel="cash",
+            ),
+            db,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "Vente introuvable"
+    else:
+        raise AssertionError(
+            "Une boutique ne doit pas pouvoir payer une vente d'une autre boutique"
+        )
+
+    db.expire_all()
+
+    refreshed_sale = db.query(Sale).filter(Sale.id == sale.id).one()
+    refreshed_customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer.id)
+        .one()
+    )
+
+    assert refreshed_sale.paid_amount == original_paid
+    assert refreshed_sale.remaining_amount == original_remaining
+    assert refreshed_customer.debt == original_debt
