@@ -5,16 +5,25 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.category import Category
 from app.schemas.category import CategoryCreate, CategoryRead
+from app.rbac import require_permission
 
 router = APIRouter(tags=["categories"])
 
 
-@router.get("/categories", response_model=list[CategoryRead])
+@router.get(
+    "/categories",
+    response_model=list[CategoryRead],
+    dependencies=[Depends(require_permission("product.read"))],
+)
 def list_categories(db: Session = Depends(get_db)):
     return db.query(Category).order_by(Category.name.asc()).all()
 
 
-@router.post("/categories", response_model=CategoryRead)
+@router.post(
+    "/categories",
+    response_model=CategoryRead,
+    dependencies=[Depends(require_permission("product.create"))],
+)
 def create_category(payload: CategoryCreate, db: Session = Depends(get_db)):
     name = " ".join(payload.name.split()).strip()
     if not name:

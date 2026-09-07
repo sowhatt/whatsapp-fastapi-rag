@@ -8,6 +8,7 @@ from app.models.payment_allocation import PaymentAllocation
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.schemas.payment import PaymentCreate, PaymentRead
+from app.rbac import require_permission
 
 router = APIRouter(tags=["paiements clients"])
 
@@ -33,7 +34,11 @@ def add_event(
     )
 
 
-@router.post("/payments", response_model=PaymentRead)
+@router.post(
+    "/payments",
+    response_model=PaymentRead,
+    dependencies=[Depends(require_permission("payment.create"))],
+)
 def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     """Enregistre un paiement client et l’impute en FIFO sur les lignes de vente."""
     sale = db.query(Sale).filter(Sale.id == payload.sale_id).first()

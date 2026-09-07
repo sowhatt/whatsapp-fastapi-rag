@@ -19,6 +19,7 @@ def test_seller_permissions_match_daily_sales_workflow():
     assert has_permission("SELLER", "customer.create")
     assert has_permission("SELLER", "sale.read")
     assert has_permission("SELLER", "sale.create")
+    assert has_permission("SELLER", "payment.create")
     assert not has_permission("SELLER", "product.create")
     assert not has_permission("SELLER", "product.update")
     assert not has_permission("SELLER", "stock.adjust")
@@ -37,6 +38,7 @@ def test_manager_can_manage_products_stock_and_cancel_sales():
         "sale.read",
         "sale.create",
         "sale.cancel",
+        "payment.create",
     ):
         assert has_permission("MANAGER", permission)
 
@@ -47,6 +49,7 @@ def test_stock_manager_cannot_create_sales_or_customers():
     assert has_permission("STOCK_MANAGER", "stock.adjust")
     assert not has_permission("STOCK_MANAGER", "sale.create")
     assert not has_permission("STOCK_MANAGER", "customer.create")
+    assert not has_permission("STOCK_MANAGER", "payment.create")
 
 
 def test_accountant_is_read_only_for_core_commercial_operations():
@@ -59,6 +62,7 @@ def test_accountant_is_read_only_for_core_commercial_operations():
     assert not has_permission("ACCOUNTANT", "customer.create")
     assert not has_permission("ACCOUNTANT", "sale.create")
     assert not has_permission("ACCOUNTANT", "sale.cancel")
+    assert not has_permission("ACCOUNTANT", "payment.create")
 
 
 def test_permission_guard_rejects_forbidden_staff_action():
@@ -85,3 +89,37 @@ def test_permission_guard_keeps_internal_and_legacy_flows_compatible():
     guard = require_permission("sale.cancel")
 
     assert guard(db=db) is None
+
+
+def test_category_permissions_follow_product_catalog_permissions():
+    assert has_permission("SELLER", "product.read")
+    assert not has_permission("SELLER", "product.create")
+
+    assert has_permission("MANAGER", "product.read")
+    assert has_permission("MANAGER", "product.create")
+
+    assert has_permission("STOCK_MANAGER", "product.read")
+    assert has_permission("STOCK_MANAGER", "product.create")
+
+    assert has_permission("ACCOUNTANT", "product.read")
+    assert not has_permission("ACCOUNTANT", "product.create")
+
+
+def test_payment_permission_guard_enforces_staff_roles():
+    seller_guard = require_permission("payment.create")
+    assert seller_guard(db=_db_with_staff("SELLER")) is None
+
+    manager_guard = require_permission("payment.create")
+    assert manager_guard(db=_db_with_staff("MANAGER")) is None
+
+    stock_manager_guard = require_permission("payment.create")
+    with pytest.raises(HTTPException) as exc:
+        stock_manager_guard(db=_db_with_staff("STOCK_MANAGER"))
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Permission requise : payment.create"
+
+    accountant_guard = require_permission("payment.create")
+    with pytest.raises(HTTPException) as exc:
+        accountant_guard(db=_db_with_staff("ACCOUNTANT"))
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Permission requise : payment.create"
