@@ -97,7 +97,7 @@ function showTab(name) {
   document.querySelectorAll('.panel').forEach((element) =>
     element.classList.toggle('active', element.id === name),
   );
-  document.querySelectorAll('.tabs button').forEach((element) =>
+  document.querySelectorAll('.tabs [data-tab]').forEach((element) =>
     element.classList.toggle('active', element.dataset.tab === name),
   );
 }
@@ -134,10 +134,87 @@ function render() {
 
   renderIdentity();
   renderPermissions();
-  $('statProducts').textContent = products.length;
-  $('statCustomers').textContent = customers.length;
+  const revenue = sales.reduce(
+    (sum, sale) => sum + Number(sale.total_amount || 0),
+    0,
+  );
+
+  const customerDebt = customers.reduce(
+    (sum, customer) => sum + Number(customer.debt || 0),
+    0,
+  );
+
+  const customersWithDebt = customers.filter(
+    (customer) => Number(customer.debt || 0) > 0,
+  ).length;
+
+  const lowStockProducts = products.filter(
+    (product) => Number(product.stock || 0) <= Number(product.threshold || 0),
+  );
+
+  $('statRevenue').textContent = fmt(revenue);
   $('statSales').textContent = sales.length;
-  $('statDue').textContent = fmt(sales.reduce((sum, sale) => sum + Number(sale.remaining_amount || 0), 0));
+  $('statDebt').textContent = fmt(customerDebt);
+  $('statDebtCustomers').textContent =
+    customersWithDebt + (customersWithDebt > 1 ? ' clients' : ' client');
+  $('statLowStock').textContent = lowStockProducts.length;
+
+  $('activityRevenue').textContent = fmt(revenue);
+  $('activityDebt').textContent = fmt(customerDebt);
+
+  $('recentActivity').innerHTML = sales.length
+    ? sales
+        .slice(0, 4)
+        .map(
+          (sale) => `<article class="recent-row">
+            <div>
+              <strong>Vente #${sale.sale_number ?? sale.id}</strong>
+              <span>${esc(sale.status)} · payé ${fmt(sale.paid_amount)}</span>
+            </div>
+            <strong>${fmt(sale.total_amount)}</strong>
+          </article>`,
+        )
+        .join('')
+    : '<p class="muted empty-state">Aucune activité récente.</p>';
+
+  $('activityStock').innerHTML = products.length
+    ? products
+        .map((product) => {
+          const stock = Number(product.stock || 0);
+          const threshold = Number(product.threshold || 0);
+
+          const status =
+            stock <= 0
+              ? '<span class="stock-state stock-out">Rupture</span>'
+              : stock <= threshold
+                ? '<span class="stock-state stock-low">Faible</span>'
+                : '<span class="stock-state stock-ok">OK</span>';
+
+          return `<article class="activity-row">
+            <div>
+              <strong>${esc(product.name)}</strong>
+              <span>Stock ${stock} ${esc(product.unit)}</span>
+            </div>
+            ${status}
+          </article>`;
+        })
+        .join('')
+    : '<p class="muted empty-state">Aucun produit.</p>';
+
+  $('activitySales').innerHTML = sales.length
+    ? sales
+        .slice(0, 8)
+        .map(
+          (sale) => `<article class="activity-row">
+            <div>
+              <strong>Vente #${sale.sale_number ?? sale.id}</strong>
+              <span>${esc(sale.status)}</span>
+            </div>
+            <strong>${fmt(sale.total_amount)}</strong>
+          </article>`,
+        )
+        .join('')
+    : '<p class="muted empty-state">Aucune vente.</p>';
 
   $('productList').innerHTML = products.length
     ? products
@@ -360,3 +437,34 @@ $('saleForm').addEventListener('submit', async (event) => {
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/auth/sw.js').catch(() => {});
 boot();
+
+function scannerComingSoon() {
+  toast('Scanner / OCR / QR interne : prochain sprint');
+}
+
+$('scannerNavBtn').addEventListener('click', scannerComingSoon);
+$('quickScanner').addEventListener('click', scannerComingSoon);
+
+$('quickAddPurchase').addEventListener('click', () => {
+  toast('Module achats : interface PWA à brancher');
+});
+
+$('moreSuppliers').addEventListener('click', () => {
+  toast('Fournisseurs : interface PWA à brancher');
+});
+
+$('morePurchases').addEventListener('click', () => {
+  toast('Achats : interface PWA à brancher');
+});
+
+$('moreFinancial').addEventListener('click', () => {
+  showTab('activity');
+});
+
+$('moreCalculator').addEventListener('click', () => {
+  toast('Calculatrice Whatzabi : à brancher');
+});
+
+$('moreSettings').addEventListener('click', () => {
+  toast('Paramètres : à brancher');
+});

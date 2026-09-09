@@ -48,27 +48,200 @@
         </div>
       </section>
 
-      <nav class="tabs" aria-label="Navigation">
-        <button data-tab="dashboard" class="active">Accueil</button>
-        <button data-tab="products">Produits</button>
-        <button data-tab="customers">Clients</button>
-        <button data-tab="sales">Ventes</button>
+      <nav class="tabs bottom-nav" aria-label="Navigation principale">
+        <button data-tab="dashboard" class="active">
+          <span class="nav-icon">⌂</span>
+          <span>Accueil</span>
+        </button>
+        <button data-tab="sales">
+          <span class="nav-icon">🛒</span>
+          <span>Caisse</span>
+        </button>
+        <button id="scannerNavBtn" type="button" class="scanner-nav" aria-label="Scanner">
+          <span>⌁</span>
+        </button>
+        <button data-tab="activity">
+          <span class="nav-icon">▥</span>
+          <span>Activité</span>
+        </button>
+        <button data-tab="more">
+          <span class="nav-icon">☰</span>
+          <span>Plus</span>
+        </button>
       </nav>
 
-      <section id="dashboard" class="panel active">
-        <div class="grid stats">
-          <article class="card"><span>Produits</span><strong id="statProducts">0</strong></article>
-          <article class="card"><span>Clients</span><strong id="statCustomers">0</strong></article>
-          <article class="card"><span>Ventes</span><strong id="statSales">0</strong></article>
-          <article class="card"><span>À encaisser</span><strong id="statDue">0 FCFA</strong></article>
-        </div>
-        <article class="card">
-          <h2>Actions rapides</h2>
-          <div class="quick-actions">
-            <button id="quickAddProduct" data-open-tab="products">+ Produit</button>
-            <button id="quickAddCustomer" data-open-tab="customers">+ Client</button>
-            <button id="quickAddSale" data-open-tab="sales">+ Vente</button>
+      <section id="dashboard" class="panel active home-panel">
+        <article class="home-hero">
+          <div>
+            <span class="eyebrow home-eyebrow">Tableau de bord</span>
+            <h2>Bonjour 👋</h2>
+            <p>Prêt pour une nouvelle vente ?</p>
           </div>
+        </article>
+
+        <div class="grid home-stats">
+          <article class="card home-stat">
+            <span>Chiffre d'affaires</span>
+            <strong id="statRevenue">0 FCFA</strong>
+            <small>Boutique active</small>
+          </article>
+
+          <article class="card home-stat">
+            <span>Ventes</span>
+            <strong id="statSales">0</strong>
+            <small>Boutique active</small>
+          </article>
+
+          <article class="card home-stat">
+            <span>Créances clients</span>
+            <strong id="statDebt">0 FCFA</strong>
+            <small id="statDebtCustomers">0 client</small>
+          </article>
+
+          <article class="card home-stat home-stat-alert">
+            <span>Stock faible</span>
+            <strong id="statLowStock">0</strong>
+            <small>produits</small>
+          </article>
+        </div>
+
+        <section class="home-section">
+          <div class="home-section-heading">
+            <h2>Actions rapides</h2>
+          </div>
+
+          <div class="home-actions">
+            <button id="quickAddSale" data-open-tab="sales" class="home-action">
+              <span class="home-action-icon">🛒</span>
+              <span>Nouvelle vente</span>
+            </button>
+
+            <button id="quickAddPurchase" type="button" class="home-action">
+              <span class="home-action-icon">📦</span>
+              <span>Nouvel achat</span>
+            </button>
+
+            <button id="quickScanner" type="button" class="home-action">
+              <span class="home-action-icon">⌁</span>
+              <span>Scanner produit</span>
+            </button>
+
+            <button id="quickStock" data-open-tab="activity" class="home-action">
+              <span class="home-action-icon">📊</span>
+              <span>Voir le stock</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="home-section">
+          <div class="home-section-heading">
+            <h2>Activité récente</h2>
+            <button data-open-tab="activity" class="text-action">Voir tout</button>
+          </div>
+          <div id="recentActivity" class="card recent-activity"></div>
+        </section>
+      </section>
+
+      <section id="activity" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Activité</h2>
+          </div>
+        </div>
+
+        <div class="grid activity-stats">
+          <article class="card">
+            <span>CA ventes</span>
+            <strong id="activityRevenue">0 FCFA</strong>
+          </article>
+          <article class="card">
+            <span>Créances</span>
+            <strong id="activityDebt">0 FCFA</strong>
+          </article>
+        </div>
+
+        <article class="card">
+          <h2>Stock boutique</h2>
+          <div id="activityStock" class="list compact-list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Dernières ventes</h2>
+          <div id="activitySales" class="list compact-list"></div>
+        </article>
+      </section>
+
+      <section id="more" class="panel">
+        <article class="card more-menu">
+          <h2>Gestion</h2>
+
+          <button data-open-tab="products" class="more-menu-item">
+            <span class="more-menu-icon">📦</span>
+            <span>
+              <strong>Produits & stock</strong>
+              <small>Catalogue et gestion des produits</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button data-open-tab="customers" class="more-menu-item">
+            <span class="more-menu-icon">👥</span>
+            <span>
+              <strong>Clients</strong>
+              <small>Clients, dettes et historique</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreSuppliers" type="button" class="more-menu-item">
+            <span class="more-menu-icon">🚚</span>
+            <span>
+              <strong>Fournisseurs</strong>
+              <small>Achats et dettes fournisseurs</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="morePurchases" type="button" class="more-menu-item">
+            <span class="more-menu-icon">📥</span>
+            <span>
+              <strong>Achats</strong>
+              <small>Réception et approvisionnement</small>
+            </span>
+            <span>›</span>
+          </button>
+        </article>
+
+        <article class="card more-menu">
+          <h2>Outils</h2>
+
+          <button id="moreFinancial" type="button" class="more-menu-item">
+            <span class="more-menu-icon">📈</span>
+            <span>
+              <strong>Analyse financière</strong>
+              <small>CA, marge et créances</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreCalculator" type="button" class="more-menu-item">
+            <span class="more-menu-icon">🧮</span>
+            <span>
+              <strong>Calculatrice</strong>
+              <small>Calcul rapide</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreSettings" type="button" class="more-menu-item">
+            <span class="more-menu-icon">⚙️</span>
+            <span>
+              <strong>Paramètres</strong>
+              <small>Commerce et préférences</small>
+            </span>
+            <span>›</span>
+          </button>
         </article>
       </section>
 
