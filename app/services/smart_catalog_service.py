@@ -79,6 +79,8 @@ def analyze_catalog_image(
         "Le contexte est un commerce en Afrique francophone. "
         "Si source=product, identifie le produit visible. "
         "Si source=invoice, lis les lignes de produits de la facture. "
+        "Si source=barcode, concentre-toi sur le code GTIN/EAN/UPC visible puis utilise aussi "
+        "le texte de l'emballage pour proposer le nom du produit sans inventer de référence. "
         "Retourne uniquement un objet JSON avec la clé candidates. "
         "Chaque candidate contient: name, brand, variant, packaging, unit, barcode, "
         "purchase_price, quantity, confidence. "
