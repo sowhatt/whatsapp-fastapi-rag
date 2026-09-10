@@ -345,3 +345,9 @@
     width: 100%;
   }
 }
+
+/* Bottom navigation must cancel positioning inherited from .tabs */
+.bottom-nav {
+  top: auto;
+  margin-bottom: 0;
+}
