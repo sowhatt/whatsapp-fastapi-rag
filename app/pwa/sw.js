@@ -1,8 +1,9 @@
-const CACHE = 'whatzabi-pwa-v3';
+const CACHE = 'whatzabi-pwa-v4';
+
 const ASSETS = [
-  '/auth/app',
-  '/auth/styles.css',
-  '/auth/app.js',
+  '/auth/app?v=4',
+  '/auth/styles.css?v=4',
+  '/auth/app.js?v=4',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
@@ -12,7 +13,7 @@ self.addEventListener('install', (event) => {
     caches
       .open(CACHE)
       .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting()),
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -21,41 +22,61 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE)
+            .map((key) => caches.delete(key))
+        )
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (event.request.method !== 'GET' || url.pathname.startsWith('/pwa/') || url.pathname === '/auth/me') {
+  if (
+    event.request.method !== 'GET' ||
+    url.pathname.startsWith('/pwa/') ||
+    url.pathname === '/auth/me'
+  ) {
     return;
   }
 
-  if (url.pathname === '/auth/app' || url.pathname === '/auth/app.js' || url.pathname === '/auth/styles.css') {
+  if (
+    url.pathname === '/auth/app' ||
+    url.pathname === '/auth/app.js' ||
+    url.pathname === '/auth/styles.css'
+  ) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-store' })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => {
+              cache.put(event.request, copy);
+            });
+          }
           return response;
         })
-        .catch(() => caches.match(event.request)),
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((response) => {
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+
+      return fetch(event.request).then((response) => {
+        if (response.ok) {
           const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          return response;
-        }),
-    ),
+          caches.open(CACHE).then((cache) => {
+            cache.put(event.request, copy);
+          });
+        }
+        return response;
+      });
+    })
   );
 });
