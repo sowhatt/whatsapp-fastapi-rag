@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.normalization_agent import _catalog_values
 from app.db.session import get_db
+from app.routers.pwa_smart_catalog import router as smart_catalog_router
 from app.services.shop_context_service import get_current_shop_id
 from app.services.voice_transcriber import (
     VoiceTranscriptionError,
@@ -93,3 +94,6 @@ async def transcribe_pwa_voice(
         "status": "transcribed",
         "text": text,
     }
+
+
+router.include_router(smart_catalog_router)
