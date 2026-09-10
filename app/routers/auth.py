@@ -69,14 +69,29 @@ def pwa_app():
     return FileResponse(PWA_DIR / "index.html", media_type="text/html")
 
 
+@router.get("/smart-catalog", include_in_schema=False)
+def pwa_smart_catalog():
+    return FileResponse(PWA_DIR / "smart-catalog.html", media_type="text/html")
+
+
 @router.get("/styles.css", include_in_schema=False)
 def pwa_styles():
     return FileResponse(PWA_DIR / "styles.css", media_type="text/css")
 
 
+@router.get("/smart-catalog.css", include_in_schema=False)
+def pwa_smart_catalog_styles():
+    return FileResponse(PWA_DIR / "smart-catalog.css", media_type="text/css")
+
+
 @router.get("/app.js", include_in_schema=False)
 def pwa_script():
     return FileResponse(PWA_DIR / "app.js", media_type="application/javascript")
+
+
+@router.get("/smart-catalog.js", include_in_schema=False)
+def pwa_smart_catalog_script():
+    return FileResponse(PWA_DIR / "smart-catalog.js", media_type="application/javascript")
 
 
 @router.get("/manifest.webmanifest", include_in_schema=False)
