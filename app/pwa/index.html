@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=6">
+  <link rel="stylesheet" href="/auth/styles.css?v=7">
 </head>
 <body>
   <main class="shell">
@@ -57,8 +57,8 @@
           <span class="nav-icon">🛒</span>
           <span>Caisse</span>
         </button>
-        <button id="scannerNavBtn" type="button" class="scanner-nav" aria-label="Scanner">
-          <span>⌁</span>
+        <button id="voiceNavBtn" type="button" class="scanner-nav" aria-label="Assistant vocal">
+          <span>🎙️</span>
         </button>
         <button data-tab="activity">
           <span class="nav-icon">▥</span>
@@ -324,6 +324,36 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=6" defer></script>
+  <script src="/auth/app.js?v=7" defer></script>
+
+      <div id="voiceSheet" class="voice-sheet" hidden>
+        <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
+          <button id="voiceCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+
+          <div class="voice-orb" id="voiceOrb">🎙️</div>
+
+          <h2 id="voiceTitle">Assistant Whatzabi</h2>
+
+          <p id="voiceStatus" class="voice-status">
+            Appuie sur le micro et parle naturellement.
+          </p>
+
+          <div id="voiceTranscriptBox" class="voice-transcript" hidden>
+            <small>J’ai compris</small>
+            <p id="voiceTranscript"></p>
+          </div>
+
+          <button id="voiceRecordBtn" type="button" class="primary voice-record-btn">
+            🎙️ Commencer
+          </button>
+
+          <div id="voiceReviewActions" class="voice-review-actions" hidden>
+            <button id="voiceCancelBtn" type="button">Annuler</button>
+            <button id="voiceRetryBtn" type="button">Recommencer</button>
+            <button id="voiceContinueBtn" type="button" class="primary">Continuer</button>
+          </div>
+        </div>
+      </div>
+
 </body>
 </html>

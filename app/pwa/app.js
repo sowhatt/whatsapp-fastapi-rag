@@ -439,7 +439,6 @@ function scannerComingSoon() {
   toast('Scanner / OCR / QR interne : prochain sprint');
 }
 
-$('scannerNavBtn').addEventListener('click', scannerComingSoon);
 $('quickScanner').addEventListener('click', scannerComingSoon);
 
 $('quickAddPurchase').addEventListener('click', () => {
@@ -464,4 +463,176 @@ $('moreCalculator').addEventListener('click', () => {
 
 $('moreSettings').addEventListener('click', () => {
   toast('Paramètres : à brancher');
+});
+
+let voiceRecorder = null;
+let voiceStream = null;
+let voiceChunks = [];
+let voiceMimeType = '';
+
+function openVoiceSheet() {
+  $('voiceSheet').hidden = false;
+  $('voiceTranscriptBox').hidden = true;
+  $('voiceReviewActions').hidden = true;
+  $('voiceRecordBtn').hidden = false;
+  $('voiceRecordBtn').textContent = '🎙️ Commencer';
+  $('voiceStatus').textContent = 'Appuie sur le micro et parle naturellement.';
+  $('voiceTranscript').textContent = '';
+  $('voiceOrb').classList.remove('recording');
+}
+
+function cleanupVoiceStream() {
+  if (voiceStream) {
+    voiceStream.getTracks().forEach((track) => track.stop());
+    voiceStream = null;
+  }
+}
+
+function closeVoiceSheet() {
+  if (voiceRecorder && voiceRecorder.state === 'recording') {
+    voiceRecorder.stop();
+  }
+  cleanupVoiceStream();
+  $('voiceSheet').hidden = true;
+}
+
+function preferredVoiceMimeType() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+  ];
+
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+async function startVoiceRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    toast('Le micro n’est pas disponible sur ce navigateur.');
+    return;
+  }
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    voiceChunks = [];
+    voiceMimeType = preferredVoiceMimeType();
+
+    voiceRecorder = voiceMimeType
+      ? new MediaRecorder(voiceStream, { mimeType: voiceMimeType })
+      : new MediaRecorder(voiceStream);
+
+    voiceRecorder.addEventListener('dataavailable', (event) => {
+      if (event.data && event.data.size > 0) {
+        voiceChunks.push(event.data);
+      }
+    });
+
+    voiceRecorder.addEventListener('stop', sendVoiceRecording);
+
+    voiceRecorder.start();
+
+    $('voiceStatus').textContent = 'J’écoute…';
+    $('voiceRecordBtn').textContent = '⏹ Terminer';
+    $('voiceOrb').classList.add('recording');
+  } catch (error) {
+    cleanupVoiceStream();
+    $('voiceStatus').textContent = 'Impossible d’accéder au microphone.';
+    toast('Autorise l’accès au microphone pour utiliser l’assistant vocal.');
+  }
+}
+
+function stopVoiceRecording() {
+  if (!voiceRecorder || voiceRecorder.state !== 'recording') return;
+
+  $('voiceStatus').textContent = 'Transcription en cours…';
+  $('voiceRecordBtn').disabled = true;
+  $('voiceOrb').classList.remove('recording');
+
+  voiceRecorder.stop();
+}
+
+async function sendVoiceRecording() {
+  cleanupVoiceStream();
+
+  const actualType =
+    voiceRecorder?.mimeType ||
+    voiceMimeType ||
+    'audio/webm';
+
+  const blob = new Blob(voiceChunks, { type: actualType });
+
+  if (!blob.size) {
+    $('voiceStatus').textContent = 'Aucun son enregistré.';
+    $('voiceRecordBtn').disabled = false;
+    $('voiceRecordBtn').textContent = '🎙️ Recommencer';
+    return;
+  }
+
+  const extension = actualType.includes('mp4') ? 'm4a' : 'webm';
+
+  const form = new FormData();
+  form.append('audio', blob, `whatzabi-voice.${extension}`);
+
+  try {
+    const response = await fetch('/pwa/voice/transcribe', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+      },
+      body: form,
+    });
+
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {}
+
+    if (response.status === 401) {
+      logout();
+      throw new Error('Session expirée');
+    }
+
+    if (!response.ok) {
+      throw new Error(body?.detail || 'Impossible de transcrire le vocal');
+    }
+
+    $('voiceTranscript').textContent = body.text;
+    $('voiceTranscriptBox').hidden = false;
+    $('voiceStatus').textContent = 'Vérifie ce que j’ai compris.';
+    $('voiceRecordBtn').disabled = false;
+    $('voiceRecordBtn').hidden = true;
+    $('voiceReviewActions').hidden = false;
+  } catch (error) {
+    $('voiceStatus').textContent = error.message;
+    $('voiceRecordBtn').hidden = false;
+    $('voiceRecordBtn').disabled = false;
+    $('voiceRecordBtn').textContent = '🎙️ Recommencer';
+  }
+}
+
+$('voiceNavBtn').addEventListener('click', openVoiceSheet);
+
+$('voiceCloseBtn').addEventListener('click', closeVoiceSheet);
+
+$('voiceCancelBtn').addEventListener('click', closeVoiceSheet);
+
+$('voiceRetryBtn').addEventListener('click', () => {
+  $('voiceTranscriptBox').hidden = true;
+  $('voiceReviewActions').hidden = true;
+  $('voiceRecordBtn').hidden = false;
+  $('voiceRecordBtn').disabled = false;
+  $('voiceRecordBtn').textContent = '🎙️ Commencer';
+  $('voiceStatus').textContent = 'Appuie sur le micro et parle naturellement.';
+});
+
+$('voiceContinueBtn').addEventListener('click', () => {
+  toast('Commande métier vocale : prochain sprint');
+});
+
+$('voiceRecordBtn').addEventListener('click', () => {
+  if (voiceRecorder && voiceRecorder.state === 'recording') {
+    stopVoiceRecording();
+  } else {
+    startVoiceRecording();
+  }
 });

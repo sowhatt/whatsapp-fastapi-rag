@@ -6,6 +6,7 @@ from app.db.schema import create_base_schema
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.auth import router as auth_router
+from app.routers.pwa_voice import router as pwa_voice_router
 from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
@@ -424,6 +425,7 @@ for pwa_router in (
     customers_router,
     sales_router,
     payments_router,
+    pwa_voice_router,
 ):
     app.include_router(
         pwa_router,
