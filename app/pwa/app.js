@@ -58,12 +58,9 @@ function can(permission) {
 
 function renderPermissions() {
   const productCreate = can('product.create');
-  const customerCreate = can('customer.create');
   const saleCreate = can('sale.create');
 
   $('productCreateCard').hidden = !productCreate;
-  $('quickAddProduct').hidden = !productCreate;
-  $('quickAddCustomer').hidden = !customerCreate;
   $('quickAddSale').hidden = !saleCreate;
 }
 
