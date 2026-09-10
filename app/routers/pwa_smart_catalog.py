@@ -21,7 +21,7 @@ ALLOWED_IMAGE_TYPES = {
     "image/heic",
     "image/heif",
 }
-ALLOWED_SOURCES = {"product", "invoice"}
+ALLOWED_SOURCES = {"product", "invoice", "barcode"}
 
 
 @router.post("/catalog/analyze", response_model=SmartCatalogAnalyzeResponse)
