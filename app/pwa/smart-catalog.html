@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Smart Catalog · Whatzabi</title>
+  <link rel="stylesheet" href="/auth/styles.css?v=7">
+  <link rel="stylesheet" href="/auth/smart-catalog.css?v=1">
+</head>
+<body>
+  <main class="catalog-shell">
+    <header class="catalog-topbar">
+      <a class="catalog-back" href="/auth/app">‹ Accueil</a>
+      <div>
+        <strong>Smart Catalog</strong>
+        <small>Création produit assistée</small>
+      </div>
+    </header>
+
+    <section class="catalog-hero">
+      <span class="catalog-eyebrow">Whatzabi Vision</span>
+      <h1>Ajoute tes produits sans les saisir</h1>
+      <p>Photographie un produit, une facture fournisseur ou un code-barres. Whatzabi prépare le catalogue et te laisse valider.</p>
+    </section>
+
+    <section id="captureChoices" class="catalog-choices">
+      <button type="button" data-source="product" class="catalog-choice">
+        <span class="catalog-choice-icon">📦</span>
+        <span><strong>Photographier un produit</strong><small>Nom, marque, format et informations visibles</small></span>
+      </button>
+      <button type="button" data-source="invoice" class="catalog-choice">
+        <span class="catalog-choice-icon">📄</span>
+        <span><strong>Scanner une facture</strong><small>Détecte plusieurs lignes produit en une fois</small></span>
+      </button>
+      <button type="button" data-source="barcode" class="catalog-choice">
+        <span class="catalog-choice-icon">▦</span>
+        <span><strong>Scanner un code-barres</strong><small>Identifie le GTIN/EAN visible sur l'emballage</small></span>
+      </button>
+    </section>
+
+    <input id="catalogCameraInput" type="file" accept="image/*" capture="environment" hidden>
+    <input id="catalogGalleryInput" type="file" accept="image/*" hidden>
+
+    <section id="capturePanel" class="catalog-card" hidden>
+      <div class="catalog-section-heading">
+        <div>
+          <span id="captureModeLabel" class="catalog-eyebrow"></span>
+          <h2>Image à analyser</h2>
+        </div>
+        <button id="changeModeBtn" type="button" class="catalog-link-btn">Changer</button>
+      </div>
+
+      <div id="catalogPreviewWrap" class="catalog-preview" hidden>
+        <img id="catalogPreview" alt="Aperçu du document ou produit">
+      </div>
+
+      <div id="catalogEmptyPreview" class="catalog-empty-preview">
+        <span>📷</span>
+        <p>Prends une photo nette, bien cadrée et suffisamment éclairée.</p>
+      </div>
+
+      <div class="catalog-capture-actions">
+        <button id="takePhotoBtn" type="button" class="catalog-primary">📷 Prendre une photo</button>
+        <button id="choosePhotoBtn" type="button">🖼️ Choisir une image</button>
+      </div>
+
+      <button id="analyzeCatalogBtn" type="button" class="catalog-primary catalog-analyze" disabled>
+        ✨ Analyser avec Whatzabi
+      </button>
+      <p id="catalogStatus" class="catalog-status"></p>
+    </section>
+
+    <section id="catalogResults" class="catalog-results" hidden>
+      <div class="catalog-section-heading">
+        <div>
+          <span class="catalog-eyebrow">Résultat</span>
+          <h2>Produits détectés</h2>
+        </div>
+        <span id="candidateCount" class="catalog-count"></span>
+      </div>
+      <p class="catalog-help">Vérifie les propositions. Aucun produit n'est créé automatiquement.</p>
+      <div id="candidateList" class="catalog-candidate-list"></div>
+      <div class="catalog-bottom-actions">
+        <button id="restartCatalogBtn" type="button">Recommencer</button>
+        <button id="prepareProductsBtn" type="button" class="catalog-primary">Préparer les produits</button>
+      </div>
+    </section>
+
+    <div id="catalogToast" class="catalog-toast" hidden></div>
+  </main>
+  <script src="/auth/smart-catalog.js?v=1" defer></script>
+</body>
+</html>
