@@ -8,6 +8,7 @@ from app.services.smart_catalog_service import (
     SmartCatalogError,
     analyze_catalog_image,
     find_catalog_matches,
+    lookup_barcode_reference,
 )
 from app.services.shop_context_service import get_current_shop_id
 
@@ -22,6 +23,31 @@ ALLOWED_IMAGE_TYPES = {
     "image/heif",
 }
 ALLOWED_SOURCES = {"product", "invoice", "barcode"}
+
+
+def _catalog_response(source: str, candidates, db: Session) -> SmartCatalogAnalyzeResponse:
+    products = db.query(Product).order_by(Product.name.asc()).all()
+    return SmartCatalogAnalyzeResponse(
+        source=source,
+        candidates=candidates,
+        matches=find_catalog_matches(candidates, products),
+        requires_confirmation=True,
+    )
+
+
+@router.get("/catalog/barcode/{barcode}", response_model=SmartCatalogAnalyzeResponse)
+def lookup_catalog_barcode(barcode: str, db: Session = Depends(get_db)):
+    if get_current_shop_id(db) is None:
+        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
+
+    try:
+        candidate = lookup_barcode_reference(barcode)
+    except SmartCatalogError as exc:
+        detail = str(exc)
+        status = 404 if "absent des référentiels" in detail else 422
+        raise HTTPException(status_code=status, detail=detail) from exc
+
+    return _catalog_response("barcode", [candidate], db)
 
 
 @router.post("/catalog/analyze", response_model=SmartCatalogAnalyzeResponse)
@@ -59,12 +85,4 @@ async def analyze_catalog(
             detail="Analyse du catalogue indisponible. Réessaie dans quelques instants.",
         ) from exc
 
-    products = db.query(Product).order_by(Product.name.asc()).all()
-    matches = find_catalog_matches(candidates, products)
-
-    return SmartCatalogAnalyzeResponse(
-        source=source,
-        candidates=candidates,
-        matches=matches,
-        requires_confirmation=True,
-    )
+    return _catalog_response(source, candidates, db)
