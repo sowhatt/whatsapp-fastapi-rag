@@ -8,352 +8,43 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=7">
+  <link rel="stylesheet" href="/auth/styles.css?v=8">
 </head>
 <body>
   <main class="shell">
     <section id="loginView" class="card login-card">
-      <div class="brand">W</div>
-      <h1>Whatzabi</h1>
-      <p class="muted">Votre activité, partout.</p>
-      <form id="loginForm" class="stack">
-        <label>Numéro WhatsApp<input id="phone" autocomplete="username" placeholder="+336..." required></label>
-        <label>Mot de passe<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
-        <button type="submit">Se connecter</button>
-      </form>
-      <p id="loginError" class="error"></p>
+      <div class="brand">W</div><h1>Whatzabi</h1><p class="muted">Votre activité, partout.</p>
+      <form id="loginForm" class="stack"><label>Numéro WhatsApp<input id="phone" autocomplete="username" placeholder="+336..." required></label><label>Mot de passe<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><button type="submit">Se connecter</button></form><p id="loginError" class="error"></p>
     </section>
 
     <section id="appView" hidden>
-      <header class="topbar">
-        <div>
-          <strong id="shopName">Whatzabi</strong>
-          <div id="merchantPhone" class="muted small"></div>
-        </div>
-        <button id="logoutBtn" class="ghost">Déconnexion</button>
-      </header>
+      <header class="topbar"><div><strong id="shopName">Whatzabi</strong><div id="merchantPhone" class="muted small"></div></div><button id="logoutBtn" class="ghost">Déconnexion</button></header>
+      <section id="identityCard" class="card identity-card"><div><span class="eyebrow">Boutique active</span><strong id="activeShopName">Commerce principal</strong><label id="shopSelectorWrap" class="shop-selector" hidden>Changer de boutique<select id="shopSelector" aria-label="Changer de boutique"></select></label></div><div class="identity-meta"><span id="userName">Compte commerçant</span><span id="roleBadge" class="badge">PROPRIÉTAIRE</span></div></section>
 
-      <section id="identityCard" class="card identity-card">
-        <div>
-          <span class="eyebrow">Boutique active</span>
-          <strong id="activeShopName">Commerce principal</strong>
-          <label id="shopSelectorWrap" class="shop-selector" hidden>
-            Changer de boutique
-            <select id="shopSelector" aria-label="Changer de boutique"></select>
-          </label>
-        </div>
-        <div class="identity-meta">
-          <span id="userName">Compte commerçant</span>
-          <span id="roleBadge" class="badge">PROPRIÉTAIRE</span>
-        </div>
-      </section>
-
-      <nav class="tabs bottom-nav" aria-label="Navigation principale">
-        <button data-tab="dashboard" class="active">
-          <span class="nav-icon">⌂</span>
-          <span>Accueil</span>
-        </button>
-        <button data-tab="sales">
-          <span class="nav-icon">🛒</span>
-          <span>Caisse</span>
-        </button>
-        <button id="voiceNavBtn" type="button" class="scanner-nav" aria-label="Assistant vocal">
-          <span>🎙️</span>
-        </button>
-        <button data-tab="activity">
-          <span class="nav-icon">▥</span>
-          <span>Activité</span>
-        </button>
-        <button data-tab="more">
-          <span class="nav-icon">☰</span>
-          <span>Plus</span>
-        </button>
-      </nav>
+      <nav class="tabs bottom-nav" aria-label="Navigation principale"><button data-tab="dashboard" class="active"><span class="nav-icon">⌂</span><span>Accueil</span></button><button data-tab="sales"><span class="nav-icon">🛒</span><span>Caisse</span></button><button id="voiceNavBtn" type="button" class="scanner-nav" aria-label="Assistant vocal"><span>🎙️</span></button><button data-tab="activity"><span class="nav-icon">▥</span><span>Activité</span></button><button data-tab="more"><span class="nav-icon">☰</span><span>Plus</span></button></nav>
 
       <section id="dashboard" class="panel active home-panel">
-        <article class="home-hero">
-          <div>
-            <span class="eyebrow home-eyebrow">Tableau de bord</span>
-            <h2>Bonjour 👋</h2>
-            <p>Prêt pour une nouvelle vente ?</p>
-          </div>
-        </article>
-
-        <div class="grid home-stats">
-          <article class="card home-stat">
-            <span>Chiffre d'affaires</span>
-            <strong id="statRevenue">0 FCFA</strong>
-            <small>Boutique active</small>
-          </article>
-
-          <article class="card home-stat">
-            <span>Ventes</span>
-            <strong id="statSales">0</strong>
-            <small>Boutique active</small>
-          </article>
-
-          <article class="card home-stat">
-            <span>Créances clients</span>
-            <strong id="statDebt">0 FCFA</strong>
-            <small id="statDebtCustomers">0 client</small>
-          </article>
-
-          <article class="card home-stat home-stat-alert">
-            <span>Stock faible</span>
-            <strong id="statLowStock">0</strong>
-            <small>produits</small>
-          </article>
-        </div>
-
-        <section class="home-section">
-          <div class="home-section-heading">
-            <h2>Actions rapides</h2>
-          </div>
-
-          <div class="home-actions">
-            <button id="quickAddSale" data-open-tab="sales" class="home-action">
-              <span class="home-action-icon">🛒</span>
-              <span>Nouvelle vente</span>
-            </button>
-
-            <button id="quickAddPurchase" type="button" class="home-action">
-              <span class="home-action-icon">📦</span>
-              <span>Nouvel achat</span>
-            </button>
-
-            <button id="quickScanner" type="button" class="home-action">
-              <span class="home-action-icon">⌁</span>
-              <span>Scanner produit</span>
-            </button>
-
-            <button id="quickStock" data-open-tab="activity" class="home-action">
-              <span class="home-action-icon">📊</span>
-              <span>Voir le stock</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="home-section">
-          <div class="home-section-heading">
-            <h2>Activité récente</h2>
-            <button data-open-tab="activity" class="text-action">Voir tout</button>
-          </div>
-          <div id="recentActivity" class="card recent-activity"></div>
-        </section>
+        <article class="home-hero"><div><span class="eyebrow home-eyebrow">Tableau de bord</span><h2>Bonjour 👋</h2><p>Prêt pour une nouvelle vente ?</p></div></article>
+        <div class="grid home-stats"><article class="card home-stat"><span>Chiffre d'affaires</span><strong id="statRevenue">0 FCFA</strong><small>Boutique active</small></article><article class="card home-stat"><span>Ventes</span><strong id="statSales">0</strong><small>Boutique active</small></article><article class="card home-stat"><span>Créances clients</span><strong id="statDebt">0 FCFA</strong><small id="statDebtCustomers">0 client</small></article><article class="card home-stat home-stat-alert"><span>Stock faible</span><strong id="statLowStock">0</strong><small>produits</small></article></div>
+        <section class="home-section"><div class="home-section-heading"><h2>Actions rapides</h2></div><div class="home-actions"><button id="quickAddSale" data-open-tab="sales" class="home-action"><span class="home-action-icon">🛒</span><span>Nouvelle vente</span></button><button id="quickAddPurchase" type="button" class="home-action"><span class="home-action-icon">📦</span><span>Nouvel achat</span></button><button id="quickScanner" type="button" class="home-action"><span class="home-action-icon">⌁</span><span>Scanner produit</span></button><button id="quickStock" data-open-tab="activity" class="home-action"><span class="home-action-icon">📊</span><span>Voir le stock</span></button></div></section>
+        <section class="home-section"><div class="home-section-heading"><h2>Activité récente</h2><button data-open-tab="activity" class="text-action">Voir tout</button></div><div id="recentActivity" class="card recent-activity"></div></section>
       </section>
 
-      <section id="activity" class="panel">
-        <div class="panel-heading">
-          <div>
-            <span class="eyebrow">Boutique active</span>
-            <h2>Activité</h2>
-          </div>
-        </div>
+      <section id="activity" class="panel"><div class="panel-heading"><div><span class="eyebrow">Boutique active</span><h2>Activité</h2></div></div><div class="grid activity-stats"><article class="card"><span>CA ventes</span><strong id="activityRevenue">0 FCFA</strong></article><article class="card"><span>Créances</span><strong id="activityDebt">0 FCFA</strong></article></div><article class="card"><h2>Stock boutique</h2><div id="activityStock" class="list compact-list"></div></article><article class="card"><h2>Dernières ventes</h2><div id="activitySales" class="list compact-list"></div></article></section>
 
-        <div class="grid activity-stats">
-          <article class="card">
-            <span>CA ventes</span>
-            <strong id="activityRevenue">0 FCFA</strong>
-          </article>
-          <article class="card">
-            <span>Créances</span>
-            <strong id="activityDebt">0 FCFA</strong>
-          </article>
-        </div>
+      <section id="more" class="panel"><article class="card more-menu"><h2>Gestion</h2><button data-open-tab="products" class="more-menu-item"><span class="more-menu-icon">📦</span><span><strong>Produits & stock</strong><small>Catalogue et gestion des produits</small></span><span>›</span></button><button data-open-tab="customers" class="more-menu-item"><span class="more-menu-icon">👥</span><span><strong>Clients</strong><small>Clients, dettes et historique</small></span><span>›</span></button><button id="moreSuppliers" type="button" class="more-menu-item"><span class="more-menu-icon">🚚</span><span><strong>Fournisseurs</strong><small>Achats et dettes fournisseurs</small></span><span>›</span></button><button id="morePurchases" type="button" class="more-menu-item"><span class="more-menu-icon">📥</span><span><strong>Achats</strong><small>Réception et approvisionnement</small></span><span>›</span></button></article><article class="card more-menu"><h2>Outils</h2><button id="moreFinancial" type="button" class="more-menu-item"><span class="more-menu-icon">📈</span><span><strong>Analyse financière</strong><small>CA, marge et créances</small></span><span>›</span></button><button id="moreCalculator" type="button" class="more-menu-item"><span class="more-menu-icon">🧮</span><span><strong>Calculatrice</strong><small>Calcul rapide</small></span><span>›</span></button><button id="moreSettings" type="button" class="more-menu-item"><span class="more-menu-icon">⚙️</span><span><strong>Paramètres</strong><small>Commerce et préférences</small></span><span>›</span></button></article></section>
 
-        <article class="card">
-          <h2>Stock boutique</h2>
-          <div id="activityStock" class="list compact-list"></div>
-        </article>
-
-        <article class="card">
-          <h2>Dernières ventes</h2>
-          <div id="activitySales" class="list compact-list"></div>
-        </article>
-      </section>
-
-      <section id="more" class="panel">
-        <article class="card more-menu">
-          <h2>Gestion</h2>
-
-          <button data-open-tab="products" class="more-menu-item">
-            <span class="more-menu-icon">📦</span>
-            <span>
-              <strong>Produits & stock</strong>
-              <small>Catalogue et gestion des produits</small>
-            </span>
-            <span>›</span>
-          </button>
-
-          <button data-open-tab="customers" class="more-menu-item">
-            <span class="more-menu-icon">👥</span>
-            <span>
-              <strong>Clients</strong>
-              <small>Clients, dettes et historique</small>
-            </span>
-            <span>›</span>
-          </button>
-
-          <button id="moreSuppliers" type="button" class="more-menu-item">
-            <span class="more-menu-icon">🚚</span>
-            <span>
-              <strong>Fournisseurs</strong>
-              <small>Achats et dettes fournisseurs</small>
-            </span>
-            <span>›</span>
-          </button>
-
-          <button id="morePurchases" type="button" class="more-menu-item">
-            <span class="more-menu-icon">📥</span>
-            <span>
-              <strong>Achats</strong>
-              <small>Réception et approvisionnement</small>
-            </span>
-            <span>›</span>
-          </button>
-        </article>
-
-        <article class="card more-menu">
-          <h2>Outils</h2>
-
-          <button id="moreFinancial" type="button" class="more-menu-item">
-            <span class="more-menu-icon">📈</span>
-            <span>
-              <strong>Analyse financière</strong>
-              <small>CA, marge et créances</small>
-            </span>
-            <span>›</span>
-          </button>
-
-          <button id="moreCalculator" type="button" class="more-menu-item">
-            <span class="more-menu-icon">🧮</span>
-            <span>
-              <strong>Calculatrice</strong>
-              <small>Calcul rapide</small>
-            </span>
-            <span>›</span>
-          </button>
-
-          <button id="moreSettings" type="button" class="more-menu-item">
-            <span class="more-menu-icon">⚙️</span>
-            <span>
-              <strong>Paramètres</strong>
-              <small>Commerce et préférences</small>
-            </span>
-            <span>›</span>
-          </button>
-        </article>
-      </section>
-
-      <section id="products" class="panel">
-        <article id="productCreateCard" class="card">
-          <h2>Ajouter un produit</h2>
-          <form id="productForm" class="product-form">
-            <label class="field field-wide">
-              <span>Nom du produit</span>
-              <input id="productName" placeholder="Ex. Riz parfumé 5 kg" required>
-            </label>
-
-            <label class="field">
-              <span>Prix de vente</span>
-              <div class="input-with-suffix">
-                <input id="productPrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0" required>
-                <span>FCFA</span>
-              </div>
-            </label>
-
-            <label class="field">
-              <span>Prix d'achat</span>
-              <div class="input-with-suffix">
-                <input id="productPurchasePrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
-                <span>FCFA</span>
-              </div>
-            </label>
-
-            <label class="field">
-              <span>Stock initial</span>
-              <input id="productStock" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
-            </label>
-
-            <label class="field">
-              <span>Unité</span>
-              <input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required>
-            </label>
-
-            <label class="field field-wide">
-              <span>Seuil d'alerte</span>
-              <input id="productThreshold" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
-              <small>Whatzabi vous alertera quand le stock atteindra ce niveau.</small>
-            </label>
-
-            <button type="submit" class="primary-action">Ajouter le produit</button>
-          </form>
-        </article>
-        <div id="productList" class="list"></div>
-      </section>
-
-      <section id="customers" class="panel">
-        <article class="card">
-          <h2>Nouveau client</h2>
-          <form id="customerForm" class="form-grid">
-            <input id="customerName" placeholder="Nom" required>
-            <input id="customerPhone" placeholder="Téléphone">
-            <button type="submit">Ajouter</button>
-          </form>
-        </article>
-        <div id="customerList" class="list"></div>
-      </section>
-
-      <section id="sales" class="panel">
-        <article class="card">
-          <h2>Nouvelle vente</h2>
-          <form id="saleForm" class="form-grid">
-            <select id="saleCustomer">
-              <option value="">Vente comptoir — sans client</option>
-            </select>
-            <select id="saleProduct" required><option value="">Produit</option></select>
-            <input id="saleQty" type="number" min="1" value="1" required>
-            <input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé">
-            <select id="saleChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select>
-            <button type="submit">Enregistrer la vente</button>
-          </form>
-        </article>
-        <div id="saleList" class="list"></div>
-      </section>
-
+      <section id="products" class="panel"><article id="productCreateCard" class="card"><h2>Ajouter un produit</h2><form id="productForm" class="product-form"><label class="field field-wide"><span>Nom du produit</span><input id="productName" placeholder="Ex. Riz parfumé 5 kg" required></label><label class="field"><span>Prix de vente</span><div class="input-with-suffix"><input id="productPrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0" required><span>FCFA</span></div></label><label class="field"><span>Prix d'achat</span><div class="input-with-suffix"><input id="productPurchasePrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0"><span>FCFA</span></div></label><label class="field"><span>Stock initial</span><input id="productStock" type="number" min="0" inputmode="decimal" placeholder="0" value="0"></label><label class="field"><span>Unité</span><input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required></label><label class="field field-wide"><span>Seuil d'alerte</span><input id="productThreshold" type="number" min="0" inputmode="decimal" placeholder="0" value="0"><small>Whatzabi vous alertera quand le stock atteindra ce niveau.</small></label><button type="submit" class="primary-action">Ajouter le produit</button></form></article><div id="productList" class="list"></div></section>
+      <section id="customers" class="panel"><article class="card"><h2>Nouveau client</h2><form id="customerForm" class="form-grid"><input id="customerName" placeholder="Nom" required><input id="customerPhone" placeholder="Téléphone"><button type="submit">Ajouter</button></form></article><div id="customerList" class="list"></div></section>
+      <section id="sales" class="panel"><article class="card"><h2>Nouvelle vente</h2><form id="saleForm" class="form-grid"><select id="saleCustomer"><option value="">Vente comptoir — sans client</option></select><select id="saleProduct" required><option value="">Produit</option></select><input id="saleQty" type="number" min="1" value="1" required><input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé"><select id="saleChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select><button type="submit">Enregistrer la vente</button></form></article><div id="saleList" class="list"></div></section>
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=7" defer></script>
 
-      <div id="voiceSheet" class="voice-sheet" hidden>
-        <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
-          <button id="voiceCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+  <div id="catalogSheet" class="catalog-sheet" hidden><div class="catalog-sheet-card" role="dialog" aria-modal="true" aria-labelledby="catalogTitle"><div class="catalog-sheet-head"><div><span class="eyebrow">Smart Catalog</span><h2 id="catalogTitle">Ajouter sans saisir</h2></div><button id="catalogCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button></div><p class="muted">Choisis comment Whatzabi doit reconnaître le produit.</p><div id="catalogModes" class="catalog-modes"><button type="button" data-catalog-source="product"><span>📦</span><strong>Photo produit</strong><small>Nom, marque et format</small></button><button type="button" data-catalog-source="invoice"><span>📄</span><strong>Facture</strong><small>Plusieurs produits à la fois</small></button><button type="button" data-catalog-source="barcode"><span>▦</span><strong>Code-barres</strong><small>GTIN / EAN visible</small></button></div><div id="catalogCapture" hidden><div id="catalogPreviewWrap" class="catalog-preview" hidden><img id="catalogPreview" alt="Aperçu"></div><p id="catalogCaptureHint" class="muted"></p><div class="catalog-actions"><button id="catalogCameraBtn" type="button">📷 Prendre une photo</button><button id="catalogGalleryBtn" type="button" class="ghost">🖼️ Galerie</button></div><button id="catalogAnalyzeBtn" type="button" class="catalog-analyze" disabled>✨ Analyser avec Whatzabi</button><p id="catalogStatus" class="muted small"></p></div><div id="catalogResults" hidden><div class="catalog-result-head"><strong id="catalogResultCount"></strong><button id="catalogRestartBtn" type="button" class="ghost">Recommencer</button></div><p class="muted small">Vérifie les propositions. Rien n'est créé automatiquement.</p><div id="catalogCandidateList" class="catalog-candidates"></div><button id="catalogPrepareBtn" type="button" class="catalog-analyze">Préparer les produits</button></div><input id="catalogCameraInput" type="file" accept="image/*" capture="environment" hidden><input id="catalogGalleryInput" type="file" accept="image/*" hidden></div></div>
 
-          <div class="voice-orb" id="voiceOrb">🎙️</div>
+  <div id="voiceSheet" class="voice-sheet" hidden><div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle"><button id="voiceCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button><div class="voice-orb" id="voiceOrb">🎙️</div><h2 id="voiceTitle">Assistant Whatzabi</h2><p id="voiceStatus" class="voice-status">Appuie sur le micro et parle naturellement.</p><div id="voiceTranscriptBox" class="voice-transcript" hidden><small>J’ai compris</small><p id="voiceTranscript"></p></div><button id="voiceRecordBtn" type="button" class="primary voice-record-btn">🎙️ Commencer</button><div id="voiceReviewActions" class="voice-review-actions" hidden><button id="voiceCancelBtn" type="button">Annuler</button><button id="voiceRetryBtn" type="button">Recommencer</button><button id="voiceContinueBtn" type="button" class="primary">Continuer</button></div></div></div>
 
-          <h2 id="voiceTitle">Assistant Whatzabi</h2>
-
-          <p id="voiceStatus" class="voice-status">
-            Appuie sur le micro et parle naturellement.
-          </p>
-
-          <div id="voiceTranscriptBox" class="voice-transcript" hidden>
-            <small>J’ai compris</small>
-            <p id="voiceTranscript"></p>
-          </div>
-
-          <button id="voiceRecordBtn" type="button" class="primary voice-record-btn">
-            🎙️ Commencer
-          </button>
-
-          <div id="voiceReviewActions" class="voice-review-actions" hidden>
-            <button id="voiceCancelBtn" type="button">Annuler</button>
-            <button id="voiceRetryBtn" type="button">Recommencer</button>
-            <button id="voiceContinueBtn" type="button" class="primary">Continuer</button>
-          </div>
-        </div>
-      </div>
-
+  <script src="/auth/app.js?v=8" defer></script>
 </body>
 </html>
