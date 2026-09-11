@@ -1,10 +1,14 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from app.schemas.smart_catalog import SmartCatalogCandidate
 from app.services.smart_catalog_service import (
+    SmartCatalogError,
     analyze_catalog_image,
     find_catalog_matches,
+    lookup_barcode_reference,
 )
 
 
@@ -76,3 +80,39 @@ def test_analyze_catalog_image_parses_structured_candidates():
     assert candidates[0].barcode == "5449000000996"
     assert candidates[0].packaging == "50 cl"
     assert candidates[0].quantity == 12
+
+
+def test_lookup_barcode_reference_returns_public_product():
+    response = SimpleNamespace(
+        status_code=200,
+        json=lambda: {
+            "status": 1,
+            "product": {
+                "product_name_fr": "Boisson Cola",
+                "brands": "Marque Test",
+                "quantity": "50 cl",
+            },
+        },
+    )
+
+    with patch("app.services.smart_catalog_service.requests.get", return_value=response):
+        candidate = lookup_barcode_reference("5449000000996")
+
+    assert candidate.name == "Boisson Cola"
+    assert candidate.brand == "Marque Test"
+    assert candidate.packaging == "50 cl"
+    assert candidate.barcode == "5449000000996"
+    assert candidate.confidence == 0.99
+
+
+def test_lookup_barcode_reference_rejects_invalid_code():
+    with pytest.raises(SmartCatalogError, match="Code-barres invalide"):
+        lookup_barcode_reference("123")
+
+
+def test_lookup_barcode_reference_reports_unknown_product():
+    response = SimpleNamespace(status_code=200, json=lambda: {"status": 0})
+
+    with patch("app.services.smart_catalog_service.requests.get", return_value=response):
+        with pytest.raises(SmartCatalogError, match="absent des référentiels"):
+            lookup_barcode_reference("1234567890123")
