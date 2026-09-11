@@ -3,6 +3,7 @@ import json
 import os
 from difflib import SequenceMatcher
 
+import requests
 from openai import OpenAI
 
 from app.schemas.smart_catalog import SmartCatalogCandidate, SmartCatalogMatch
@@ -63,6 +64,59 @@ def find_catalog_matches(
     return result
 
 
+def _candidate_from_reference(product: dict, barcode: str) -> SmartCatalogCandidate | None:
+    name = (
+        product.get("product_name_fr")
+        or product.get("product_name")
+        or product.get("generic_name_fr")
+        or product.get("generic_name")
+    )
+    if not name:
+        return None
+
+    brand = product.get("brands")
+    quantity = product.get("quantity")
+    return SmartCatalogCandidate(
+        name=" ".join(str(name).split()),
+        brand=" ".join(str(brand).split()) if brand else None,
+        packaging=" ".join(str(quantity).split()) if quantity else None,
+        unit="unité",
+        barcode=barcode,
+        confidence=0.99,
+    )
+
+
+def lookup_barcode_reference(barcode: str) -> SmartCatalogCandidate:
+    code = "".join(ch for ch in barcode if ch.isdigit())
+    if len(code) < 8 or len(code) > 14:
+        raise SmartCatalogError("Code-barres invalide")
+
+    providers = (
+        f"https://world.openfoodfacts.org/api/v2/product/{code}.json?fields=code,product_name,product_name_fr,generic_name,generic_name_fr,brands,quantity",
+        f"https://world.openproductsfacts.org/api/v2/product/{code}.json?fields=code,product_name,product_name_fr,generic_name,generic_name_fr,brands,quantity",
+    )
+
+    for url in providers:
+        try:
+            response = requests.get(
+                url,
+                timeout=5,
+                headers={"User-Agent": "Whatzabi-SmartCatalog/1.0"},
+            )
+            if response.status_code != 200:
+                continue
+            payload = response.json()
+            if payload.get("status") != 1:
+                continue
+            candidate = _candidate_from_reference(payload.get("product") or {}, code)
+            if candidate:
+                return candidate
+        except (requests.RequestException, ValueError):
+            continue
+
+    raise SmartCatalogError("Code-barres reconnu mais produit absent des référentiels publics")
+
+
 def analyze_catalog_image(
     image_bytes: bytes,
     content_type: str,
@@ -77,10 +131,14 @@ def analyze_catalog_image(
     instructions = (
         "Tu es le moteur Smart Catalog de Whatzabi. Analyse l'image fournie. "
         "Le contexte est un commerce en Afrique francophone. "
-        "Si source=product, identifie le produit visible. "
+        "Si source=product et qu'une étiquette, une marque ou du texte lisible est présent, "
+        "identifie le produit principalement à partir de ces indices. "
+        "Si source=product mais qu'il n'y a PAS d'étiquette ni de texte exploitable, "
+        "ne présente jamais une identification visuelle comme certaine : retourne jusqu'à trois "
+        "hypothèses plausibles classées par confiance, avec des confiances prudentes. "
+        "Par exemple, si un fruit ou légume peut être confondu, propose plusieurs hypothèses. "
         "Si source=invoice, lis les lignes de produits de la facture. "
-        "Si source=barcode, concentre-toi sur le code GTIN/EAN/UPC visible puis utilise aussi "
-        "le texte de l'emballage pour proposer le nom du produit sans inventer de référence. "
+        "Si source=barcode, lis uniquement un GTIN/EAN/UPC clairement visible et n'invente jamais les chiffres. "
         "Retourne uniquement un objet JSON avec la clé candidates. "
         "Chaque candidate contient: name, brand, variant, packaging, unit, barcode, "
         "purchase_price, quantity, confidence. "
