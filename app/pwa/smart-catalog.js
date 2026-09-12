@@ -73,11 +73,81 @@
   function dictateName(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S){setStatus('Dictée indisponible.');return}const r=new S();r.lang='fr-FR';r.onresult=e=>saveManualDraft(e.results?.[0]?.[0]?.transcript||'','voice');r.start()}
   function selectedIndex(){const raw=sessionStorage.getItem('whatzabi_catalog_selected');const i=raw===null?0:Number(raw);return Number.isInteger(i)&&i>=0?i:0}
   function markSelectedCard(index){const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];cards.forEach((card,i)=>{card.style.outline=i===index?'3px solid #0f766e':'';card.style.cursor='pointer';card.setAttribute('aria-selected',i===index?'true':'false')});sessionStorage.setItem('whatzabi_catalog_selected',String(index));updateValidationButton()}
-  function updateValidationButton(){const btn=$('catalogPrepareBtn');if(!btn)return;const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(code){btn.textContent='✓ Valider et ajouter au catalogue';btn.hidden=false}else{btn.textContent='Préparer les produits'}const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];if(cards.length===1)markSelectedCard(0)}
+  function updateValidationButton(){const btn=$('catalogPrepareBtn');if(!btn)return;const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(code){btn.textContent='✓ Valider et ajouter au catalogue';btn.hidden=false}else{btn.textContent='Ajouter au catalogue';btn.hidden=false}const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];if(cards.length===1)markSelectedCard(0)}
   function exactExistingMatch(body,index,candidate){const matches=body?.matches?.[String(index)]||body?.matches?.[index]||[];const target=String(candidate?.name||'').trim().toLocaleLowerCase();return matches.find(m=>m.score>=0.99&&String(m.name||'').trim().toLocaleLowerCase()===target)||null}
   async function createValidatedProduct(candidate){const payload={name:String(candidate?.name||'').trim(),product_type:null,brand:candidate?.brand||null,variant:candidate?.variant||null,packaging:candidate?.packaging||null,unit:candidate?.unit||'unité',stock:Number(candidate?.quantity||0),purchase_price:Number(candidate?.purchase_price||0),price:0,threshold:0};if(!payload.name)throw new Error('Nom du produit manquant.');const token=localStorage.getItem('whatzabi_token')||'',r=await fetch('/pwa/products',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');return body}
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
-  async function validatePendingBarcode(e){const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(!code)return;if(e){e.preventDefault();e.stopImmediatePropagation()}if(validationBusy)return;let body=null;try{body=catalogAnalysis}catch{}if(!body){try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}}const candidates=body?.candidates||[];if(!candidates.length){toast?.('Photographie ou saisis d’abord le produit.');return}const index=Math.min(selectedIndex(),candidates.length-1),candidate=candidates[index];validationBusy=true;const btn=$('catalogPrepareBtn');if(btn){btn.disabled=true;btn.textContent='Validation…'}try{const match=exactExistingMatch(body,index,candidate);const product=match?{id:match.product_id}:await createValidatedProduct(candidate);const learned=await associateValidatedBarcode(code,product.id);sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));try{await refresh()}catch{}try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}renderResult(learned);if(btn){btn.textContent='✓ Produit mémorisé';btn.disabled=true}}catch(err){try{toast(err.message)}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}}finally{validationBusy=false}}
+  async function validatePendingBarcode(e){
+    if(e){e.preventDefault();e.stopImmediatePropagation()}
+    if(validationBusy)return;
+
+    let body=null;
+    try{body=catalogAnalysis}catch{}
+    if(!body){
+      try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}
+    }
+
+    const candidates=body?.candidates||[];
+    if(!candidates.length){
+      try{toast('Aucun produit à valider.')}catch{}
+      return;
+    }
+
+    const index=Math.min(selectedIndex(),candidates.length-1);
+    const candidate=candidates[index];
+    const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));
+
+    validationBusy=true;
+    const btn=$('catalogPrepareBtn');
+
+    if(btn){
+      btn.disabled=true;
+      btn.textContent='Validation…';
+    }
+
+    try{
+      const match=exactExistingMatch(body,index,candidate);
+      const product=match?{id:match.product_id}:await createValidatedProduct(candidate);
+
+      if(code){
+        const learned=await associateValidatedBarcode(code,product.id);
+
+        sessionStorage.removeItem('whatzabi_pending_barcode');
+        sessionStorage.removeItem('whatzabi_catalog_selected');
+        sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));
+
+        try{await refresh()}catch{}
+        try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}
+
+        renderResult(learned);
+
+        if(btn){
+          btn.textContent='✓ Produit mémorisé';
+          btn.disabled=true;
+        }
+      }else{
+        sessionStorage.removeItem('whatzabi_catalog_selected');
+
+        try{await refresh()}catch{}
+        try{toast('Produit ajouté au catalogue')}catch{}
+
+        if(btn){
+          btn.textContent='✓ Produit ajouté';
+          btn.disabled=true;
+        }
+      }
+    }catch(err){
+      try{toast(err.message)}catch{}
+      if(btn){
+        btn.disabled=false;
+        btn.textContent=code
+          ? '✓ Valider et ajouter au catalogue'
+          : 'Ajouter au catalogue';
+      }
+    }finally{
+      validationBusy=false;
+    }
+  }
   document.addEventListener('click',e=>{const b=e.target.closest('[data-catalog-source="barcode"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();startLiveScanner()},true);
   document.addEventListener('click',e=>{
     const restart=e.target.closest('#catalogRestartBtn');
