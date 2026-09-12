@@ -1,10 +1,10 @@
-const CACHE = 'whatzabi-pwa-v13';
+const CACHE = 'whatzabi-pwa-v14';
 
 const ASSETS = [
   '/auth/app?v=8',
   '/auth/styles.css?v=8',
   '/auth/app.js?v=8',
-  '/auth/smart-catalog.js?v=13',
+  '/auth/smart-catalog.js?v=14',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
@@ -24,7 +24,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/auth/app.js') {
     event.respondWith(Promise.all([
       fetch(event.request, { cache: 'no-store' }),
-      fetch('/auth/smart-catalog.js?v=13', { cache: 'no-store' }),
+      fetch('/auth/smart-catalog.js?v=14', { cache: 'no-store' }),
     ]).then(async ([appResponse, scannerResponse]) => {
       if (!appResponse.ok) return appResponse;
       const appCode = await appResponse.text();
