@@ -625,8 +625,217 @@ $('voiceRetryBtn').addEventListener('click', () => {
   $('voiceStatus').textContent = 'Appuie sur le micro et parle naturellement.';
 });
 
+const VOICE_QUANTITIES = {
+  un: 1,
+  une: 1,
+  deux: 2,
+  trois: 3,
+  quatre: 4,
+  cinq: 5,
+  six: 6,
+  sept: 7,
+  huit: 8,
+  neuf: 9,
+  dix: 10,
+  onze: 11,
+  douze: 12,
+  treize: 13,
+  quatorze: 14,
+  quinze: 15,
+  seize: 16,
+  vingt: 20,
+};
+
+const VOICE_STOPWORDS = new Set([
+  'je',
+  'j',
+  'ai',
+  'vendu',
+  'vends',
+  'vendre',
+  'vente',
+  'mets',
+  'mettre',
+  'ajoute',
+  'ajouter',
+  'enregistre',
+  'enregistrer',
+  'de',
+  'du',
+  'des',
+  'le',
+  'la',
+  'les',
+  'un',
+  'une',
+  'deux',
+  'trois',
+  'quatre',
+  'cinq',
+  'six',
+  'sept',
+  'huit',
+  'neuf',
+  'dix',
+  'onze',
+  'douze',
+]);
+
+function normalizeVoiceText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractVoiceQuantity(text) {
+  const tokens = normalizeVoiceText(text).split(' ').filter(Boolean);
+
+  for (const token of tokens) {
+    if (/^\d+$/.test(token)) {
+      const value = Number(token);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+
+    if (VOICE_QUANTITIES[token]) {
+      return VOICE_QUANTITIES[token];
+    }
+  }
+
+  return 1;
+}
+
+function voiceMeaningfulTokens(value) {
+  return normalizeVoiceText(value)
+    .split(' ')
+    .filter(
+      (token) =>
+        token.length >= 2 &&
+        !VOICE_STOPWORDS.has(token) &&
+        !/^\d+$/.test(token),
+    );
+}
+
+function voiceProductScore(transcript, product) {
+  const normalizedTranscript = normalizeVoiceText(transcript);
+  const normalizedName = normalizeVoiceText(product?.name);
+
+  if (!normalizedName) return 0;
+
+  // Le nom complet du catalogue apparaît dans le vocal.
+  if (normalizedTranscript.includes(normalizedName)) {
+    return 100 + normalizedName.length;
+  }
+
+  const transcriptTokens = voiceMeaningfulTokens(transcript);
+  const productTokens = voiceMeaningfulTokens(product?.name);
+
+  let score = 0;
+
+  for (const productToken of productTokens) {
+    for (const spokenToken of transcriptTokens) {
+      if (spokenToken === productToken) {
+        score += 10;
+        break;
+      }
+
+      // Ex: "coca" peut reconnaître "coca-cola".
+      if (
+        spokenToken.length >= 4 &&
+        productToken.length >= 4 &&
+        (
+          spokenToken.startsWith(productToken) ||
+          productToken.startsWith(spokenToken)
+        )
+      ) {
+        score += 6;
+        break;
+      }
+    }
+  }
+
+  return score;
+}
+
+function findVoiceProductCandidates(transcript) {
+  return (Array.isArray(state.products) ? state.products : [])
+    .map((product) => ({
+      product,
+      score: voiceProductScore(transcript, product),
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+function showVoiceProblem(message) {
+  $('voiceStatus').textContent = message;
+  $('voiceStatus').scrollIntoView({
+    behavior: 'smooth',
+    block: 'nearest',
+  });
+}
+
 $('voiceContinueBtn').addEventListener('click', () => {
-  toast('Commande métier vocale : prochain sprint');
+  const transcript = $('voiceTranscript').textContent.trim();
+
+  if (!transcript) {
+    showVoiceProblem('Je n’ai aucun texte à traiter. Recommence le vocal.');
+    return;
+  }
+
+  if (!can('sale.create')) {
+    showVoiceProblem('Ton rôle ne permet pas d’enregistrer une vente.');
+    return;
+  }
+
+  const quantity = extractVoiceQuantity(transcript);
+
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    showVoiceProblem('Je n’ai pas compris la quantité.');
+    return;
+  }
+
+  const candidates = findVoiceProductCandidates(transcript);
+
+  if (!candidates.length) {
+    showVoiceProblem(
+      `Je ne trouve pas le produit dans ton catalogue : « ${transcript} ».`,
+    );
+    return;
+  }
+
+  const best = candidates[0];
+  const second = candidates[1];
+
+  // Ne pas choisir arbitrairement lorsque deux produits ont le même score.
+  if (second && second.score === best.score) {
+    const names = candidates
+      .filter((candidate) => candidate.score === best.score)
+      .slice(0, 3)
+      .map((candidate) => candidate.product.name)
+      .join(', ');
+
+    showVoiceProblem(
+      `J’ai plusieurs produits possibles : ${names}. Dis le nom plus précisément.`,
+    );
+    return;
+  }
+
+  const product = best.product;
+
+  $('saleCustomer').value = '';
+  $('saleProduct').value = String(product.id);
+  $('saleQty').value = String(quantity);
+  $('salePaid').value = '0';
+  $('saleChannel').value = 'cash';
+
+  closeVoiceSheet();
+  showTab('sales');
+
+  toast(`À vérifier : ${quantity} × ${product.name}`);
 });
 
 $('voiceRecordBtn').addEventListener('click', () => {
