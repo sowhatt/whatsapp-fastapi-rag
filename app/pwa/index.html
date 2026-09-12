@@ -355,5 +355,93 @@
         </div>
       </div>
 
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const originalButton = document.getElementById('voiceContinueBtn');
+      if (!originalButton) return;
+
+      // Remplace le bouton pour supprimer l'ancien listener temporaire
+      // « prochain sprint » déclaré dans app.js.
+      const button = originalButton.cloneNode(true);
+      originalButton.replaceWith(button);
+
+      const quantityWords = {
+        un: 1,
+        une: 1,
+        deux: 2,
+        trois: 3,
+        quatre: 4,
+        cinq: 5,
+        six: 6,
+        sept: 7,
+        huit: 8,
+        neuf: 9,
+        dix: 10,
+        onze: 11,
+        douze: 12,
+        vingt: 20,
+      };
+
+      function normalizeVoiceText(value) {
+        return String(value || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9\s'-]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function extractVoiceQuantity(text) {
+        const firstToken = normalizeVoiceText(text).split(' ')[0] || '';
+        if (/^\d+$/.test(firstToken)) return Number(firstToken);
+        return quantityWords[firstToken] || 1;
+      }
+
+      function findVoiceProduct(text) {
+        const normalized = normalizeVoiceText(text);
+        const products = Array.isArray(state?.products) ? state.products : [];
+
+        return products
+          .filter((product) => {
+            const name = normalizeVoiceText(product?.name);
+            return name && normalized.includes(name);
+          })
+          .sort((a, b) => String(b.name || '').length - String(a.name || '').length)[0] || null;
+      }
+
+      button.addEventListener('click', () => {
+        const transcript = document.getElementById('voiceTranscript')?.textContent?.trim() || '';
+        if (!transcript) {
+          toast('Aucun texte vocal à traiter.');
+          return;
+        }
+
+        const product = findVoiceProduct(transcript);
+        const quantity = extractVoiceQuantity(transcript);
+
+        if (!product) {
+          toast('Je ne trouve pas ce produit dans le catalogue. Dis par exemple : deux Coca.');
+          return;
+        }
+
+        if (!Number.isFinite(quantity) || quantity < 1) {
+          toast('Je n’ai pas compris la quantité.');
+          return;
+        }
+
+        document.getElementById('saleCustomer').value = '';
+        document.getElementById('saleProduct').value = String(product.id);
+        document.getElementById('saleQty').value = String(quantity);
+        document.getElementById('salePaid').value = '0';
+        document.getElementById('saleChannel').value = 'cash';
+
+        closeVoiceSheet();
+        showTab('sales');
+        toast(`Vérifie puis enregistre : ${quantity} ${product.name}.`);
+      });
+    });
+  </script>
+
 </body>
 </html>
