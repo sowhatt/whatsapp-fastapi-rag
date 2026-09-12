@@ -64,15 +64,7 @@ def _average_confidence(logprobs: list[object]) -> float:
     return math.exp(average_logprob)
 
 
-def build_transcription_prompt(vocabulary: list[str] | None) -> str:
-    """
-    Amorce la transcription avec le vocabulaire métier du commerce.
-
-    Le modèle privilégie alors les noms réels du catalogue (clients,
-    produits, fournisseurs) plutôt que des homophones génériques
-    (« Awa » au lieu d'« avoir »). Plafonné car l'API ne prend en
-    compte qu'environ 200 tokens de prompt.
-    """
+def _business_terms(vocabulary: list[str] | None) -> list[str]:
     base_terms = [
         "vends", "vente", "achat", "crédit", "cash", "FCFA",
         "Moov Money", "MTN MoMo",
@@ -89,17 +81,27 @@ def build_transcription_prompt(vocabulary: list[str] | None) -> str:
         seen.add(key)
         terms.append(cleaned)
 
+    return terms
+
+
+def build_transcription_prompt(vocabulary: list[str] | None) -> str:
+    """Amorce la transcription avec le vocabulaire métier du commerce."""
     prompt = "Gestion de commerce au Bénin. Vocabulaire : "
     max_length = 600
 
     included: list[str] = []
-    for term in terms:
+    for term in _business_terms(vocabulary):
         candidate = prompt + ", ".join(included + [term]) + "."
         if len(candidate) > max_length:
             break
         included.append(term)
 
     return prompt + ", ".join(included) + "."
+
+
+def build_keyword_hints(vocabulary: list[str] | None) -> list[str]:
+    """Mots-clés métier explicites exploités nativement par gpt-transcribe."""
+    return _business_terms(vocabulary)[:100]
 
 
 def transcribe_audio_bytes(
@@ -112,7 +114,7 @@ def transcribe_audio_bytes(
 
     model = os.getenv(
         "OPENAI_TRANSCRIPTION_MODEL",
-        "gpt-4o-mini-transcribe",
+        "gpt-transcribe",
     )
 
     audio_file = io.BytesIO(audio_bytes)
@@ -120,15 +122,30 @@ def transcribe_audio_bytes(
         f"whatsapp_voice.{_extension_from_content_type(content_type)}"
     )
 
+    request_kwargs: dict[str, object] = {
+        "model": model,
+        "file": audio_file,
+        "response_format": "json",
+        "language": "fr",
+        "temperature": 0,
+        "prompt": build_transcription_prompt(vocabulary),
+    }
+
+    # gpt-transcribe apporte des keyword hints natifs, mais ne prend pas
+    # en charge include=["logprobs"] sur /audio/transcriptions.
+    # extra_body garde la compatibilité avec des versions du SDK OpenAI
+    # qui ne déclareraient pas encore `keywords` dans leur signature Python.
+    if model == "gpt-transcribe":
+        request_kwargs["extra_body"] = {
+            "keywords": build_keyword_hints(vocabulary),
+            "languages": ["fr"],
+        }
+    else:
+        request_kwargs["include"] = ["logprobs"]
+
     try:
         transcription = _get_openai_client().audio.transcriptions.create(
-            model=model,
-            file=audio_file,
-            response_format="json",
-            language="fr",
-            temperature=0,
-            prompt=build_transcription_prompt(vocabulary),
-            include=["logprobs"],
+            **request_kwargs
         )
     except Exception as exc:
         raise VoiceTranscriptionError(
@@ -137,13 +154,16 @@ def transcribe_audio_bytes(
 
     text = str(getattr(transcription, "text", "") or "").strip()
     logprobs = list(getattr(transcription, "logprobs", []) or [])
-    confidence = _average_confidence(logprobs)
+    confidence = _average_confidence(logprobs) if logprobs else None
 
     print(
         "VOICE TRANSCRIPTION:",
         {
+            "model": model,
             "text": text,
-            "confidence": round(confidence, 3),
+            "confidence": (
+                round(confidence, 3) if confidence is not None else None
+            ),
             "bytes": len(audio_bytes),
         },
     )
@@ -153,22 +173,15 @@ def transcribe_audio_bytes(
             "Aucune parole exploitable détectée."
         )
 
-    # Les transcriptions produites à partir de bruit ont souvent
-    # une confiance faible — y compris une confiance à zéro quand
-    # aucune donnée n'est exploitable (vocal quasi silencieux). On
-    # compare directement la valeur, sans test de vérité préalable :
-    # 0.0 est un "faux" en Python et serait sinon contourné, alors
-    # que c'est justement le cas le plus grave à rejeter.
-    if confidence < 0.55:
+    # Les anciens modèles gpt-4o-transcribe exposent les logprobs.
+    # gpt-transcribe ne les expose pas : on ne doit donc pas convertir
+    # leur absence en confiance nulle et rejeter une transcription valide.
+    if confidence is not None and confidence < 0.55:
         raise VoiceTranscriptionError(
             "Aucune parole exploitable détectée."
         )
 
-    # Protection complémentaire contre les réponses artificielles
-    # anormalement longues pour un vocal très court ou silencieux.
-    # Seuil relevé à 80 mots : un panier de 5-6 produits énumérés
-    # oralement ("deux sacs de riz, trois cartons de tomates, ...")
-    # dépasse largement les 35 mots initiaux sans être un artefact.
+    # Protection contre une transcription artificiellement longue.
     words = text.split()
     if len(words) > 80:
         raise VoiceTranscriptionError(
