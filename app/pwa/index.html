@@ -280,6 +280,13 @@
               <input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required>
             </label>
 
+            <input id="productType" type="hidden">
+            <input id="productBrand" type="hidden">
+            <input id="productVariant" type="hidden">
+            <input id="productPackaging" type="hidden">
+
+            <p id="catalogScanStatus" class="muted small" hidden></p>
+
             <label class="field field-wide">
               <span>Seuil d'alerte</span>
               <input id="productThreshold" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
@@ -321,10 +328,17 @@
         <div id="saleList" class="list"></div>
       </section>
 
+      <input
+        id="catalogCameraInput"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+      >
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=9" defer></script>
+  <script src="/auth/app.js?v=10" defer></script>
 
       <div id="voiceSheet" class="voice-sheet" hidden>
         <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">

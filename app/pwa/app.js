@@ -360,6 +360,10 @@ $('productForm').addEventListener('submit', async (event) => {
       method: 'POST',
       body: JSON.stringify({
         name: $('productName').value,
+        product_type: $('productType').value || null,
+        brand: $('productBrand').value || null,
+        variant: $('productVariant').value || null,
+        packaging: $('productPackaging').value || null,
         unit: $('productUnit').value,
         stock: Number($('productStock').value),
         price: Number($('productPrice').value),
@@ -373,6 +377,11 @@ $('productForm').addEventListener('submit', async (event) => {
     $('productPrice').value = '0';
     $('productPurchasePrice').value = '0';
     $('productThreshold').value = '0';
+    $('productType').value = '';
+    $('productBrand').value = '';
+    $('productVariant').value = '';
+    $('productPackaging').value = '';
+    setSmartCatalogStatus('');
     await refresh();
     toast('Produit ajouté dans la boutique active');
   } catch (error) {
@@ -436,10 +445,183 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/auth/sw.js'
 boot();
 
 function scannerComingSoon() {
-  toast('Scanner / OCR / QR interne : prochain sprint');
+  if (!can('product.create')) {
+    toast('Ton rôle ne permet pas de créer un produit.');
+    return;
+  }
+
+  $('catalogCameraInput').click();
+}
+
+async function imageFileToJpeg(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(
+      new Error('Impossible de lire la photo.')
+    );
+
+    reader.readAsDataURL(file);
+  });
+
+  const image = await new Promise((resolve, reject) => {
+    const element = new Image();
+
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(
+      new Error('Format de photo non lisible.')
+    );
+
+    element.src = dataUrl;
+  });
+
+  const maxSide = 1600;
+  const ratio = Math.min(
+    1,
+    maxSide / Math.max(image.width, image.height),
+  );
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.width * ratio));
+  canvas.height = Math.max(1, Math.round(image.height * ratio));
+
+  const context = canvas.getContext('2d');
+  context.drawImage(
+    image,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Impossible de préparer la photo.'));
+      },
+      'image/jpeg',
+      0.86,
+    );
+  });
+}
+
+function setSmartCatalogStatus(message) {
+  const status = $('catalogScanStatus');
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+async function analyzeCatalogPhoto(file) {
+  setSmartCatalogStatus('Analyse du produit en cours…');
+  toast('Whatzabi analyse le produit…');
+
+  const jpeg = await imageFileToJpeg(file);
+
+  const form = new FormData();
+  form.append('image', jpeg, 'whatzabi-product.jpg');
+
+  const response = await fetch('/pwa/catalog/analyze', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+    },
+    body: form,
+  });
+
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {}
+
+  if (response.status === 401) {
+    logout();
+    throw new Error('Session expirée');
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      body?.detail || 'Impossible d’analyser le produit.',
+    );
+  }
+
+  if (body.status === 'unresolved' || !body.candidate?.name) {
+    throw new Error(
+      body.message || 'Produit non reconnu. Reprends une photo.',
+    );
+  }
+
+  if (body.existing_product) {
+    showTab('products');
+    setSmartCatalogStatus(
+      `Déjà au catalogue : ${body.existing_product.name}.`,
+    );
+    toast(`Produit déjà présent : ${body.existing_product.name}`);
+    return;
+  }
+
+  const candidate = body.candidate;
+
+  $('productName').value = candidate.name || '';
+  $('productUnit').value = candidate.unit || 'unité';
+  $('productType').value = candidate.product_type || '';
+  $('productBrand').value = candidate.brand || '';
+  $('productVariant').value = candidate.variant || '';
+  $('productPackaging').value = candidate.packaging || '';
+
+  const confidence = Math.round(
+    Number(candidate.confidence || 0) * 100,
+  );
+
+  const details = [
+    candidate.brand,
+    candidate.variant,
+    candidate.packaging,
+    candidate.barcode
+      ? `code-barres ${candidate.barcode}`
+      : null,
+  ].filter(Boolean);
+
+  const sourceLabel =
+    candidate.source === 'barcode_public'
+      ? 'code-barres'
+      : 'analyse visuelle';
+
+  setSmartCatalogStatus(
+    `Reconnu par ${sourceLabel} — confiance ${confidence}%`
+    + (details.length ? ` — ${details.join(' · ')}` : '')
+    + '. Vérifie les informations, complète prix et stock, puis ajoute le produit.',
+  );
+
+  showTab('products');
+
+  $('productCreateCard').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  });
+
+  toast(`Produit proposé : ${candidate.name}`);
 }
 
 $('quickScanner').addEventListener('click', scannerComingSoon);
+
+$('catalogCameraInput').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+
+  // Permet de rescanner ensuite exactement le même fichier.
+  event.target.value = '';
+
+  if (!file) return;
+
+  try {
+    await analyzeCatalogPhoto(file);
+  } catch (error) {
+    setSmartCatalogStatus(error.message);
+    showTab('products');
+    toast(error.message);
+  }
+});
 
 $('quickAddPurchase').addEventListener('click', () => {
   toast('Module achats : interface PWA à brancher');
