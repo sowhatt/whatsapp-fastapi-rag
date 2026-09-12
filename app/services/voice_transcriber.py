@@ -1,6 +1,7 @@
 import io
 import math
 import os
+import unicodedata
 
 from openai import OpenAI
 
@@ -104,6 +105,39 @@ def build_keyword_hints(vocabulary: list[str] | None) -> list[str]:
     return _business_terms(vocabulary)[:100]
 
 
+
+def _normalized_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(
+        char for char in normalized
+        if not unicodedata.combining(char)
+    )
+    return " ".join(
+        normalized.casefold().strip(" .,!?:;…").split()
+    )
+
+
+def _looks_like_silence_hallucination(text: str) -> bool:
+    """
+    Rejette uniquement quelques sorties génériques typiques
+    d'un silence ou d'un bruit.
+
+    Une vraie réponse métier très courte comme "sac", "riz",
+    "Awa" ou "deux Coca" doit continuer à passer.
+    """
+    normalized = _normalized_text(text)
+
+    return normalized in {
+        "merci",
+        "merci beaucoup",
+        "merci d avoir regarde",
+        "merci de votre attention",
+        "sous titres",
+        "sous titres realises par la communaute d amara org",
+        "au revoir",
+    }
+
+
 def transcribe_audio_bytes(
     audio_bytes: bytes,
     content_type: str = "audio/ogg",
@@ -177,6 +211,14 @@ def transcribe_audio_bytes(
     # gpt-transcribe ne les expose pas : on ne doit donc pas convertir
     # leur absence en confiance nulle et rejeter une transcription valide.
     if confidence is not None and confidence < 0.55:
+        raise VoiceTranscriptionError(
+            "Aucune parole exploitable détectée."
+        )
+
+    # gpt-transcribe ne fournit pas de logprobs.
+    # On conserve donc une protection ciblée contre les hallucinations
+    # classiques générées à partir d'un vocal quasi silencieux.
+    if confidence is None and _looks_like_silence_hallucination(text):
         raise VoiceTranscriptionError(
             "Aucune parole exploitable détectée."
         )
