@@ -1,214 +1,193 @@
 import base64
 import json
 import os
-import re
-from typing import Any
+from difflib import SequenceMatcher
 
 import requests
 from openai import OpenAI
+
+from app.schemas.smart_catalog import SmartCatalogCandidate, SmartCatalogMatch
 
 
 class SmartCatalogError(Exception):
     pass
 
 
-def _clean(value: Any) -> str | None:
-    if value is None:
-        return None
-    value = " ".join(str(value).split()).strip()
-    return value or None
+_client: OpenAI | None = None
 
 
-def _extract_json(text: str) -> dict[str, Any]:
-    cleaned = (text or "").strip()
-
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
-
-    try:
-        value = json.loads(cleaned)
-        if isinstance(value, dict):
-            return value
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{.*\}", cleaned, re.S)
-    if not match:
-        raise SmartCatalogError("L'analyse visuelle n'a pas retourné de produit exploitable.")
-
-    try:
-        value = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        raise SmartCatalogError("Réponse visuelle invalide.") from exc
-
-    if not isinstance(value, dict):
-        raise SmartCatalogError("Réponse visuelle invalide.")
-
-    return value
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise SmartCatalogError("OPENAI_API_KEY manquante")
+        _client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+    return _client
 
 
-def _lookup_open_food_facts(barcode: str) -> dict[str, Any] | None:
-    digits = re.sub(r"\D", "", barcode or "")
-    if len(digits) < 8:
-        return None
+def _normalize_name(value: str) -> str:
+    return " ".join((value or "").casefold().split())
 
-    try:
-        response = requests.get(
-            f"https://world.openfoodfacts.org/api/v2/product/{digits}.json",
-            timeout=5,
-            headers={
-                "User-Agent": "Whatzabi-SmartCatalog/1.0"
-            },
-        )
-    except requests.RequestException:
-        return None
 
-    if response.status_code != 200:
-        return None
+def find_catalog_matches(
+    candidates: list[SmartCatalogCandidate],
+    products: list[object],
+    threshold: float = 0.72,
+) -> dict[int, list[SmartCatalogMatch]]:
+    result: dict[int, list[SmartCatalogMatch]] = {}
 
-    try:
-        payload = response.json()
-    except ValueError:
-        return None
+    for index, candidate in enumerate(candidates):
+        candidate_name = _normalize_name(candidate.name)
+        if not candidate_name:
+            continue
 
-    if payload.get("status") != 1:
-        return None
+        matches: list[SmartCatalogMatch] = []
+        for product in products:
+            product_name = _normalize_name(getattr(product, "name", ""))
+            if not product_name:
+                continue
 
-    product = payload.get("product") or {}
+            score = SequenceMatcher(None, candidate_name, product_name).ratio()
+            if score >= threshold:
+                matches.append(
+                    SmartCatalogMatch(
+                        product_id=int(getattr(product, "id")),
+                        name=str(getattr(product, "name")),
+                        score=round(score, 3),
+                    )
+                )
 
+        if matches:
+            result[index] = sorted(matches, key=lambda item: item.score, reverse=True)[:3]
+
+    return result
+
+
+def _candidate_from_reference(product: dict, barcode: str) -> SmartCatalogCandidate | None:
     name = (
         product.get("product_name_fr")
         or product.get("product_name")
         or product.get("generic_name_fr")
         or product.get("generic_name")
     )
-
     if not name:
         return None
 
-    return {
-        "name": _clean(name),
-        "brand": _clean(product.get("brands")),
-        "variant": None,
-        "packaging": _clean(product.get("packaging")),
-        "unit": _clean(product.get("quantity")) or "unité",
-        "product_type": _clean(product.get("categories")),
-        "barcode": digits,
-        "confidence": 0.99,
-        "source": "barcode_public",
-        "reason": "Produit trouvé dans un référentiel public par code-barres.",
-    }
-
-
-def analyze_product_image(
-    image_bytes: bytes,
-    content_type: str = "image/jpeg",
-) -> dict[str, Any]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise SmartCatalogError("OPENAI_API_KEY absente.")
-
-    model = (
-        os.getenv("OPENAI_VISION_MODEL")
-        or os.getenv("OPENAI_INTENT_MODEL")
-        or "gpt-4.1-mini"
+    brand = product.get("brands")
+    quantity = product.get("quantity")
+    return SmartCatalogCandidate(
+        name=" ".join(str(name).split()),
+        brand=" ".join(str(brand).split()) if brand else None,
+        packaging=" ".join(str(quantity).split()) if quantity else None,
+        unit="unité",
+        barcode=barcode,
+        confidence=0.99,
     )
+
+
+def lookup_barcode_reference(barcode: str) -> SmartCatalogCandidate:
+    code = "".join(ch for ch in barcode if ch.isdigit())
+    if len(code) < 8 or len(code) > 14:
+        raise SmartCatalogError("Code-barres invalide")
+
+    providers = (
+        f"https://world.openfoodfacts.org/api/v2/product/{code}.json?fields=code,product_name,product_name_fr,generic_name,generic_name_fr,brands,quantity",
+        f"https://world.openproductsfacts.org/api/v2/product/{code}.json?fields=code,product_name,product_name_fr,generic_name,generic_name_fr,brands,quantity",
+    )
+
+    for url in providers:
+        try:
+            response = requests.get(
+                url,
+                timeout=5,
+                headers={"User-Agent": "Whatzabi-SmartCatalog/1.0"},
+            )
+            if response.status_code != 200:
+                continue
+            payload = response.json()
+            if payload.get("status") != 1:
+                continue
+            candidate = _candidate_from_reference(payload.get("product") or {}, code)
+            if candidate:
+                return candidate
+        except (requests.RequestException, ValueError):
+            continue
+
+    raise SmartCatalogError("Code-barres reconnu mais produit absent des référentiels publics")
+
+
+def analyze_catalog_image(
+    image_bytes: bytes,
+    content_type: str,
+    source: str,
+) -> list[SmartCatalogCandidate]:
+    if not image_bytes:
+        raise SmartCatalogError("Image vide")
 
     encoded = base64.b64encode(image_bytes).decode("ascii")
-    data_url = f"data:{content_type};base64,{encoded}"
+    model = os.getenv("OPENAI_CATALOG_MODEL", "gpt-4.1-mini")
 
-    client = OpenAI(
-        api_key=api_key,
-        timeout=float(os.getenv("OPENAI_VISION_TIMEOUT_SECONDS", "25")),
-        max_retries=1,
+    instructions = (
+        "Tu es le moteur Smart Catalog de Whatzabi. Analyse l'image fournie. "
+        "Le contexte est un commerce en Afrique francophone. "
+        "Si source=product et qu'une étiquette, une marque ou du texte lisible est présent, "
+        "identifie le produit principalement à partir de ces indices. "
+        "Si source=product mais qu'il n'y a PAS d'étiquette ni de texte exploitable, "
+        "ne présente jamais une identification visuelle comme certaine : retourne jusqu'à trois "
+        "hypothèses plausibles classées par confiance, avec des confiances prudentes. "
+        "Par exemple, si un fruit ou légume peut être confondu, propose plusieurs hypothèses. "
+        "Si source=invoice, lis les lignes de produits de la facture. "
+        "Si source=barcode, lis uniquement un GTIN/EAN/UPC clairement visible et n'invente jamais les chiffres. "
+        "Retourne uniquement un objet JSON avec la clé candidates. "
+        "Chaque candidate contient: name, brand, variant, packaging, unit, barcode, "
+        "purchase_price, quantity, confidence. "
+        "Ne devine pas une valeur illisible: utilise null. "
+        "purchase_price est un entier en FCFA seulement si le prix est clairement visible. "
+        "confidence est entre 0 et 1. "
+        "Pour une facture, retourne une candidate par ligne produit exploitable."
     )
 
-    prompt = """
-Tu es SmartCatalog Vision de Whatzabi.
-
-Analyse UNE photo de produit destinée à créer une fiche catalogue
-pour un petit commerce.
-
-Priorité :
-1. Lis un éventuel code-barres visible.
-2. Lis le nom, la marque et les textes visibles sur l'emballage.
-3. Identifie le produit visuellement si aucun texte fiable n'est disponible.
-4. N'invente JAMAIS une marque, un code-barres ou une variante.
-5. Pour un fruit/légume ou produit non emballé, un nom générique
-   comme "Pomme", "Orange" ou "Tomate" est autorisé, mais avec une
-   confiance prudente.
-6. Si la photo est ambiguë, baisse confidence.
-7. unit doit décrire la quantité/conditionnement quand lisible
-   ("33 cl", "500 g", "1 kg"), sinon "unité".
-
-Retourne UNIQUEMENT un objet JSON avec exactement :
-{
-  "name": string|null,
-  "brand": string|null,
-  "variant": string|null,
-  "packaging": string|null,
-  "unit": string|null,
-  "product_type": string|null,
-  "barcode": string|null,
-  "confidence": number,
-  "reason": string
-}
-""".strip()
-
     try:
-        response = client.responses.create(
+        response = _get_client().chat.completions.create(
             model=model,
-            input=[
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": instructions},
                 {
                     "role": "user",
                     "content": [
+                        {"type": "text", "text": f"source={source}"},
                         {
-                            "type": "input_text",
-                            "text": prompt,
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": data_url,
-                            "detail": "high",
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{content_type};base64,{encoded}",
+                            },
                         },
                     ],
-                }
+                },
             ],
         )
+        raw = response.choices[0].message.content or "{}"
+        payload = json.loads(raw)
     except Exception as exc:
-        raise SmartCatalogError(
-            f"Analyse visuelle indisponible : {exc}"
-        ) from exc
+        raise SmartCatalogError(f"Analyse catalogue impossible: {exc}") from exc
 
-    result = _extract_json(response.output_text)
+    raw_candidates = payload.get("candidates") or []
+    candidates: list[SmartCatalogCandidate] = []
 
-    barcode = re.sub(r"\D", "", str(result.get("barcode") or "")) or None
+    for item in raw_candidates:
+        try:
+            candidate = SmartCatalogCandidate.model_validate(item)
+        except Exception:
+            continue
 
-    # Le code-barres public prime sur l'interprétation visuelle
-    # lorsqu'une fiche fiable existe.
-    if barcode:
-        public_product = _lookup_open_food_facts(barcode)
-        if public_product:
-            return public_product
+        candidate.name = " ".join(candidate.name.split()).strip()
+        if candidate.name:
+            candidates.append(candidate)
 
-    confidence = result.get("confidence", 0)
-    try:
-        confidence = float(confidence)
-    except (TypeError, ValueError):
-        confidence = 0.0
+    if not candidates:
+        raise SmartCatalogError("Aucun produit exploitable détecté")
 
-    confidence = min(max(confidence, 0.0), 1.0)
-
-    return {
-        "name": _clean(result.get("name")),
-        "brand": _clean(result.get("brand")),
-        "variant": _clean(result.get("variant")),
-        "packaging": _clean(result.get("packaging")),
-        "unit": _clean(result.get("unit")) or "unité",
-        "product_type": _clean(result.get("product_type")),
-        "barcode": barcode,
-        "confidence": confidence,
-        "source": "vision",
-        "reason": _clean(result.get("reason")) or "Produit proposé par analyse visuelle.",
-    }
+    return candidates
