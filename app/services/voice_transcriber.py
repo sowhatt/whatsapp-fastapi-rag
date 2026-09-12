@@ -105,7 +105,6 @@ def build_keyword_hints(vocabulary: list[str] | None) -> list[str]:
     return _business_terms(vocabulary)[:100]
 
 
-
 def _normalized_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
     normalized = "".join(
@@ -160,21 +159,20 @@ def transcribe_audio_bytes(
         "model": model,
         "file": audio_file,
         "response_format": "json",
-        "language": "fr",
         "temperature": 0,
         "prompt": build_transcription_prompt(vocabulary),
     }
 
-    # gpt-transcribe apporte des keyword hints natifs, mais ne prend pas
-    # en charge include=["logprobs"] sur /audio/transcriptions.
-    # extra_body garde la compatibilité avec des versions du SDK OpenAI
-    # qui ne déclareraient pas encore `keywords` dans leur signature Python.
+    # gpt-transcribe prend en charge les listes de langues et les mots-clés,
+    # mais l'API refuse d'envoyer simultanément `language` et `languages`.
+    # Les anciens modèles gardent donc `language="fr"` et les logprobs.
     if model == "gpt-transcribe":
         request_kwargs["extra_body"] = {
             "keywords": build_keyword_hints(vocabulary),
             "languages": ["fr"],
         }
     else:
+        request_kwargs["language"] = "fr"
         request_kwargs["include"] = ["logprobs"]
 
     try:
