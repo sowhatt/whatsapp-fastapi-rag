@@ -17,6 +17,7 @@ from app.models.financial_entry import FinancialEntry
 from app.models.open_tab import OpenTab, OpenTabItem
 from app.models.payment import Payment
 from app.models.product import Product
+from app.models.product_supplier import ProductSupplier
 from app.models.purchase import Purchase
 from app.models.sale import Sale
 from app.models.shop_inventory import ShopInventory
@@ -30,6 +31,7 @@ TENANT_SCOPED_MODELS = (
     Customer,
     Supplier,
     Product,
+    ProductSupplier,
     Category,
     Sale,
     Purchase,

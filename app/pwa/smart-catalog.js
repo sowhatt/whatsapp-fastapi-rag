@@ -8,7 +8,151 @@
   function loadZXing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://unpkg.com/@zxing/browser@0.2.1';s.async=true;s.onload=()=>window.ZXingBrowser?ok(window.ZXingBrowser):no();s.onerror=no;document.head.appendChild(s)});return zxingPromise}
   function captureFrame(){const video=$('barcodeLiveVideo');if(!video?.videoWidth)return null;const c=document.createElement('canvas');const max=1280,scale=Math.min(1,max/video.videoWidth);c.width=Math.round(video.videoWidth*scale);c.height=Math.round(video.videoHeight*scale);c.getContext('2d').drawImage(video,0,0,c.width,c.height);return c}
   async function lookup(code){showDetected(code);setStatus('Recherche du produit…');navigator.vibrate?.(80);const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}`,{headers:{Authorization:`Bearer ${token}`}});let b=null;try{b=await r.json()}catch{}if(!r.ok)throw new Error(b?.detail||'Produit absent du référentiel.');return b}
-  function renderResult(b){try{catalogAnalysis=b}catch{}const cs=b?.candidates||[],list=$('catalogCandidateList');list.innerHTML='';$('catalogResultCount').textContent=cs.length?`${cs.length} produit détecté`:'Code reconnu';cs.forEach(c=>{const a=document.createElement('article');a.className='catalog-candidate';const h=document.createElement('h3');h.textContent=c.name||'Produit';a.appendChild(h);const m=document.createElement('div');m.className='catalog-meta';[c.brand,c.packaging,c.barcode&&`EAN : ${c.barcode}`].filter(Boolean).forEach(x=>{const s=document.createElement('span');s.className='catalog-chip';s.textContent=x;m.appendChild(s)});a.appendChild(m);list.appendChild(a)});$('barcodeLiveView').hidden=true;$('catalogResults').hidden=false;$('catalogModes').hidden=true;$('catalogCapture').hidden=true;updateValidationButton()}
+  function renderResult(b){
+    try{catalogAnalysis=b}catch{}
+
+    const cs=b?.candidates||[];
+    const list=$('catalogCandidateList');
+
+    scanning=false;
+    stopCameraOnly();
+
+    if($('barcodeLiveView')) $('barcodeLiveView').hidden=true;
+    $('catalogModes').hidden=true;
+    $('catalogCapture').hidden=true;
+    $('catalogResults').hidden=false;
+
+    list.innerHTML='';
+    $('catalogResultCount').textContent=cs.length
+      ? `${cs.length} produit détecté`
+      : 'Code reconnu';
+
+    cs.forEach((c,index)=>{
+      const article=document.createElement('article');
+      article.className='catalog-candidate';
+      article.dataset.catalogIndex=String(index);
+
+      const title=document.createElement('h3');
+      title.textContent=c.name||'Produit';
+      article.appendChild(title);
+
+      const meta=document.createElement('div');
+      meta.className='catalog-meta';
+
+      [
+        c.brand,
+        c.product_type,
+        c.packaging,
+        c.barcode&&`EAN : ${c.barcode}`
+      ].filter(Boolean).forEach(value=>{
+        const chip=document.createElement('span');
+        chip.className='catalog-chip';
+        chip.textContent=value;
+        meta.appendChild(chip);
+      });
+
+      article.appendChild(meta);
+
+      const form=document.createElement('div');
+      form.className='catalog-validation-form';
+      form.innerHTML=`
+        <label>
+          <span>Nom du produit</span>
+          <input data-field="name" type="text" value="">
+        </label>
+
+        <div class="catalog-form-grid">
+          <label>
+            <span>Prix d'achat</span>
+            <input data-field="purchase_price" type="number" inputmode="numeric" min="0" value="0">
+          </label>
+
+          <label>
+            <span>Prix de vente</span>
+            <input data-field="price" type="number" inputmode="numeric" min="0" value="0">
+          </label>
+        </div>
+
+        <div class="catalog-form-grid">
+          <label>
+            <span>Quantité</span>
+            <input data-field="stock" type="number" inputmode="numeric" min="0" value="1">
+          </label>
+
+          <label>
+            <span>Unité</span>
+            <select data-field="unit">
+              <option value="unité">unité</option>
+              <option value="pièce">pièce</option>
+              <option value="kg">kg</option>
+              <option value="g">g</option>
+              <option value="litre">litre</option>
+              <option value="ml">ml</option>
+              <option value="carton">carton</option>
+              <option value="paquet">paquet</option>
+              <option value="sac">sac</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>Seuil d'alerte stock</span>
+          <input data-field="threshold" type="number" inputmode="numeric" min="0" value="0">
+        </label>
+
+        <label>
+          <span>Fournisseur</span>
+          <select data-field="supplier_id">
+            <option value="">Aucun fournisseur</option>
+          </select>
+        </label>
+
+        <div class="catalog-new-supplier" hidden>
+          <label>
+            <span>Nom du nouveau fournisseur</span>
+            <input data-field="supplier_name" type="text" placeholder="Ex. Grossiste Cotonou">
+          </label>
+
+          <label>
+            <span>Téléphone fournisseur</span>
+            <input data-field="supplier_phone" type="tel" placeholder="+229...">
+          </label>
+        </div>
+      `;
+
+      article.appendChild(form);
+      list.appendChild(article);
+
+      const nameInput=article.querySelector('[data-field="name"]');
+      const purchaseInput=article.querySelector('[data-field="purchase_price"]');
+      const priceInput=article.querySelector('[data-field="price"]');
+      const stockInput=article.querySelector('[data-field="stock"]');
+      const unitInput=article.querySelector('[data-field="unit"]');
+
+      nameInput.value=c.name||'';
+      purchaseInput.value=Number(c.purchase_price||0);
+      priceInput.value=Number(c.price||0);
+      stockInput.value=Number(c.quantity??1);
+
+      if(c.unit){
+        const option=[...unitInput.options].find(o=>o.value===c.unit);
+        if(option) unitInput.value=c.unit;
+      }
+
+      const supplierSelect=article.querySelector('[data-field="supplier_id"]');
+      const supplierBox=article.querySelector('.catalog-new-supplier');
+
+      loadSuppliersIntoSelect(supplierSelect);
+
+      supplierSelect.addEventListener('change',()=>{
+        supplierBox.hidden=supplierSelect.value!=='__new__';
+      });
+
+      article.addEventListener('click',()=>markSelectedCard(index));
+    });
+
+    updateValidationButton();
+  }
   async function onDetected(raw){if(!scanning)return;const code=normalizeCode(raw);if(!code)return;scanning=false;stopCameraOnly();showDetected(code);try{renderResult(await lookup(code))}catch{showDetected(code);setStatus('Produit inconnu de nos référentiels. Complète son identité : le code restera associé.');$('barcodeUnknownActions').hidden=false}}
   async function aiReadFrame(){if(!scanning||aiBusy)return;const canvas=captureFrame();if(!canvas)return;aiBusy=true;$('barcodeTarget')?.classList.add('locking');setStatus('Capture automatique — l’IA cherche le numéro…');try{const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.88));const fd=new FormData();fd.append('image',blob,'barcode.jpg');fd.append('source','barcode');const token=localStorage.getItem('whatzabi_token')||'';const r=await fetch('/pwa/catalog/analyze',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});if(r.ok){const b=await r.json(),candidate=(b.candidates||[]).find(c=>normalizeCode(c.barcode));const code=normalizeCode(candidate?.barcode);if(code){const data=canvas.toDataURL('image/jpeg',.88);$('barcodeAutoCapture').src=data;$('barcodeAutoCapture').hidden=false;sessionStorage.setItem('whatzabi_barcode_capture',data);await onDetected(code);return}}}catch{}finally{aiBusy=false;$('barcodeTarget')?.classList.remove('locking')}if(scanning)setStatus('Aucun EAN lisible — rapproche le code, je continue automatiquement.')}
   function startAILoop(){if(aiTimer)clearInterval(aiTimer);setTimeout(()=>aiReadFrame(),700);aiTimer=setInterval(()=>aiReadFrame(),2200)}
@@ -75,70 +219,564 @@
   function markSelectedCard(index){const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];cards.forEach((card,i)=>{card.style.outline=i===index?'3px solid #0f766e':'';card.style.cursor='pointer';card.setAttribute('aria-selected',i===index?'true':'false')});sessionStorage.setItem('whatzabi_catalog_selected',String(index));updateValidationButton()}
   function updateValidationButton(){const btn=$('catalogPrepareBtn');if(!btn)return;const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(code){btn.textContent='✓ Valider et ajouter au catalogue';btn.hidden=false}else{btn.textContent='Ajouter au catalogue';btn.hidden=false}const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];if(cards.length===1)markSelectedCard(0)}
   function exactExistingMatch(body,index,candidate){const matches=body?.matches?.[String(index)]||body?.matches?.[index]||[];const target=String(candidate?.name||'').trim().toLocaleLowerCase();return matches.find(m=>m.score>=0.99&&String(m.name||'').trim().toLocaleLowerCase()===target)||null}
-  async function createValidatedProduct(candidate){const payload={name:String(candidate?.name||'').trim(),product_type:null,brand:candidate?.brand||null,variant:candidate?.variant||null,packaging:candidate?.packaging||null,unit:candidate?.unit||'unité',stock:Number(candidate?.quantity||0),purchase_price:Number(candidate?.purchase_price||0),price:0,threshold:0};if(!payload.name)throw new Error('Nom du produit manquant.');const token=localStorage.getItem('whatzabi_token')||'',r=await fetch('/pwa/products',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');return body}
+  function candidateFromForm(candidate,index){
+    const card=document.querySelector(`#catalogCandidateList .catalog-candidate[data-catalog-index="${index}"]`);
+
+    if(!card)return candidate;
+
+    const value=field=>card.querySelector(`[data-field="${field}"]`)?.value;
+
+    return {
+      ...candidate,
+      name:String(value('name')||candidate?.name||'').trim(),
+      purchase_price:Number(value('purchase_price')||0),
+      price:Number(value('price')||0),
+      quantity:Number(value('stock')||0),
+      unit:String(value('unit')||candidate?.unit||'unité'),
+      threshold:Number(value('threshold')||0)
+    };
+  }
+
+  async function createValidatedProduct(candidate){
+    const payload={
+      name:String(candidate?.name||'').trim(),
+      product_type:candidate?.product_type||null,
+      brand:candidate?.brand||null,
+      variant:candidate?.variant||null,
+      packaging:candidate?.packaging||null,
+      unit:candidate?.unit||'unité',
+      stock:Number(candidate?.quantity||0),
+      purchase_price:Number(candidate?.purchase_price||0),
+      price:Number(candidate?.price||0),
+      threshold:Number(candidate?.threshold||0)
+    };
+
+    if(!payload.name)throw new Error('Nom du produit manquant.');
+    if(payload.purchase_price<0||payload.price<0)throw new Error('Les prix doivent être positifs.');
+    if(payload.stock<0)throw new Error('La quantité doit être positive.');
+    if(payload.threshold<0)throw new Error('Le seuil doit être positif.');
+
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    const r=await fetch('/pwa/products',{
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify(payload)
+    });
+
+    let body=null;
+    try{body=await r.json()}catch{}
+
+    if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');
+
+    return body;
+  }
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
+
+  async function loadSuppliers(){
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    const r=await fetch('/pwa/suppliers',{
+      headers:{Authorization:`Bearer ${token}`}
+    });
+
+    let body=[];
+    try{body=await r.json()}catch{}
+
+    if(!r.ok){
+      throw new Error(body?.detail||'Impossible de charger les fournisseurs.');
+    }
+
+    return Array.isArray(body)?body:[];
+  }
+
+  async function loadSuppliersIntoSelect(select){
+    if(!select)return;
+
+    try{
+      const suppliers=await loadSuppliers();
+
+      const selected=select.value;
+
+      select.innerHTML='<option value="">Aucun fournisseur</option>';
+
+      suppliers
+        .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'fr'))
+        .forEach(supplier=>{
+          const option=document.createElement('option');
+          option.value=String(supplier.id);
+          option.textContent=supplier.name;
+          select.appendChild(option);
+        });
+
+      const createOption=document.createElement('option');
+      createOption.value='__new__';
+      createOption.textContent='+ Nouveau fournisseur';
+      select.appendChild(createOption);
+
+      if([...select.options].some(o=>o.value===selected)){
+        select.value=selected;
+      }
+    }catch(err){
+      const createOption=document.createElement('option');
+      createOption.value='__new__';
+      createOption.textContent='+ Nouveau fournisseur';
+      select.appendChild(createOption);
+
+      try{toast(err.message)}catch{}
+    }
+  }
+
+  async function createSupplier(name,phone){
+    const cleanName=String(name||'').trim();
+
+    if(!cleanName){
+      throw new Error('Le nom du fournisseur est obligatoire.');
+    }
+
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    const r=await fetch('/pwa/suppliers',{
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        name:cleanName,
+        phone:String(phone||'').trim()||null,
+        debt:0
+      })
+    });
+
+    let body=null;
+    try{body=await r.json()}catch{}
+
+    if(!r.ok){
+      throw new Error(body?.detail||'Impossible de créer le fournisseur.');
+    }
+
+    return body;
+  }
+
+  async function associateProductSupplier(productId,supplierId,purchasePrice){
+    if(!supplierId)return null;
+
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    const r=await fetch(`/pwa/products/${Number(productId)}/suppliers`,{
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        supplier_id:Number(supplierId),
+        last_purchase_price:Number(purchasePrice||0),
+        is_preferred:true
+      })
+    });
+
+    let body=null;
+    try{body=await r.json()}catch{}
+
+    if(!r.ok){
+      throw new Error(body?.detail||'Impossible d’associer le fournisseur.');
+    }
+
+    return body;
+  }
+
+  async function resolveSupplierFromForm(index){
+    const card=document.querySelector(
+      `#catalogCandidateList .catalog-candidate[data-catalog-index="${index}"]`
+    );
+
+    if(!card)return null;
+
+    const select=card.querySelector('[data-field="supplier_id"]');
+    if(!select)return null;
+
+    if(!select.value)return null;
+
+    if(select.value!=='__new__'){
+      return Number(select.value);
+    }
+
+    const name=card.querySelector('[data-field="supplier_name"]')?.value;
+    const phone=card.querySelector('[data-field="supplier_phone"]')?.value;
+
+    const supplier=await createSupplier(name,phone);
+
+    return Number(supplier.id);
+  }
+
+  function normalizedProductName(value){
+    return String(value||'')
+      .trim()
+      .replace(/\s+/g,' ')
+      .toLocaleLowerCase();
+  }
+
+  async function loadCatalogProducts(){
+    const token=localStorage.getItem('whatzabi_token')||'';
+    const r=await fetch('/pwa/products',{
+      headers:{Authorization:`Bearer ${token}`}
+    });
+
+    let body=[];
+    try{body=await r.json()}catch{}
+
+    if(!r.ok){
+      throw new Error(body?.detail||'Impossible de vérifier le catalogue.');
+    }
+
+    return Array.isArray(body)?body:[];
+  }
+
+  async function findExistingProduct(body,index,candidate){
+    const products=await loadCatalogProducts();
+    const match=exactExistingMatch(body,index,candidate);
+
+    if(match){
+      const byId=products.find(p=>Number(p.id)===Number(match.product_id));
+      if(byId)return byId;
+    }
+
+    const target=normalizedProductName(candidate?.name);
+    if(!target)return null;
+
+    return products.find(
+      p=>normalizedProductName(p?.name)===target
+    )||null;
+  }
+
+  function closeCatalogAndShowProducts(){
+    scanning=false;
+    stopCameraOnly();
+
+    const sheet=$('catalogSheet');
+    if(sheet)sheet.hidden=true;
+
+    try{showTab('products')}catch{}
+
+    try{
+      refresh().then(()=>{
+        $('productList')?.scrollIntoView({
+          behavior:'smooth',
+          block:'start'
+        });
+      });
+    }catch{}
+  }
+
+  function renderCatalogSuccess(product,code){
+    scanning=false;
+    stopCameraOnly();
+
+    if($('barcodeLiveView'))$('barcodeLiveView').hidden=true;
+    $('catalogModes').hidden=true;
+    $('catalogCapture').hidden=true;
+    $('catalogResults').hidden=false;
+
+    const list=$('catalogCandidateList');
+    list.innerHTML='';
+
+    $('catalogResultCount').textContent='Produit ajouté';
+
+    const card=document.createElement('article');
+    card.className='catalog-candidate catalog-success-card';
+
+    const name=document.createElement('h3');
+    name.textContent=`✓ ${product?.name||'Produit ajouté'}`;
+    card.appendChild(name);
+
+    const details=document.createElement('div');
+    details.className='catalog-success-details';
+    details.innerHTML=`
+      <div><span>Stock</span><strong>${Number(product?.stock||0)} ${product?.unit||'unité'}</strong></div>
+      <div><span>Prix d'achat</span><strong>${Number(product?.purchase_price||0).toLocaleString('fr-FR')} FCFA</strong></div>
+      <div><span>Prix de vente</span><strong>${Number(product?.price||0).toLocaleString('fr-FR')} FCFA</strong></div>
+      ${code?`<div><span>Code-barres</span><strong>${code}</strong></div>`:''}
+    `;
+    card.appendChild(details);
+
+    const actions=document.createElement('div');
+    actions.className='catalog-final-actions';
+
+    const viewBtn=document.createElement('button');
+    viewBtn.type='button';
+    viewBtn.textContent='Voir dans mon catalogue';
+    viewBtn.onclick=closeCatalogAndShowProducts;
+
+    const scanBtn=document.createElement('button');
+    scanBtn.type='button';
+    scanBtn.className='ghost';
+    scanBtn.textContent='Scanner un autre produit';
+    scanBtn.onclick=startLiveScanner;
+
+    actions.appendChild(viewBtn);
+    actions.appendChild(scanBtn);
+    card.appendChild(actions);
+
+    list.appendChild(card);
+
+    const prepare=$('catalogPrepareBtn');
+    if(prepare)prepare.hidden=true;
+  }
+
+  async function addStockToExisting(product,quantity){
+    const amount=Math.max(0,Number(quantity||0));
+    if(amount<=0)throw new Error('Indique une quantité supérieure à zéro.');
+
+    const current=Number(product?.stock||0);
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    const r=await fetch(`/pwa/products/${Number(product.id)}`,{
+      method:'PATCH',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        stock:current+amount
+      })
+    });
+
+    let body=null;
+    try{body=await r.json()}catch{}
+
+    if(!r.ok){
+      throw new Error(body?.detail||'Impossible de mettre à jour le stock.');
+    }
+
+    return body;
+  }
+
+  function renderExistingProduct(product,candidate,code){
+    scanning=false;
+    stopCameraOnly();
+
+    if($('barcodeLiveView'))$('barcodeLiveView').hidden=true;
+    $('catalogModes').hidden=true;
+    $('catalogCapture').hidden=true;
+    $('catalogResults').hidden=false;
+
+    $('catalogResultCount').textContent='Produit déjà au catalogue';
+
+    const list=$('catalogCandidateList');
+    list.innerHTML='';
+
+    const card=document.createElement('article');
+    card.className='catalog-candidate catalog-existing-card';
+
+    const name=document.createElement('h3');
+    name.textContent=product.name||candidate?.name||'Produit';
+    card.appendChild(name);
+
+    const message=document.createElement('p');
+    message.className='catalog-existing-message';
+    message.textContent='Ce produit existe déjà. Whatzabi ne créera pas de doublon.';
+    card.appendChild(message);
+
+    const details=document.createElement('div');
+    details.className='catalog-success-details';
+    details.innerHTML=`
+      <div><span>Stock actuel</span><strong>${Number(product.stock||0)} ${product.unit||'unité'}</strong></div>
+      <div><span>Prix d'achat</span><strong>${Number(product.purchase_price||0).toLocaleString('fr-FR')} FCFA</strong></div>
+      <div><span>Prix de vente</span><strong>${Number(product.price||0).toLocaleString('fr-FR')} FCFA</strong></div>
+      ${code?`<div><span>EAN / GTIN</span><strong>${code}</strong></div>`:''}
+    `;
+    card.appendChild(details);
+
+    const quantity=Math.max(0,Number(candidate?.quantity||0));
+
+    const actions=document.createElement('div');
+    actions.className='catalog-final-actions';
+
+    if(quantity>0){
+      const stockBtn=document.createElement('button');
+      stockBtn.type='button';
+      stockBtn.textContent=`Ajouter ${quantity} au stock`;
+
+      stockBtn.onclick=async()=>{
+        if(validationBusy)return;
+        validationBusy=true;
+        stockBtn.disabled=true;
+        stockBtn.textContent='Mise à jour…';
+
+        try{
+          const updated=await addStockToExisting(product,quantity);
+
+          try{await refresh()}catch{}
+          try{toast('Stock mis à jour')}catch{}
+
+          renderCatalogSuccess(updated,code);
+          $('catalogResultCount').textContent='Stock mis à jour';
+        }catch(err){
+          stockBtn.disabled=false;
+          stockBtn.textContent=`Ajouter ${quantity} au stock`;
+          try{toast(err.message)}catch{}
+        }finally{
+          validationBusy=false;
+        }
+      };
+
+      actions.appendChild(stockBtn);
+    }
+
+    const viewBtn=document.createElement('button');
+    viewBtn.type='button';
+    viewBtn.className=quantity>0?'ghost':'';
+    viewBtn.textContent='Voir dans mon catalogue';
+    viewBtn.onclick=closeCatalogAndShowProducts;
+
+    const scanBtn=document.createElement('button');
+    scanBtn.type='button';
+    scanBtn.className='ghost';
+    scanBtn.textContent='Scanner un autre produit';
+    scanBtn.onclick=startLiveScanner;
+
+    actions.appendChild(viewBtn);
+    actions.appendChild(scanBtn);
+    card.appendChild(actions);
+
+    list.appendChild(card);
+
+    const prepare=$('catalogPrepareBtn');
+    if(prepare)prepare.hidden=true;
+  }
   async function validatePendingBarcode(e){
-    if(e){e.preventDefault();e.stopImmediatePropagation()}
+    if(e){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+
     if(validationBusy)return;
 
     let body=null;
+
     try{body=catalogAnalysis}catch{}
+
     if(!body){
-      try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}
+      try{
+        body=JSON.parse(
+          sessionStorage.getItem('whatzabi_catalog_draft')||'null'
+        );
+      }catch{}
     }
 
     const candidates=body?.candidates||[];
+
     if(!candidates.length){
       try{toast('Aucun produit à valider.')}catch{}
       return;
     }
 
-    const index=Math.min(selectedIndex(),candidates.length-1);
-    const candidate=candidates[index];
-    const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));
+    const index=Math.min(
+      selectedIndex(),
+      candidates.length-1
+    );
+
+    const rawCandidate=candidates[index];
+    const candidate=candidateFromForm(rawCandidate,index);
+    const code=normalizeCode(
+      sessionStorage.getItem('whatzabi_pending_barcode')
+    );
 
     validationBusy=true;
+
     const btn=$('catalogPrepareBtn');
 
     if(btn){
       btn.disabled=true;
-      btn.textContent='Validation…';
+      btn.textContent='Vérification du catalogue…';
     }
 
     try{
-      const match=exactExistingMatch(body,index,candidate);
-      const product=match?{id:match.product_id}:await createValidatedProduct(candidate);
+      const existing=await findExistingProduct(
+        body,
+        index,
+        candidate
+      );
+
+      if(existing){
+        const supplierId=await resolveSupplierFromForm(index);
+
+        if(supplierId){
+          await associateProductSupplier(
+            existing.id,
+            supplierId,
+            candidate.purchase_price
+          );
+        }
+
+        if(code){
+          try{
+            await associateValidatedBarcode(code,existing.id);
+          }catch(err){
+            if(!String(err?.message||'').toLowerCase().includes('associ')){
+              throw err;
+            }
+          }
+        }
+
+        sessionStorage.removeItem('whatzabi_catalog_selected');
+
+        try{toast('Produit déjà présent dans le catalogue')}catch{}
+
+        renderExistingProduct(
+          existing,
+          candidate,
+          code
+        );
+
+        return;
+      }
+
+      const product=await createValidatedProduct(candidate);
+
+      const supplierId=await resolveSupplierFromForm(index);
+
+      if(supplierId){
+        await associateProductSupplier(
+          product.id,
+          supplierId,
+          candidate.purchase_price
+        );
+      }
 
       if(code){
-        const learned=await associateValidatedBarcode(code,product.id);
-
-        sessionStorage.removeItem('whatzabi_pending_barcode');
-        sessionStorage.removeItem('whatzabi_catalog_selected');
-        sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));
-
-        try{await refresh()}catch{}
-        try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}
-
-        renderResult(learned);
-
-        if(btn){
-          btn.textContent='✓ Produit mémorisé';
-          btn.disabled=true;
-        }
-      }else{
-        sessionStorage.removeItem('whatzabi_catalog_selected');
-
-        try{await refresh()}catch{}
-        try{toast('Produit ajouté au catalogue')}catch{}
-
-        if(btn){
-          btn.textContent='✓ Produit ajouté';
-          btn.disabled=true;
-        }
+        await associateValidatedBarcode(
+          code,
+          product.id
+        );
       }
+
+      sessionStorage.removeItem('whatzabi_pending_barcode');
+      sessionStorage.removeItem('whatzabi_catalog_selected');
+      sessionStorage.removeItem('whatzabi_catalog_draft');
+
+      try{await refresh()}catch{}
+
+      try{
+        toast(
+          code
+            ? `Produit ajouté — EAN ${code} mémorisé`
+            : 'Produit ajouté au catalogue'
+        );
+      }catch{}
+
+      renderCatalogSuccess(product,code);
+
     }catch(err){
       try{toast(err.message)}catch{}
+
       if(btn){
+        btn.hidden=false;
         btn.disabled=false;
         btn.textContent=code
           ? '✓ Valider et ajouter au catalogue'

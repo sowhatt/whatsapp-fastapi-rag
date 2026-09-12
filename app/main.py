@@ -10,6 +10,7 @@ from app.routers.pwa_voice import router as pwa_voice_router
 from app.routers.pwa_smart_catalog import router as pwa_smart_catalog_router
 from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
+from app.routers.product_suppliers import router as product_suppliers_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
 from app.routers.sales import router as sales_router
@@ -423,9 +424,11 @@ app.include_router(auth_router)
 for pwa_router in (
     categories_router,
     products_router,
+    product_suppliers_router,
     customers_router,
     sales_router,
     payments_router,
+    suppliers_router,
     pwa_voice_router,
     pwa_smart_catalog_router,
 ):

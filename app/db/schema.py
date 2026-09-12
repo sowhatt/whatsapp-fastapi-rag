@@ -17,6 +17,7 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     product_image,
     product_publication,
     product_reference,
+    product_supplier,
     purchase,
     purchase_item,
     sale,
