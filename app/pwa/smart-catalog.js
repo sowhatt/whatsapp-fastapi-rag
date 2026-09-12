@@ -1,7 +1,7 @@
 (() => {
   let controls=null,scanning=false,zxingPromise=null,detectedBarcode='',nativeStream=null,nativeTimer=null,aiTimer=null,aiBusy=false,validationBusy=false;
   const $=id=>document.getElementById(id);
-  function ensureUI(){if($('barcodeLiveView'))return;const v=document.createElement('section');v.id='barcodeLiveView';v.className='barcode-live-view';v.hidden=true;v.innerHTML=`<div class="barcode-live-head"><button id="barcodeLiveBack" type="button" class="ghost">‹ Retour</button><strong>Scanner le code-barres</strong></div><div class="barcode-camera-frame"><video id="barcodeLiveVideo" autoplay playsinline muted></video><div id="barcodeTarget" class="barcode-target" aria-hidden="true"><span></span></div></div><div id="barcodeDetectedBox" hidden style="margin:14px 0;padding:12px;border-radius:14px;background:#e8f3f1;text-align:center"><small style="display:block;color:#607874">✓ Code-barres détecté</small><strong id="barcodeDetectedValue" style="display:block;margin-top:4px;font-size:20px;letter-spacing:.06em"></strong></div><img id="barcodeAutoCapture" hidden alt="Capture automatique" style="width:100%;max-height:150px;object-fit:contain;border-radius:12px;margin:8px 0"><p id="barcodeLiveStatus" class="barcode-live-status">Recherche du code-barres…</p><p class="muted small">Garde le code dans le cadre. Whatzabi capture automatiquement des images et l’IA tente de lire l’EAN.</p><div id="barcodeUnknownActions" hidden style="display:grid;gap:8px"><button id="barcodePhotoFallback" type="button">📷 Photographier le produit</button><button id="barcodeNameBtn" type="button" class="ghost">⌨️ Saisir le nom</button><button id="barcodeVoiceBtn" type="button" class="ghost">🎙️ Dicter le nom</button></div>`;document.querySelector('.catalog-sheet-card')?.appendChild(v);$('barcodeLiveBack').onclick=stopLiveScanner;$('barcodePhotoFallback').onclick=openPhotoFallback;$('barcodeNameBtn').onclick=enterName;$('barcodeVoiceBtn').onclick=dictateName}
+  function ensureUI(){if($('barcodeLiveView'))return;const v=document.createElement('section');v.id='barcodeLiveView';v.className='barcode-live-view';v.hidden=true;v.innerHTML=`<div class="barcode-live-head"><button id="barcodeLiveBack" type="button" class="ghost">‹ Retour</button><strong>Scanner le code-barres</strong></div><div class="barcode-camera-frame"><video id="barcodeLiveVideo" autoplay playsinline muted></video><div id="barcodeTarget" class="barcode-target" aria-hidden="true"><span></span></div></div><div id="barcodeDetectedBox" hidden style="margin:14px 0;padding:12px;border-radius:14px;background:#e8f3f1;text-align:center"><small style="display:block;color:#607874">✓ Code-barres détecté</small><strong id="barcodeDetectedValue" style="display:block;margin-top:4px;font-size:20px;letter-spacing:.06em"></strong></div><img id="barcodeAutoCapture" hidden alt="Capture automatique" style="width:100%;max-height:150px;object-fit:contain;border-radius:12px;margin:8px 0"><p id="barcodeLiveStatus" class="barcode-live-status">Recherche du code-barres…</p><p class="muted small">Garde le code dans le cadre. Whatzabi capture automatiquement des images et l’IA tente de lire l’EAN.</p><button id="barcodePhotoNow" type="button" class="ghost" style="width:100%;margin:8px 0">📷 Photo produit</button><input id="barcodeProductPhotoInput" type="file" accept="image/*" capture="environment" hidden><div id="barcodeUnknownActions" hidden style="display:grid;gap:8px"><button id="barcodePhotoFallback" type="button">📷 Photographier le produit</button><button id="barcodeNameBtn" type="button" class="ghost">⌨️ Saisir le nom</button><button id="barcodeVoiceBtn" type="button" class="ghost">🎙️ Dicter le nom</button></div>`;document.querySelector('.catalog-sheet-card')?.appendChild(v);$('barcodeLiveBack').onclick=stopLiveScanner;$('barcodePhotoNow').onclick=chooseProductPhoto;$('barcodeProductPhotoInput').onchange=handleProductPhoto;$('barcodePhotoFallback').onclick=chooseProductPhoto;$('barcodeNameBtn').onclick=enterName;$('barcodeVoiceBtn').onclick=dictateName}
   function setStatus(t){if($('barcodeLiveStatus'))$('barcodeLiveStatus').textContent=t}
   function normalizeCode(v){const c=String(v||'').replace(/\D/g,'');return c.length>=8&&c.length<=14?c:''}
   function showDetected(code){detectedBarcode=code;$('barcodeDetectedValue').textContent=`EAN / GTIN : ${code}`;$('barcodeDetectedBox').hidden=false;$('barcodeTarget')?.classList.add('detected');sessionStorage.setItem('whatzabi_pending_barcode',code)}
@@ -15,10 +15,59 @@
   async function openCamera(){nativeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});const video=$('barcodeLiveVideo');video.srcObject=nativeStream;await video.play();const track=nativeStream.getVideoTracks()[0];try{const caps=track.getCapabilities?.()||{},advanced=[];if(caps.focusMode?.includes('continuous'))advanced.push({focusMode:'continuous'});if(advanced.length)await track.applyConstraints({advanced})}catch{}setStatus('Recherche du code-barres…');startAILoop()}
   async function startNativeDetector(){if(!('BarcodeDetector'in window))return;const formats=await BarcodeDetector.getSupportedFormats(),wanted=['ean_13','ean_8','upc_a','upc_e','code_128'].filter(f=>formats.includes(f));if(!wanted.length)return;const detector=new BarcodeDetector({formats:wanted}),video=$('barcodeLiveVideo');const scan=async()=>{if(!scanning)return;try{const codes=await detector.detect(video);if(codes?.[0]?.rawValue){onDetected(codes[0].rawValue);return}}catch{}nativeTimer=setTimeout(scan,140)};scan()}
   async function startZXingWatcher(){try{const Z=await loadZXing(),reader=new Z.BrowserMultiFormatReader();controls=await reader.decodeFromVideoElement($('barcodeLiveVideo'),r=>{if(r)onDetected(r.getText?r.getText():r.text)})}catch{}}
-  async function startLiveScanner(){const sheet=$('catalogSheet');if(sheet)sheet.hidden=false;ensureUI();detectedBarcode='';aiBusy=false;sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_barcode_capture');sessionStorage.removeItem('whatzabi_catalog_selected');$('barcodeDetectedBox').hidden=true;$('barcodeUnknownActions').hidden=true;$('barcodeAutoCapture').hidden=true;$('barcodeTarget')?.classList.remove('detected','locking');$('catalogModes').hidden=true;$('catalogCapture').hidden=true;$('catalogResults').hidden=true;$('barcodeLiveView').hidden=false;scanning=true;setStatus('Ouverture de la caméra…');try{await openCamera();startNativeDetector().catch(()=>{});startZXingWatcher().catch(()=>{})}catch{scanning=false;stopCameraOnly();setStatus('Impossible d’ouvrir la caméra. Utilise Photo produit.')}}
+  async function startLiveScanner(){const sheet=$('catalogSheet');if(sheet)sheet.hidden=false;ensureUI();detectedBarcode='';aiBusy=false;sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_barcode_capture');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.removeItem('whatzabi_catalog_draft');const prepare=$('catalogPrepareBtn');if(prepare){prepare.disabled=false;prepare.hidden=false;prepare.textContent='✓ Valider'}$('catalogDetectedBox')?.removeAttribute('data-unused');$('barcodeDetectedBox').hidden=true;$('barcodeUnknownActions').hidden=true;$('barcodeAutoCapture').hidden=true;$('barcodeTarget')?.classList.remove('detected','locking');$('catalogModes').hidden=true;$('catalogCapture').hidden=true;$('catalogResults').hidden=true;$('barcodeLiveView').hidden=false;scanning=true;setStatus('Ouverture de la caméra…');try{await openCamera();startNativeDetector().catch(()=>{});startZXingWatcher().catch(()=>{})}catch{scanning=false;stopCameraOnly();setStatus('Impossible d’ouvrir la caméra. Utilise Photo produit.')}}
   function stopCameraOnly(){if(nativeTimer){clearTimeout(nativeTimer);nativeTimer=null}if(aiTimer){clearInterval(aiTimer);aiTimer=null}try{controls?.stop?.()}catch{}controls=null;if(nativeStream){nativeStream.getTracks().forEach(t=>t.stop());nativeStream=null}const v=$('barcodeLiveVideo');if(v?.srcObject){v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null}}
   function stopLiveScanner(){scanning=false;stopCameraOnly();if($('barcodeLiveView'))$('barcodeLiveView').hidden=true;$('catalogModes').hidden=false;$('catalogCapture').hidden=true;$('catalogResults').hidden=true}
-  function openPhotoFallback(){const c=detectedBarcode;stopCameraOnly();$('barcodeLiveView').hidden=true;$('catalogModes').hidden=false;if(c)sessionStorage.setItem('whatzabi_pending_barcode',c);document.querySelector('[data-catalog-source="product"]')?.click()}
+  function chooseProductPhoto(){scanning=false;stopCameraOnly();$('barcodeProductPhotoInput')?.click()}
+  async function handleProductPhoto(e){
+    const input=e?.target;
+    const file=input?.files?.[0];
+    if(input)input.value='';
+    if(!file)return;
+
+    scanning=false;
+    stopCameraOnly();
+    setStatus('Analyse de la photo produit…');
+
+    const fd=new FormData();
+    fd.append('image',file,file.name||'product.jpg');
+    fd.append('source','product');
+
+    const token=localStorage.getItem('whatzabi_token')||'';
+
+    try{
+      const r=await fetch('/pwa/catalog/analyze',{
+        method:'POST',
+        headers:{Authorization:`Bearer ${token}`},
+        body:fd
+      });
+
+      let body=null;
+      try{body=await r.json()}catch{}
+
+      if(!r.ok){
+        throw new Error(body?.detail||'Impossible d’analyser la photo.');
+      }
+
+      if(!body?.candidates?.length){
+        throw new Error('Produit non reconnu. Reprends une photo.');
+      }
+
+      if(detectedBarcode){
+        body.candidates=body.candidates.map((c,i)=>
+          i===0?{...c,barcode:c.barcode||detectedBarcode}:c
+        );
+        sessionStorage.setItem('whatzabi_pending_barcode',detectedBarcode);
+      }
+
+      sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(body));
+      renderResult(body);
+    }catch(err){
+      $('barcodeLiveView').hidden=false;
+      setStatus(err.message||'Impossible d’analyser la photo.');
+      try{toast(err.message||'Impossible d’analyser la photo.')}catch{}
+    }
+  }
   function saveManualDraft(name,source){const n=String(name||'').trim();if(!n)return;const d={source:'barcode',candidates:[{name:n,barcode:detectedBarcode,confidence:1}],matches:{},requires_confirmation:true,identification_source:source};try{catalogAnalysis=d}catch{}sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(d));sessionStorage.setItem('whatzabi_pending_barcode',detectedBarcode);$('barcodeLiveView').hidden=true;renderResult(d)}
   function enterName(){const n=window.prompt(`Nom du produit\nEAN / GTIN : ${detectedBarcode}`,'');if(n)saveManualDraft(n,'manual')}
   function dictateName(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S){setStatus('Dictée indisponible.');return}const r=new S();r.lang='fr-FR';r.onresult=e=>saveManualDraft(e.results?.[0]?.[0]?.transcript||'','voice');r.start()}
@@ -30,7 +79,27 @@
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
   async function validatePendingBarcode(e){const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(!code)return;if(e){e.preventDefault();e.stopImmediatePropagation()}if(validationBusy)return;let body=null;try{body=catalogAnalysis}catch{}if(!body){try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}}const candidates=body?.candidates||[];if(!candidates.length){toast?.('Photographie ou saisis d’abord le produit.');return}const index=Math.min(selectedIndex(),candidates.length-1),candidate=candidates[index];validationBusy=true;const btn=$('catalogPrepareBtn');if(btn){btn.disabled=true;btn.textContent='Validation…'}try{const match=exactExistingMatch(body,index,candidate);const product=match?{id:match.product_id}:await createValidatedProduct(candidate);const learned=await associateValidatedBarcode(code,product.id);sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));try{await refresh()}catch{}try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}renderResult(learned);if(btn){btn.textContent='✓ Produit mémorisé';btn.disabled=true}}catch(err){try{toast(err.message)}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}}finally{validationBusy=false}}
   document.addEventListener('click',e=>{const b=e.target.closest('[data-catalog-source="barcode"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();startLiveScanner()},true);
-  document.addEventListener('click',e=>{if(e.target.closest('#catalogCloseBtn')||e.target.closest('#catalogRestartBtn')){scanning=false;stopCameraOnly()}},true);
+  document.addEventListener('click',e=>{
+    const restart=e.target.closest('#catalogRestartBtn');
+    if(restart){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      scanning=false;
+      stopCameraOnly();
+      startLiveScanner();
+      return;
+    }
+
+    const close=e.target.closest('#catalogCloseBtn');
+    if(close){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      scanning=false;
+      stopCameraOnly();
+      const sheet=$('catalogSheet');
+      if(sheet)sheet.hidden=true;
+    }
+  },true);
   document.addEventListener('click',e=>{const card=e.target.closest('#catalogCandidateList .catalog-candidate');if(!card)return;const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')],index=cards.indexOf(card);if(index>=0)markSelectedCard(index)});
   document.addEventListener('click',e=>{if(!e.target.closest('#catalogPrepareBtn'))return;validatePendingBarcode(e)},true);
   const observer=new MutationObserver(()=>updateValidationButton());const list=$('catalogCandidateList');if(list)observer.observe(list,{childList:true});
