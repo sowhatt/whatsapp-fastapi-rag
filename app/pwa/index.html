@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=7">
+  <link rel="stylesheet" href="/auth/styles.css?v=8">
 </head>
 <body>
   <main class="shell">
@@ -121,7 +121,7 @@
               <span>Nouvel achat</span>
             </button>
 
-            <button id="quickScanner" type="button" class="home-action">
+            <button id="quickScanner" type="button" data-catalog-source="barcode" class="home-action">
               <span class="home-action-icon">⌁</span>
               <span>Scanner produit</span>
             </button>
@@ -338,9 +338,84 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=10" defer></script>
+  <script src="/auth/app.js?v=11" defer></script>
+  <script src="/auth/smart-catalog.js?v=17" defer></script>
 
-      <div id="voiceSheet" class="voice-sheet" hidden>
+      
+  <div id="catalogSheet" class="catalog-sheet" hidden>
+    <div class="catalog-sheet-card" role="dialog" aria-modal="true" aria-labelledby="catalogTitle">
+
+      <div class="catalog-sheet-head">
+        <div>
+          <span class="eyebrow">Smart Catalog</span>
+          <h2 id="catalogTitle">Scanner un produit</h2>
+        </div>
+        <button id="catalogCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+      </div>
+
+      <p class="muted">Whatzabi reconnaît le produit sans créer automatiquement une fiche.</p>
+
+      <div id="catalogModes" class="catalog-modes">
+        <button type="button" data-catalog-source="product">
+          <span>📦</span>
+          <strong>Photo produit</strong>
+          <small>Nom, marque et format</small>
+        </button>
+
+        <button type="button" data-catalog-source="invoice">
+          <span>📄</span>
+          <strong>Facture</strong>
+          <small>Plusieurs produits</small>
+        </button>
+
+        <button type="button" data-catalog-source="barcode">
+          <span>▦</span>
+          <strong>Code-barres</strong>
+          <small>EAN / GTIN</small>
+        </button>
+      </div>
+
+      <div id="catalogCapture" hidden>
+        <div id="catalogPreviewWrap" class="catalog-preview" hidden>
+          <img id="catalogPreview" alt="Aperçu">
+        </div>
+
+        <p id="catalogCaptureHint" class="muted"></p>
+
+        <div class="catalog-actions">
+          <button id="catalogCameraBtn" type="button">📷 Prendre une photo</button>
+          <button id="catalogGalleryBtn" type="button" class="ghost">🖼️ Galerie</button>
+        </div>
+
+        <button id="catalogAnalyzeBtn" type="button" class="catalog-analyze" disabled>
+          ✨ Analyser avec Whatzabi
+        </button>
+
+        <p id="catalogStatus" class="muted small"></p>
+      </div>
+
+      <div id="catalogResults" hidden>
+        <div class="catalog-result-head">
+          <strong id="catalogResultCount"></strong>
+          <button id="catalogRestartBtn" type="button" class="ghost">Recommencer</button>
+        </div>
+
+        <p class="muted small">
+          Vérifie la proposition. Rien n'est créé automatiquement.
+        </p>
+
+        <div id="catalogCandidateList" class="catalog-candidates"></div>
+
+        <button id="catalogPrepareBtn" type="button" class="catalog-analyze">
+          ✓ Valider
+        </button>
+      </div>
+
+      <input id="catalogGalleryInput" type="file" accept="image/*" hidden>
+    </div>
+  </div>
+
+<div id="voiceSheet" class="voice-sheet" hidden>
         <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
           <button id="voiceCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
 

@@ -79,6 +79,14 @@ def pwa_script():
     return FileResponse(PWA_DIR / "app.js", media_type="application/javascript")
 
 
+
+@router.get("/smart-catalog.js", include_in_schema=False)
+def pwa_smart_catalog_script():
+    return FileResponse(
+        PWA_DIR / "smart-catalog.js",
+        media_type="application/javascript",
+    )
+
 @router.get("/manifest.webmanifest", include_in_schema=False)
 def pwa_manifest():
     return FileResponse(PWA_DIR / "manifest.webmanifest", media_type="application/manifest+json")

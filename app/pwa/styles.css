@@ -170,3 +170,155 @@
   gap:8px;
   margin-top:12px;
 }
+
+
+/* Smart Catalog live scanner */
+
+.catalog-sheet{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(10,35,32,.42);backdrop-filter:blur(6px)}
+
+.catalog-sheet-card{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;padding:28px 20px calc(24px + env(safe-area-inset-bottom));border-radius:28px 28px 20px 20px;background:#fff;box-shadow:0 -16px 44px rgba(10,35,32,.18)}
+
+.catalog-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+
+.catalog-modes{display:grid;gap:10px;margin-top:16px}
+
+.catalog-preview{margin:14px 0;border-radius:16px;overflow:hidden;background:#eef4f2;max-height:300px}
+
+.catalog-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+
+.catalog-analyze{width:100%;min-height:50px}
+
+.catalog-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+.catalog-candidates{display:grid;gap:10px;margin:12px 0}
+
+.catalog-candidate{padding:13px;border:1px solid #dce8e5;border-radius:15px;background:#fbfcfc}
+
+.catalog-candidate-top{display:flex;justify-content:space-between;gap:10px}
+
+.catalog-confidence{color:#0f766e;font-weight:800;font-size:12px}
+
+.catalog-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+
+.catalog-chip{padding:4px 7px;border-radius:999px;background:#eef4f2;color:#526a66;font-size:11px}
+
+.catalog-match{margin-top:8px;padding:8px;border-radius:10px;background:#fff6df;color:#6f5210;font-size:12px}
+
+.catalog-no-match{margin-top:8px;color:#6a817d;font-size:12px}
+
+/* =========================================================
+   Whatzabi Smart Catalog — Live barcode scanner
+   ========================================================= */
+
+.catalog-sheet[hidden] {
+  display: none !important;
+}
+
+.barcode-live-view {
+  width: 100%;
+}
+
+.barcode-live-view[hidden] {
+  display: none !important;
+}
+
+.barcode-live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.barcode-camera-frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #071310;
+  aspect-ratio: 3 / 4;
+}
+
+.barcode-camera-frame video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.barcode-target {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 116px;
+  transform: translateY(-50%);
+  border: 2px solid rgba(255,255,255,.9);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 9999px rgba(0,0,0,.28),
+    0 0 0 1px rgba(15,118,110,.2);
+  pointer-events: none;
+  transition:
+    border-color .2s ease,
+    box-shadow .2s ease,
+    transform .2s ease;
+}
+
+.barcode-target span {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: #ffffff;
+  opacity: .85;
+}
+
+.barcode-target.locking {
+  border-color: #fbbf24;
+  box-shadow:
+    0 0 0 9999px rgba(0,0,0,.24),
+    0 0 22px rgba(251,191,36,.5);
+}
+
+.barcode-target.detected {
+  border-color: #22c55e;
+  box-shadow:
+    0 0 0 9999px rgba(0,0,0,.20),
+    0 0 24px rgba(34,197,94,.55);
+  transform: translateY(-50%) scale(1.015);
+}
+
+.barcode-live-status {
+  min-height: 24px;
+  margin: 14px 0 8px;
+  text-align: center;
+  color: #526a66;
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .catalog-sheet {
+    padding: 8px;
+  }
+
+  .catalog-sheet-card {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 24px 24px 18px 18px;
+  }
+
+  .barcode-camera-frame {
+    aspect-ratio: 3 / 4;
+    max-height: 62vh;
+  }
+
+  .barcode-target {
+    left: 6%;
+    right: 6%;
+    height: 105px;
+  }
+}
+
