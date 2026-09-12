@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -45,6 +45,16 @@ def _normalize_barcode(barcode: str) -> str:
     return code
 
 
+def _current_shop(db: Session) -> Shop:
+    shop_id = get_current_shop_id(db)
+    if shop_id is None:
+        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
+    shop = db.query(Shop).filter(Shop.id == shop_id).first()
+    if shop is None:
+        raise HTTPException(status_code=409, detail="Boutique active introuvable.")
+    return shop
+
+
 def _candidate_from_product(product: Product, barcode: str) -> SmartCatalogCandidate:
     return SmartCatalogCandidate(
         name=product.name,
@@ -73,14 +83,8 @@ def _candidate_from_whatzabi_reference(reference: ProductReference) -> SmartCata
 
 @router.get("/catalog/barcode/{barcode}", response_model=SmartCatalogAnalyzeResponse)
 def lookup_catalog_barcode(barcode: str, db: Session = Depends(get_db)):
-    shop_id = get_current_shop_id(db)
-    if shop_id is None:
-        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
-
+    shop = _current_shop(db)
     code = _normalize_barcode(barcode)
-    shop = db.query(Shop).filter(Shop.id == shop_id).first()
-    if shop is None:
-        raise HTTPException(status_code=409, detail="Boutique active introuvable.")
 
     # 1) Exact merchant lookup: fastest path and preserves the merchant's own price/stock.
     merchant_product = (
@@ -117,14 +121,78 @@ def lookup_catalog_barcode(barcode: str, db: Session = Depends(get_db)):
     return _catalog_response("barcode", [candidate], db)
 
 
+@router.post("/catalog/barcode/{barcode}/associate", response_model=SmartCatalogAnalyzeResponse)
+def associate_catalog_barcode(
+    barcode: str,
+    product_id: int = Body(..., embed=True, gt=0),
+    db: Session = Depends(get_db),
+):
+    """Persist a barcode only after the merchant has validated the target product."""
+    shop = _current_shop(db)
+    code = _normalize_barcode(barcode)
+
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.merchant_id == shop.merchant_id)
+        .first()
+    )
+    if product is None:
+        raise HTTPException(status_code=404, detail="Produit introuvable pour ce commerçant.")
+
+    existing = (
+        db.query(ProductBarcode)
+        .filter(
+            ProductBarcode.merchant_id == shop.merchant_id,
+            ProductBarcode.barcode == code,
+        )
+        .first()
+    )
+    if existing is not None and existing.product_id != product.id:
+        raise HTTPException(
+            status_code=409,
+            detail="Ce code-barres est déjà associé à un autre produit de ce commerçant.",
+        )
+    if existing is None:
+        db.add(
+            ProductBarcode(
+                merchant_id=shop.merchant_id,
+                product_id=product.id,
+                barcode=code,
+            )
+        )
+
+    # Seed the shared Whatzabi reference only from an explicit merchant validation.
+    reference = db.query(ProductReference).filter(ProductReference.barcode == code).first()
+    if reference is None:
+        db.add(
+            ProductReference(
+                barcode=code,
+                name=product.name,
+                brand=product.brand,
+                variant=product.variant,
+                packaging=product.packaging,
+                unit=product.unit,
+                source="merchant_validated",
+                confidence=1.0,
+            )
+        )
+
+    db.commit()
+    return SmartCatalogAnalyzeResponse(
+        source="merchant_barcode",
+        candidates=[_candidate_from_product(product, code)],
+        matches={},
+        requires_confirmation=False,
+    )
+
+
 @router.post("/catalog/analyze", response_model=SmartCatalogAnalyzeResponse)
 async def analyze_catalog(
     image: UploadFile = File(...),
     source: str = Form(default="product"),
     db: Session = Depends(get_db),
 ):
-    if get_current_shop_id(db) is None:
-        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
+    _current_shop(db)
 
     source = source.strip().lower()
     if source not in ALLOWED_SOURCES:
