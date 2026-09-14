@@ -216,7 +216,16 @@ function render() {
   $('productList').innerHTML = products.length
     ? products
         .map(
-          (product) => `<article class="item"><div class="item-main"><div class="item-title">${esc(product.name)}</div><div class="item-meta">Stock boutique: ${product.stock} ${esc(product.unit)} · Seuil: ${product.threshold}</div></div><div class="money">${fmt(product.price)}</div></article>`,
+          (product) => `<button type="button" class="item product-catalog-item" data-product-id="${product.id}">
+            <div class="item-main">
+              <div class="item-title">${esc(product.name)}</div>
+              <div class="item-meta">Stock boutique: ${product.stock} ${esc(product.unit)} · Seuil: ${product.threshold}</div>
+            </div>
+            <div class="product-list-end">
+              <div class="money">${fmt(product.price)}</div>
+              <span class="product-chevron">›</span>
+            </div>
+          </button>`,
         )
         .join('')
     : '<article class="card muted">Aucun produit.</article>';
@@ -352,6 +361,146 @@ document.querySelectorAll('[data-tab]').forEach((button) =>
 document.querySelectorAll('[data-open-tab]').forEach((button) =>
   button.addEventListener('click', () => showTab(button.dataset.openTab)),
 );
+
+
+const PRODUCT_EDIT_FIELDS = [
+  'productEditName',
+  'productEditType',
+  'productEditBrand',
+  'productEditVariant',
+  'productEditPackaging',
+  'productEditPrice',
+  'productEditPurchasePrice',
+  'productEditStock',
+  'productEditUnit',
+  'productEditThreshold',
+];
+
+let selectedProduct = null;
+
+function setProductEditMode(enabled) {
+  PRODUCT_EDIT_FIELDS.forEach((id) => {
+    const element = $(id);
+    if (element) element.disabled = !enabled;
+  });
+
+  $('productEditButton').hidden = enabled;
+  $('productEditCancel').hidden = !enabled;
+  $('productEditSave').hidden = !enabled;
+}
+
+function fillProductDetail(product) {
+  selectedProduct = product;
+
+  $('productEditId').value = product.id;
+  $('productDetailTitle').textContent = product.name || 'Produit';
+  $('productEditName').value = product.name || '';
+  $('productEditType').value = product.product_type || '';
+  $('productEditBrand').value = product.brand || '';
+  $('productEditVariant').value = product.variant || '';
+  $('productEditPackaging').value = product.packaging || '';
+  $('productEditPrice').value = Number(product.price || 0);
+  $('productEditPurchasePrice').value = Number(product.purchase_price || 0);
+  $('productEditStock').value = Number(product.stock || 0);
+  $('productEditUnit').value = product.unit || 'unité';
+  $('productEditThreshold').value = Number(product.threshold || 0);
+
+  setProductEditMode(false);
+
+  const card = $('productDetailCard');
+  card.hidden = false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeProductDetail() {
+  selectedProduct = null;
+  $('productDetailCard').hidden = true;
+  setProductEditMode(false);
+}
+
+$('productList').addEventListener('click', (event) => {
+  const item = event.target.closest('[data-product-id]');
+  if (!item) return;
+
+  const productId = Number(item.dataset.productId);
+  const product = state.products.find((entry) => Number(entry.id) === productId);
+
+  if (!product) {
+    toast('Produit introuvable');
+    return;
+  }
+
+  fillProductDetail(product);
+});
+
+$('productDetailClose').addEventListener('click', closeProductDetail);
+
+$('productEditButton').addEventListener('click', () => {
+  if (!selectedProduct) return;
+  setProductEditMode(true);
+  $('productEditName').focus();
+});
+
+$('productEditCancel').addEventListener('click', () => {
+  if (!selectedProduct) return;
+  fillProductDetail(selectedProduct);
+});
+
+$('productEditForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const productId = Number($('productEditId').value);
+  if (!productId) {
+    toast('Produit introuvable');
+    return;
+  }
+
+  const payload = {
+    name: $('productEditName').value.trim(),
+    product_type: $('productEditType').value.trim() || null,
+    brand: $('productEditBrand').value.trim() || null,
+    variant: $('productEditVariant').value.trim() || null,
+    packaging: $('productEditPackaging').value.trim() || null,
+    price: Number($('productEditPrice').value || 0),
+    purchase_price: Number($('productEditPurchasePrice').value || 0),
+    stock: Number($('productEditStock').value || 0),
+    unit: $('productEditUnit').value.trim() || 'unité',
+    threshold: Number($('productEditThreshold').value || 0),
+  };
+
+  if (!payload.name) {
+    toast('Le nom du produit est obligatoire');
+    return;
+  }
+
+  if (
+    payload.price < 0 ||
+    payload.purchase_price < 0 ||
+    payload.stock < 0 ||
+    payload.threshold < 0
+  ) {
+    toast('Les montants et le stock doivent être positifs');
+    return;
+  }
+
+  try {
+    const updated = await api(`/pwa/products/${productId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+
+    await refresh();
+
+    selectedProduct =
+      state.products.find((entry) => Number(entry.id) === Number(updated.id)) ||
+      updated;
+
+    fillProductDetail(selectedProduct);
+    toast('Produit modifié');
+  } catch (error) {
+    toast(error.message);
+  }
+});
 
 $('productForm').addEventListener('submit', async (event) => {
   event.preventDefault();

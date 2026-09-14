@@ -91,7 +91,11 @@ def update_product(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("product.update")),
 ):
-    product = db.get(Product, product_id)
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id)
+        .first()
+    )
     if not product:
         raise HTTPException(status_code=404, detail="Produit introuvable")
 

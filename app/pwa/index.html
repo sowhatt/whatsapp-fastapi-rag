@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=8">
+  <link rel="stylesheet" href="/auth/styles.css?v=9">
 </head>
 <body>
   <main class="shell">
@@ -126,9 +126,9 @@
               <span>Scanner produit</span>
             </button>
 
-            <button id="quickStock" data-open-tab="activity" class="home-action">
-              <span class="home-action-icon">📊</span>
-              <span>Voir le stock</span>
+            <button id="quickStock" data-open-tab="products" class="home-action">
+              <span class="home-action-icon">📦</span>
+              <span>Produits & stock</span>
             </button>
           </div>
         </section>
@@ -296,6 +296,83 @@
             <button type="submit" class="primary-action">Ajouter le produit</button>
           </form>
         </article>
+
+        <article id="productDetailCard" class="card product-detail-card" hidden>
+          <div class="product-detail-header">
+            <div>
+              <span class="eyebrow">Fiche produit</span>
+              <h2 id="productDetailTitle">Produit</h2>
+            </div>
+            <button id="productDetailClose" type="button" class="icon-action" aria-label="Fermer">✕</button>
+          </div>
+
+          <form id="productEditForm" class="product-form">
+            <input id="productEditId" type="hidden">
+
+            <label class="field field-wide">
+              <span>Nom du produit</span>
+              <input id="productEditName" required disabled>
+            </label>
+
+            <label class="field">
+              <span>Type</span>
+              <input id="productEditType" placeholder="Ex. Livre éducatif" disabled>
+            </label>
+
+            <label class="field">
+              <span>Marque</span>
+              <input id="productEditBrand" placeholder="Marque" disabled>
+            </label>
+
+            <label class="field">
+              <span>Variante</span>
+              <input id="productEditVariant" placeholder="Variante" disabled>
+            </label>
+
+            <label class="field">
+              <span>Conditionnement</span>
+              <input id="productEditPackaging" placeholder="Ex. paquet, carton" disabled>
+            </label>
+
+            <label class="field">
+              <span>Prix de vente</span>
+              <div class="input-with-suffix">
+                <input id="productEditPrice" type="number" min="0" inputmode="decimal" disabled>
+                <span>FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Prix d'achat</span>
+              <div class="input-with-suffix">
+                <input id="productEditPurchasePrice" type="number" min="0" inputmode="decimal" disabled>
+                <span>FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Stock</span>
+              <input id="productEditStock" type="number" min="0" inputmode="decimal" disabled>
+            </label>
+
+            <label class="field">
+              <span>Unité</span>
+              <input id="productEditUnit" disabled>
+            </label>
+
+            <label class="field field-wide">
+              <span>Seuil d'alerte</span>
+              <input id="productEditThreshold" type="number" min="0" inputmode="decimal" disabled>
+            </label>
+
+            <div class="product-detail-actions field-wide">
+              <button id="productEditButton" type="button" class="secondary-action">Modifier</button>
+              <button id="productEditCancel" type="button" class="secondary-action" hidden>Annuler</button>
+              <button id="productEditSave" type="submit" class="primary-action" hidden>Enregistrer</button>
+            </div>
+          </form>
+        </article>
+
         <div id="productList" class="list"></div>
       </section>
 
@@ -338,7 +415,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=11" defer></script>
+  <script src="/auth/app.js?v=12" defer></script>
   <script src="/auth/smart-catalog.js?v=20" defer></script>
 
       
