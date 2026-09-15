@@ -433,9 +433,23 @@
 .product-catalog-item {
   width: 100%;
   text-align: left;
-  border: 0;
+  border: 1px solid #dce8e5;
+  background: #fff;
+  color: #17302d;
   font: inherit;
   cursor: pointer;
+}
+
+.product-catalog-item .item-title {
+  color: #17302d;
+}
+
+.product-catalog-item .money {
+  color: #17302d;
+}
+
+.product-catalog-item .product-chevron {
+  color: #6c7f7c;
 }
 
 .product-list-end {
