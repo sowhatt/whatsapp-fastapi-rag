@@ -379,14 +379,17 @@ const PRODUCT_EDIT_FIELDS = [
 let selectedProduct = null;
 
 function setProductEditMode(enabled) {
+  const allowed = can('product.update');
+  const editing = Boolean(enabled && allowed);
+
   PRODUCT_EDIT_FIELDS.forEach((id) => {
     const element = $(id);
-    if (element) element.disabled = !enabled;
+    if (element) element.disabled = !editing;
   });
 
-  $('productEditButton').hidden = enabled;
-  $('productEditCancel').hidden = !enabled;
-  $('productEditSave').hidden = !enabled;
+  $('productEditButton').hidden = editing || !allowed;
+  $('productEditCancel').hidden = !editing;
+  $('productEditSave').hidden = !editing;
 }
 
 function fillProductDetail(product) {
@@ -437,6 +440,12 @@ $('productDetailClose').addEventListener('click', closeProductDetail);
 
 $('productEditButton').addEventListener('click', () => {
   if (!selectedProduct) return;
+
+  if (!can('product.update')) {
+    toast('Vous pouvez consulter ce produit, mais pas le modifier');
+    return;
+  }
+
   setProductEditMode(true);
   $('productEditName').focus();
 });
@@ -448,6 +457,12 @@ $('productEditCancel').addEventListener('click', () => {
 
 $('productEditForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+
+  if (!can('product.update')) {
+    toast('Permission requise : modification du produit');
+    setProductEditMode(false);
+    return;
+  }
 
   const productId = Number($('productEditId').value);
   if (!productId) {
