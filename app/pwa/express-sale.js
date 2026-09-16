@@ -9,15 +9,18 @@
   const money = (n) => fmt(Number(n || 0));
   const total = () => [...cart.values()].reduce((sum, line) => sum + Number(line.product.price || 0) * line.quantity, 0);
 
+  // state.products is already scoped by the backend to the active shop.
+  // Do not hide authorized products merely because their stock is zero.
   function availableProducts() {
     const q = query.trim().toLocaleLowerCase('fr');
-    const products = state.products.filter((p) => Number(p.stock || 0) > 0);
+    const products = state.products;
     if (!q) return products.slice(0, 20);
     return products.filter((p) => String(p.name || '').toLocaleLowerCase('fr').includes(q)).slice(0, 30);
   }
   function add(productId) {
     const product = state.products.find((p) => Number(p.id) === Number(productId));
     if (!product) return;
+    if (Number(product.stock || 0) <= 0) return toast(product.name + ' est en rupture de stock');
     const current = cart.get(product.id);
     const nextQty = (current?.quantity || 0) + 1;
     if (nextQty > Number(product.stock || 0)) return toast('Stock insuffisant pour ' + product.name);
@@ -34,7 +37,10 @@
   function renderExpressSale() {
     const grid = $('expressProductGrid'), cartBox = $('expressCart'); if (!grid || !cartBox) return;
     const products = availableProducts();
-    grid.innerHTML = products.length ? products.map((p) => `<button type="button" class="express-product" data-add-product="${p.id}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}</small><span class="express-add">+ Ajouter</span></button>`).join('') : '<p class="muted express-empty">Aucun produit trouvé.</p>';
+    grid.innerHTML = products.length ? products.map((p) => {
+      const out = Number(p.stock || 0) <= 0;
+      return `<button type="button" class="express-product${out ? ' out-of-stock' : ''}" data-add-product="${p.id}" aria-disabled="${out ? 'true' : 'false'}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>${out ? 'Rupture' : `Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}`}</small><span class="express-add">${out ? 'Indisponible' : '+ Ajouter'}</span></button>`;
+    }).join('') : '<p class="muted express-empty">Aucun produit dans cette boutique.</p>';
     const lines = [...cart.values()];
     cartBox.innerHTML = lines.length ? lines.map(({ product, quantity }) => `<div class="express-line"><div><strong>${esc(product.name)}</strong><small>${quantity} × ${money(product.price)}</small></div><div class="qty-controls"><button type="button" data-cart-minus="${product.id}" aria-label="Retirer une unité">−</button><strong>${quantity}</strong><button type="button" data-cart-plus="${product.id}" aria-label="Ajouter une unité">+</button></div><strong>${money(Number(product.price || 0) * quantity)}</strong></div>`).join('') : '<p class="muted express-empty">Touchez un produit pour l’ajouter au panier.</p>';
     $('expressTotal').textContent = money(total()); $('expressCheckout').disabled = lines.length === 0; $('expressCheckout').textContent = lines.length ? `Encaisser ${money(total())}` : 'Panier vide';
