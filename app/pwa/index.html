@@ -9,6 +9,7 @@
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
   <link rel="stylesheet" href="/auth/styles.css?v=8">
+  <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
   <main class="shell">
@@ -311,7 +312,72 @@
         <div id="customerList" class="list"></div>
       </section>
 
-      <section id="sales" class="panel">
+      <section id="sales" class="panel express-sale-panel">
+
+        <div class="express-heading">
+          <div>
+            <span class="eyebrow">Vente Express</span>
+            <h2>Que vendez-vous ?</h2>
+          </div>
+
+          <div class="express-tools">
+            <button id="expressVoice" type="button" class="ghost">
+              🎙️ Parler
+            </button>
+            <button id="expressScan" type="button" class="ghost">
+              ▦ Scanner
+            </button>
+          </div>
+        </div>
+
+        <input
+          id="expressSearch"
+          class="express-search"
+          type="search"
+          placeholder="Rechercher un produit"
+          autocomplete="off"
+        >
+
+        <section>
+          <div class="express-section-title">
+            <strong>Produits</strong>
+            <small>Boutique active</small>
+          </div>
+          <div id="expressProductGrid" class="express-product-grid"></div>
+        </section>
+
+        <article class="card express-cart-card">
+          <div class="express-section-title">
+            <strong>Panier</strong>
+            <strong id="expressTotal" class="express-total">0 FCFA</strong>
+          </div>
+
+          <div id="expressCart" class="express-cart"></div>
+
+          <select id="expressCustomer">
+            <option value="">Vente comptoir — sans client</option>
+          </select>
+
+          <select id="expressChannel">
+            <option value="cash">Espèces</option>
+            <option value="mobile_money">Mobile Money</option>
+            <option value="credit">Crédit client</option>
+            <option value="partial">Paiement partiel</option>
+          </select>
+
+          <button
+            id="expressCheckout"
+            type="button"
+            class="express-checkout"
+            disabled
+          >
+            Panier vide
+          </button>
+        </article>
+
+        <details class="legacy-sale">
+          <summary>Vente classique</summary>
+
         <article class="card">
           <h2>Nouvelle vente</h2>
           <form id="saleForm" class="form-grid">
@@ -325,6 +391,8 @@
             <button type="submit">Enregistrer la vente</button>
           </form>
         </article>
+        </details>
+
         <div id="saleList" class="list"></div>
       </section>
 
@@ -340,6 +408,7 @@
   </main>
   <script src="/auth/app.js?v=11" defer></script>
   <script src="/auth/smart-catalog.js?v=17" defer></script>
+  <script src="/auth/express-sale.js?v=2" defer></script>
 
       
   <div id="catalogSheet" class="catalog-sheet" hidden>

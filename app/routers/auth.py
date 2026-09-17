@@ -87,6 +87,22 @@ def pwa_smart_catalog_script():
         media_type="application/javascript",
     )
 
+@router.get("/express-sale.js", include_in_schema=False)
+def pwa_express_sale_script():
+    return FileResponse(
+        PWA_DIR / "express-sale.js",
+        media_type="application/javascript",
+    )
+
+
+@router.get("/express-sale.css", include_in_schema=False)
+def pwa_express_sale_styles():
+    return FileResponse(
+        PWA_DIR / "express-sale.css",
+        media_type="text/css",
+    )
+
+
 @router.get("/manifest.webmanifest", include_in_schema=False)
 def pwa_manifest():
     return FileResponse(PWA_DIR / "manifest.webmanifest", media_type="application/manifest+json")
