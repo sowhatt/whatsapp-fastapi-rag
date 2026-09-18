@@ -604,7 +604,7 @@ async function analyzeCatalogPhoto(file) {
   toast(`Produit proposé : ${candidate.name}`);
 }
 
-$('quickScanner').addEventListener('click', scannerComingSoon);
+
 
 $('catalogCameraInput').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
