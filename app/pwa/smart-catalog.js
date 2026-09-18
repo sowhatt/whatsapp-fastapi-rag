@@ -30,6 +30,230 @@
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
   async function validatePendingBarcode(e){const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(!code)return;if(e){e.preventDefault();e.stopImmediatePropagation()}if(validationBusy)return;let body=null;try{body=catalogAnalysis}catch{}if(!body){try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}}const candidates=body?.candidates||[];if(!candidates.length){toast?.('Photographie ou saisis d’abord le produit.');return}const index=Math.min(selectedIndex(),candidates.length-1),candidate=candidates[index];validationBusy=true;const btn=$('catalogPrepareBtn');if(btn){btn.disabled=true;btn.textContent='Validation…'}try{const match=exactExistingMatch(body,index,candidate);const product=match?{id:match.product_id}:await createValidatedProduct(candidate);const learned=await associateValidatedBarcode(code,product.id);sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));try{await refresh()}catch{}try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}renderResult(learned);if(btn){btn.textContent='✓ Produit mémorisé';btn.disabled=true}}catch(err){try{toast(err.message)}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}}finally{validationBusy=false}}
   document.addEventListener('click',e=>{const b=e.target.closest('[data-catalog-source="barcode"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();startLiveScanner()},true);
+
+  // Photo produit / Facture
+  let catalogSource = 'product';
+  let catalogFile = null;
+  let catalogObjectUrl = null;
+  let catalogAnalyzeBusy = false;
+
+  function resetCatalogFile(){
+    catalogFile = null;
+
+    if(catalogObjectUrl){
+      URL.revokeObjectURL(catalogObjectUrl);
+      catalogObjectUrl = null;
+    }
+
+    const preview = $('catalogPreview');
+    if(preview) preview.removeAttribute('src');
+
+    if($('catalogPreviewWrap')) $('catalogPreviewWrap').hidden = true;
+    if($('catalogAnalyzeBtn')) $('catalogAnalyzeBtn').disabled = true;
+    if($('catalogStatus')) $('catalogStatus').textContent = '';
+
+    if($('catalogCameraInput')) $('catalogCameraInput').value = '';
+    if($('catalogGalleryInput')) $('catalogGalleryInput').value = '';
+  }
+
+  function openImageCatalog(source){
+    catalogSource = source === 'invoice' ? 'invoice' : 'product';
+
+    scanning = false;
+    stopCameraOnly();
+    resetCatalogFile();
+
+    const sheet = $('catalogSheet');
+    if(sheet) sheet.hidden = false;
+
+    if($('barcodeLiveView')) $('barcodeLiveView').hidden = true;
+    if($('catalogModes')) $('catalogModes').hidden = true;
+    if($('catalogResults')) $('catalogResults').hidden = true;
+    if($('catalogCapture')) $('catalogCapture').hidden = false;
+
+    if($('catalogTitle')){
+      $('catalogTitle').textContent =
+        catalogSource === 'invoice'
+          ? 'Scanner une facture'
+          : 'Photographier un produit';
+    }
+
+    if($('catalogCaptureHint')){
+      $('catalogCaptureHint').textContent =
+        catalogSource === 'invoice'
+          ? 'Photographie la facture entière, bien à plat et avec le texte lisible.'
+          : 'Photographie le produit en montrant si possible le nom, la marque ou l’étiquette.';
+    }
+
+    if($('catalogStatus')){
+      $('catalogStatus').textContent =
+        'Prends une photo ou choisis une image dans la galerie.';
+    }
+  }
+
+  function selectCatalogFile(file){
+    if(!file) return;
+
+    if(!String(file.type || '').startsWith('image/')){
+      if($('catalogStatus')){
+        $('catalogStatus').textContent =
+          'Le fichier sélectionné doit être une image.';
+      }
+      return;
+    }
+
+    catalogFile = file;
+
+    if(catalogObjectUrl){
+      URL.revokeObjectURL(catalogObjectUrl);
+    }
+
+    catalogObjectUrl = URL.createObjectURL(file);
+
+    const preview = $('catalogPreview');
+    if(preview) preview.src = catalogObjectUrl;
+
+    if($('catalogPreviewWrap')) $('catalogPreviewWrap').hidden = false;
+    if($('catalogAnalyzeBtn')) $('catalogAnalyzeBtn').disabled = false;
+
+    if($('catalogStatus')){
+      $('catalogStatus').textContent =
+        catalogSource === 'invoice'
+          ? 'Facture prête à être analysée.'
+          : 'Photo prête à être analysée.';
+    }
+  }
+
+  async function analyzeCatalogImage(){
+    if(!catalogFile || catalogAnalyzeBusy) return;
+
+    const btn = $('catalogAnalyzeBtn');
+    const status = $('catalogStatus');
+
+    catalogAnalyzeBusy = true;
+
+    if(btn){
+      btn.disabled = true;
+      btn.textContent = '⏳ Analyse en cours…';
+    }
+
+    if(status){
+      status.textContent =
+        catalogSource === 'invoice'
+          ? 'Lecture de la facture…'
+          : 'Reconnaissance du produit…';
+    }
+
+    try{
+      const fd = new FormData();
+      fd.append('image', catalogFile, catalogFile.name || 'catalog-image.jpg');
+      fd.append('source', catalogSource);
+
+      const token = localStorage.getItem('whatzabi_token') || '';
+
+      const response = await fetch('/pwa/catalog/analyze', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: fd
+      });
+
+      let body = null;
+      try{
+        body = await response.json();
+      }catch{}
+
+      if(!response.ok){
+        throw new Error(
+          body?.detail ||
+          `Analyse impossible (${response.status}).`
+        );
+      }
+
+      if(!(body?.candidates || []).length){
+        throw new Error(
+          catalogSource === 'invoice'
+            ? 'Aucune ligne de produit exploitable détectée sur cette facture.'
+            : 'Produit non identifié. Essaie avec le nom ou l’étiquette bien visible.'
+        );
+      }
+
+      try{
+        catalogAnalysis = body;
+      }catch{}
+
+      sessionStorage.setItem(
+        'whatzabi_catalog_draft',
+        JSON.stringify(body)
+      );
+
+      renderResult(body);
+
+      if(status) status.textContent = '';
+
+    }catch(err){
+      const message =
+        err?.message || 'Analyse Smart Catalog impossible.';
+
+      if(status) status.textContent = message;
+
+      try{
+        toast?.(message);
+      }catch{}
+
+    }finally{
+      catalogAnalyzeBusy = false;
+
+      if(btn){
+        btn.disabled = !catalogFile;
+        btn.textContent = '✨ Analyser avec Whatzabi';
+      }
+    }
+  }
+
+  document.addEventListener('click', e => {
+    const button = e.target.closest(
+      '[data-catalog-source="product"],[data-catalog-source="invoice"]'
+    );
+
+    if(!button) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    openImageCatalog(button.dataset.catalogSource);
+  }, true);
+
+  $('catalogCameraBtn')?.addEventListener('click', () => {
+    const input = $('catalogCameraInput');
+    if(!input) return;
+
+    input.value = '';
+    input.click();
+  });
+
+  $('catalogGalleryBtn')?.addEventListener('click', () => {
+    const input = $('catalogGalleryInput');
+    if(!input) return;
+
+    input.value = '';
+    input.click();
+  });
+
+  $('catalogCameraInput')?.addEventListener('change', e => {
+    selectCatalogFile(e.target.files?.[0]);
+  });
+
+  $('catalogGalleryInput')?.addEventListener('change', e => {
+    selectCatalogFile(e.target.files?.[0]);
+  });
+
+  $('catalogAnalyzeBtn')?.addEventListener(
+    'click',
+    analyzeCatalogImage
+  );
+
   document.addEventListener('click',e=>{
   if(e.target.closest('#catalogCloseBtn')){
     scanning=false;
