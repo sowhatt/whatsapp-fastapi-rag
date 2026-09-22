@@ -23,8 +23,49 @@
   function enterName(){const n=window.prompt(`Nom du produit\nEAN / GTIN : ${detectedBarcode}`,'');if(n)saveManualDraft(n,'manual')}
   function dictateName(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S){setStatus('Dictée indisponible.');return}const r=new S();r.lang='fr-FR';r.onresult=e=>saveManualDraft(e.results?.[0]?.[0]?.transcript||'','voice');r.start()}
   function selectedIndex(){const raw=sessionStorage.getItem('whatzabi_catalog_selected');const i=raw===null?0:Number(raw);return Number.isInteger(i)&&i>=0?i:0}
-  function markSelectedCard(index){const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];cards.forEach((card,i)=>{card.style.outline=i===index?'3px solid #0f766e':'';card.style.cursor='pointer';card.setAttribute('aria-selected',i===index?'true':'false')});sessionStorage.setItem('whatzabi_catalog_selected',String(index));updateValidationButton()}
-  function updateValidationButton(){const btn=$('catalogPrepareBtn');if(!btn)return;const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(code){btn.textContent='✓ Valider et ajouter au catalogue';btn.hidden=false}else{btn.textContent='Préparer les produits'}const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];if(cards.length===1)markSelectedCard(0)}
+  function markSelectedCard(index){
+    const cards=[...document.querySelectorAll('#catalogCandidateList .catalog-candidate')];
+
+    cards.forEach((card,i)=>{
+      card.style.outline=i===index?'3px solid #0f766e':'';
+      card.style.cursor='pointer';
+      card.setAttribute('aria-selected',i===index?'true':'false');
+    });
+
+    sessionStorage.setItem(
+      'whatzabi_catalog_selected',
+      String(index)
+    );
+  }
+
+  function updateValidationButton(){
+    const btn=$('catalogPrepareBtn');
+    if(!btn) return;
+
+    const code=normalizeCode(
+      sessionStorage.getItem('whatzabi_pending_barcode')
+    );
+
+    if(code){
+      btn.textContent='✓ Valider et ajouter au catalogue';
+      btn.hidden=false;
+    }else{
+      btn.textContent='Préparer les produits';
+    }
+
+    const cards=[
+      ...document.querySelectorAll(
+        '#catalogCandidateList .catalog-candidate'
+      )
+    ];
+
+    if(
+      cards.length===1 &&
+      sessionStorage.getItem('whatzabi_catalog_selected')===null
+    ){
+      markSelectedCard(0);
+    }
+  }
   function exactExistingMatch(body,index,candidate){const matches=body?.matches?.[String(index)]||body?.matches?.[index]||[];const target=String(candidate?.name||'').trim().toLocaleLowerCase();return matches.find(m=>m.score>=0.99&&String(m.name||'').trim().toLocaleLowerCase()===target)||null}
   async function createValidatedProduct(candidate){const payload={name:String(candidate?.name||'').trim(),product_type:null,brand:candidate?.brand||null,variant:candidate?.variant||null,packaging:candidate?.packaging||null,unit:candidate?.unit||'unité',stock:Number(candidate?.quantity||0),purchase_price:Number(candidate?.purchase_price||0),price:0,threshold:0};if(!payload.name)throw new Error('Nom du produit manquant.');const token=localStorage.getItem('whatzabi_token')||'',r=await fetch('/pwa/products',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');return body}
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
