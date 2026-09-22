@@ -322,3 +322,28 @@
   }
 }
 
+
+/* Smart Catalog - file picker iOS */
+.catalog-file-button{
+  min-height:50px;
+  border-radius:14px;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-weight:800;
+  cursor:pointer;
+  background:#0f766e;
+  color:#fff;
+}
+
+.catalog-file-button.ghost{
+  background:#e8f3f1;
+  color:#0f766e;
+}
+
+.catalog-analyze:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}

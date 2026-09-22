@@ -259,22 +259,6 @@
     openImageCatalog(button.dataset.catalogSource);
   }, true);
 
-  $('catalogCameraBtn')?.addEventListener('click', () => {
-    const input = $('catalogCameraInput');
-    if(!input) return;
-
-    input.value = '';
-    input.click();
-  });
-
-  $('catalogGalleryBtn')?.addEventListener('click', () => {
-    const input = $('catalogGalleryInput');
-    if(!input) return;
-
-    input.value = '';
-    input.click();
-  });
-
   $('catalogCameraInput')?.addEventListener('change', e => {
     selectCatalogFile(e.target.files?.[0]);
   });

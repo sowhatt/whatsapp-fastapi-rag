@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=8">
+  <link rel="stylesheet" href="/auth/styles.css?v=9">
   <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
@@ -407,7 +407,7 @@
     </section>
   </main>
   <script src="/auth/app.js?v=11" defer></script>
-  <script src="/auth/smart-catalog.js?v=20" defer></script>
+  <script src="/auth/smart-catalog.js?v=21" defer></script>
   <script src="/auth/express-sale.js?v=2" defer></script>
 
       
@@ -452,8 +452,17 @@
         <p id="catalogCaptureHint" class="muted"></p>
 
         <div class="catalog-actions">
-          <button id="catalogCameraBtn" type="button">📷 Prendre une photo</button>
-          <button id="catalogGalleryBtn" type="button" class="ghost">🖼️ Galerie</button>
+          <label id="catalogCameraBtn"
+                 class="catalog-file-button"
+                 for="catalogCameraInput">
+            📷 Prendre une photo
+          </label>
+
+          <label id="catalogGalleryBtn"
+                 class="catalog-file-button ghost"
+                 for="catalogGalleryInput">
+            🖼️ Galerie
+          </label>
         </div>
 
         <button id="catalogAnalyzeBtn" type="button" class="catalog-analyze" disabled>
