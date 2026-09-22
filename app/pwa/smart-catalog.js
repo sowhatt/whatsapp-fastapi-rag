@@ -301,17 +301,54 @@
   }, true);
 
   $('catalogCameraInput')?.addEventListener('change', e => {
-    selectCatalogFile(e.target.files?.[0]);
+    const file = e.target.files?.[0] || null;
+
+    if($('catalogStatus')){
+      $('catalogStatus').textContent = file
+        ? `Photo reçue : ${file.name || 'photo'}`
+        : 'Aucune photo reçue par l’iPhone.';
+    }
+
+    selectCatalogFile(file);
   });
 
   $('catalogGalleryInput')?.addEventListener('change', e => {
-    selectCatalogFile(e.target.files?.[0]);
+    const file = e.target.files?.[0] || null;
+
+    if($('catalogStatus')){
+      $('catalogStatus').textContent = file
+        ? `Image reçue : ${file.name || 'image'}`
+        : 'Aucune image reçue.';
+    }
+
+    selectCatalogFile(file);
   });
 
-  $('catalogAnalyzeBtn')?.addEventListener(
-    'click',
-    analyzeCatalogImage
-  );
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('#catalogAnalyzeBtn');
+    if(!btn) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    const status = $('catalogStatus');
+
+    if(!catalogFile){
+      if(status){
+        status.textContent =
+          'Aucune image disponible pour l’analyse.';
+      }
+      return;
+    }
+
+    if(catalogAnalyzeBusy) return;
+
+    if(status){
+      status.textContent = 'Analyse demandée…';
+    }
+
+    analyzeCatalogImage();
+  }, true);
 
   document.addEventListener('click',e=>{
   if(e.target.closest('#catalogCloseBtn')){

@@ -347,3 +347,22 @@
   opacity:.45;
   cursor:not-allowed;
 }
+
+/* Smart Catalog v23 - iOS */
+.catalog-file-button{
+  position:relative;
+  overflow:hidden;
+}
+
+.catalog-native-file{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+}
+
+.catalog-analyze:disabled{
+  opacity:.45;
+}
