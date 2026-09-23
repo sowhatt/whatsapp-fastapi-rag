@@ -401,7 +401,7 @@
     </section>
   </main>
   <script src="/auth/app.js?v=11" defer></script>
-  <script src="/auth/smart-catalog.js?v=25" defer></script>
+  <script src="/auth/smart-catalog.js?v=26" defer></script>
   <script src="/auth/express-sale.js?v=2" defer></script>
 
 
@@ -456,6 +456,7 @@
               type="file"
               accept="image/*"
               capture="environment"
+              onchange="window.whatzabiReceiveCatalogImage(this)"
             >
           </label>
 
@@ -467,6 +468,7 @@
               class="catalog-native-file"
               type="file"
               accept="image/*"
+              onchange="window.whatzabiReceiveCatalogImage(this)"
             >
           </label>
 

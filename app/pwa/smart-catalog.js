@@ -366,6 +366,36 @@
     receiveCatalogImage
   );
 
+
+  window.whatzabiReceiveCatalogImage = function(input){
+    const files = input?.files;
+
+    console.log(
+      '[SMART-CATALOG] native onchange',
+      input?.id,
+      files?.length || 0
+    );
+
+    if(!files || files.length === 0){
+      if($('catalogStatus')){
+        $('catalogStatus').textContent =
+          'Aucune photo reçue par l’iPhone.';
+      }
+      return;
+    }
+
+    const file = files[0];
+
+    console.log(
+      '[SMART-CATALOG] fichier reçu',
+      file.name,
+      file.type,
+      file.size
+    );
+
+    selectCatalogFile(file);
+  };
+
   async function analyzeCatalogImage(){
     if(!catalogFile || catalogAnalyzeBusy) return;
 
