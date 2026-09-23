@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=9">
+  <link rel="stylesheet" href="/auth/styles.css?v=10">
   <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
@@ -396,21 +396,15 @@
         <div id="saleList" class="list"></div>
       </section>
 
-      <input
-        id="catalogCameraInput"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        hidden
-      >
+
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
   <script src="/auth/app.js?v=11" defer></script>
-  <script src="/auth/smart-catalog.js?v=24" defer></script>
+  <script src="/auth/smart-catalog.js?v=25" defer></script>
   <script src="/auth/express-sale.js?v=2" defer></script>
 
-      
+
   <div id="catalogSheet" class="catalog-sheet" hidden>
     <div class="catalog-sheet-card" role="dialog" aria-modal="true" aria-labelledby="catalogTitle">
 
@@ -446,26 +440,44 @@
 
       <div id="catalogCapture" hidden>
         <div id="catalogPreviewWrap" class="catalog-preview" hidden>
-          <img id="catalogPreview" alt="Aperçu">
+          <img id="catalogPreview" alt="Aperçu du produit">
         </div>
 
         <p id="catalogCaptureHint" class="muted"></p>
 
         <div class="catalog-actions">
-          <label id="catalogCameraBtn"
-                 class="catalog-file-button"
-                 for="catalogCameraInput">
+
+          <label class="catalog-file-button">
             📷 Prendre une photo
+
+            <input
+              id="catalogCameraInput"
+              class="catalog-native-file"
+              type="file"
+              accept="image/*"
+              capture="environment"
+            >
           </label>
 
-          <label id="catalogGalleryBtn"
-                 class="catalog-file-button ghost"
-                 for="catalogGalleryInput">
+          <label class="catalog-file-button ghost">
             🖼️ Galerie
+
+            <input
+              id="catalogGalleryInput"
+              class="catalog-native-file"
+              type="file"
+              accept="image/*"
+            >
           </label>
+
         </div>
 
-        <button id="catalogAnalyzeBtn" type="button" class="catalog-analyze" disabled>
+        <button
+          id="catalogAnalyzeBtn"
+          type="button"
+          class="catalog-analyze"
+          disabled
+        >
           ✨ Analyser avec Whatzabi
         </button>
 
@@ -489,7 +501,7 @@
         </button>
       </div>
 
-      <input id="catalogGalleryInput" type="file" accept="image/*" hidden>
+
     </div>
   </div>
 

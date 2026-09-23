@@ -325,6 +325,47 @@
     }
   }
 
+
+  function receiveCatalogImage(event){
+    const input = event.currentTarget;
+    const files = input?.files;
+
+    console.log(
+      '[SMART-CATALOG] file event',
+      input?.id,
+      files?.length || 0
+    );
+
+    if(!files || files.length === 0){
+      if($('catalogStatus')){
+        $('catalogStatus').textContent =
+          'Aucune photo reçue par l’iPhone.';
+      }
+      return;
+    }
+
+    const file = files[0];
+
+    console.log(
+      '[SMART-CATALOG] photo reçue',
+      file.name,
+      file.type,
+      file.size
+    );
+
+    selectCatalogFile(file);
+  }
+
+  $('catalogCameraInput')?.addEventListener(
+    'change',
+    receiveCatalogImage
+  );
+
+  $('catalogGalleryInput')?.addEventListener(
+    'change',
+    receiveCatalogImage
+  );
+
   async function analyzeCatalogImage(){
     if(!catalogFile || catalogAnalyzeBusy) return;
 
@@ -426,29 +467,9 @@
     openImageCatalog(button.dataset.catalogSource);
   }, true);
 
-  $('catalogCameraInput')?.addEventListener('change', e => {
-    const file = e.target.files?.[0] || null;
 
-    if($('catalogStatus')){
-      $('catalogStatus').textContent = file
-        ? `Photo reçue : ${file.name || 'photo'}`
-        : 'Aucune photo reçue par l’iPhone.';
-    }
 
-    selectCatalogFile(file);
-  });
 
-  $('catalogGalleryInput')?.addEventListener('change', e => {
-    const file = e.target.files?.[0] || null;
-
-    if($('catalogStatus')){
-      $('catalogStatus').textContent = file
-        ? `Image reçue : ${file.name || 'image'}`
-        : 'Aucune image reçue.';
-    }
-
-    selectCatalogFile(file);
-  });
 
   document.addEventListener('click', e => {
     const btn = e.target.closest('#catalogAnalyzeBtn');

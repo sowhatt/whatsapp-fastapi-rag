@@ -366,3 +366,19 @@
 .catalog-analyze:disabled{
   opacity:.45;
 }
+
+/* Smart Catalog iOS Photo v25 */
+.catalog-file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.catalog-native-file {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  cursor: pointer;
+  display: block !important;
+}
