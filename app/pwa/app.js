@@ -67,6 +67,8 @@ function renderPermissions() {
 let token = localStorage.getItem('whatzabi_token') || '';
 let state = { products: [], customers: [], sales: [], merchant: null, shops: [] };
 let editingProductId = null;
+let invoiceDraftQueue = [];
+let invoiceDraftPosition = 0;
 
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -164,6 +166,73 @@ window.whatzabiEditProduct = function(productId) {
   );
   showTab('products');
   $('productCreateCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+
+function openInvoiceDraftItem() {
+  const item = invoiceDraftQueue[invoiceDraftPosition];
+  if (!item) return false;
+
+  const candidate = item.candidate || item;
+  const existingId = Number(item.existing_product_id || 0);
+  const quantity = Math.max(0, Number(candidate.quantity || 0));
+  const existing = existingId
+    ? state.products.find((product) => product.id === existingId)
+    : null;
+
+  resetProductForm();
+
+  if (existing) {
+    editingProductId = existing.id;
+    fillProductForm({
+      ...existing,
+      name: candidate.name || existing.name,
+      brand: candidate.brand || existing.brand,
+      variant: candidate.variant || existing.variant,
+      packaging: candidate.packaging || existing.packaging,
+      purchase_price: candidate.purchase_price ?? existing.purchase_price ?? 0,
+      stock: Number(existing.stock || 0) + quantity,
+    });
+    $('productFormTitle').textContent = 'Facture · Mettre à jour ' + existing.name;
+    $('productSubmitBtn').textContent = 'Valider la ligne et continuer';
+  } else {
+    fillProductForm({
+      ...candidate,
+      stock: quantity,
+      price: 0,
+      threshold: 0,
+    });
+    $('productFormTitle').textContent = 'Facture · Nouveau produit';
+    $('productSubmitBtn').textContent = 'Créer le produit et continuer';
+  }
+
+  $('productCancelEditBtn').hidden = false;
+  setSmartCatalogStatus(
+    'Facture : ligne ' + (invoiceDraftPosition + 1) + '/' + invoiceDraftQueue.length + '. ' +
+    (existing
+      ? 'Le stock proposé inclut la quantité achetée. Vérifie avant de valider.'
+      : 'Complète notamment le prix de vente avant de créer le produit.')
+  );
+
+  showTab('products');
+  $('productCreateCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!existing) $('productPrice').focus();
+  return true;
+}
+
+window.whatzabiOpenInvoiceDrafts = function(items) {
+  const prepared = Array.isArray(items)
+    ? items.filter((item) => item?.candidate?.name || item?.name)
+    : [];
+
+  if (!prepared.length) {
+    toast('Aucune ligne de facture sélectionnée.');
+    return;
+  }
+
+  invoiceDraftQueue = prepared;
+  invoiceDraftPosition = 0;
+  openInvoiceDraftItem();
 };
 
 function logout() {
@@ -437,8 +506,12 @@ document.addEventListener('click', (event) => {
 });
 
 $('productCancelEditBtn').addEventListener('click', () => {
+  const hadInvoiceQueue = invoiceDraftQueue.length > 0;
+  invoiceDraftQueue = [];
+  invoiceDraftPosition = 0;
   resetProductForm();
   setSmartCatalogStatus('');
+  if (hadInvoiceQueue) toast('Traitement de la facture annulé.');
 });
 
 $('productForm').addEventListener('submit', async (event) => {
@@ -468,9 +541,27 @@ $('productForm').addEventListener('submit', async (event) => {
       body: JSON.stringify(payload),
     });
 
+    const processingInvoice = invoiceDraftQueue.length > 0;
+    const invoiceLineCount = invoiceDraftQueue.length;
+
     resetProductForm();
     setSmartCatalogStatus('');
     await refresh();
+
+    if (processingInvoice) {
+      invoiceDraftPosition += 1;
+
+      if (invoiceDraftPosition < invoiceDraftQueue.length) {
+        toast('Ligne validée. Ligne suivante…');
+        openInvoiceDraftItem();
+        return;
+      }
+
+      invoiceDraftQueue = [];
+      invoiceDraftPosition = 0;
+      toast('Facture traitée : ' + invoiceLineCount + ' ligne(s) validée(s).');
+      return;
+    }
 
     toast(
       wasEditing
