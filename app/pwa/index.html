@@ -248,7 +248,7 @@
 
       <section id="products" class="panel">
         <article id="productCreateCard" class="card">
-          <h2>Ajouter un produit</h2>
+          <h2 id="productFormTitle">Ajouter un produit</h2>
           <form id="productForm" class="product-form">
             <label class="field field-wide">
               <span>Nom du produit</span>
@@ -294,7 +294,8 @@
               <small>Whatzabi vous alertera quand le stock atteindra ce niveau.</small>
             </label>
 
-            <button type="submit" class="primary-action">Ajouter le produit</button>
+            <button id="productSubmitBtn" type="submit" class="primary-action">Ajouter le produit</button>
+            <button id="productCancelEditBtn" type="button" class="ghost" hidden>Annuler la modification</button>
           </form>
         </article>
         <div id="productList" class="list"></div>
@@ -400,8 +401,8 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=11" defer></script>
-  <script src="/auth/smart-catalog.js?v=33" defer></script>
+  <script src="/auth/app.js?v=12" defer></script>
+  <script src="/auth/smart-catalog.js?v=34" defer></script>
   <script src="/auth/express-sale.js?v=2" defer></script>
 
 
