@@ -8,7 +8,118 @@
   function loadZXing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://unpkg.com/@zxing/browser@0.2.1';s.async=true;s.onload=()=>window.ZXingBrowser?ok(window.ZXingBrowser):no();s.onerror=no;document.head.appendChild(s)});return zxingPromise}
   function captureFrame(){const video=$('barcodeLiveVideo');if(!video?.videoWidth)return null;const c=document.createElement('canvas');const max=1280,scale=Math.min(1,max/video.videoWidth);c.width=Math.round(video.videoWidth*scale);c.height=Math.round(video.videoHeight*scale);c.getContext('2d').drawImage(video,0,0,c.width,c.height);return c}
   async function lookup(code){showDetected(code);setStatus('Recherche du produit…');navigator.vibrate?.(80);const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}`,{headers:{Authorization:`Bearer ${token}`}});let b=null;try{b=await r.json()}catch{}if(!r.ok)throw new Error(b?.detail||'Produit absent du référentiel.');return b}
-  function renderResult(b){try{catalogAnalysis=b}catch{}const cs=b?.candidates||[],list=$('catalogCandidateList');list.innerHTML='';$('catalogResultCount').textContent=cs.length?`${cs.length} produit détecté`:'Code reconnu';cs.forEach(c=>{const a=document.createElement('article');a.className='catalog-candidate';const h=document.createElement('h3');h.textContent=c.name||'Produit';a.appendChild(h);const m=document.createElement('div');m.className='catalog-meta';[c.brand,c.packaging,c.barcode&&`EAN : ${c.barcode}`].filter(Boolean).forEach(x=>{const s=document.createElement('span');s.className='catalog-chip';s.textContent=x;m.appendChild(s)});a.appendChild(m);list.appendChild(a)});if($('barcodeLiveView')) $('barcodeLiveView').hidden=true;$('catalogResults').hidden=false;$('catalogModes').hidden=true;$('catalogCapture').hidden=true;updateValidationButton()}
+  function renderResult(b){
+    try{catalogAnalysis=b}catch{}
+
+    const cs=b?.candidates||[];
+    const list=$('catalogCandidateList');
+    const invoiceMode=catalogSource==='invoice'||b?.source==='invoice';
+
+    list.innerHTML='';
+
+    $('catalogResultCount').textContent=cs.length
+      ? `${cs.length} produit${cs.length>1?'s':''} détecté${cs.length>1?'s':''}`
+      : 'Code reconnu';
+
+    cs.forEach((c,index)=>{
+      const a=document.createElement('article');
+      a.className='catalog-candidate';
+
+      if(invoiceMode){
+        a.dataset.invoiceIndex=String(index);
+
+        const head=document.createElement('label');
+        head.style.display='flex';
+        head.style.gap='10px';
+        head.style.alignItems='center';
+
+        const check=document.createElement('input');
+        check.type='checkbox';
+        check.checked=true;
+        check.className='invoice-line-selected';
+
+        const title=document.createElement('strong');
+        title.textContent='Ligne '+(index+1);
+
+        head.appendChild(check);
+        head.appendChild(title);
+        a.appendChild(head);
+
+        const name=document.createElement('input');
+        name.className='invoice-line-name';
+        name.value=c.name||'';
+        name.placeholder='Nom du produit';
+        name.style.width='100%';
+        name.style.marginTop='10px';
+        a.appendChild(name);
+
+        const fields=document.createElement('div');
+        fields.style.display='grid';
+        fields.style.gridTemplateColumns='1fr 1fr';
+        fields.style.gap='8px';
+        fields.style.marginTop='8px';
+
+        const qty=document.createElement('input');
+        qty.className='invoice-line-quantity';
+        qty.type='number';
+        qty.min='0';
+        qty.inputMode='numeric';
+        qty.value=String(c.quantity??0);
+        qty.placeholder='Quantité';
+
+        const price=document.createElement('input');
+        price.className='invoice-line-purchase-price';
+        price.type='number';
+        price.min='0';
+        price.inputMode='decimal';
+        price.value=String(c.purchase_price??0);
+        price.placeholder='Prix achat';
+
+        fields.appendChild(qty);
+        fields.appendChild(price);
+        a.appendChild(fields);
+
+        const m=document.createElement('div');
+        m.className='catalog-meta';
+        [
+          c.brand,
+          c.packaging,
+          c.purchase_price!=null&&('Achat : '+c.purchase_price+' FCFA'),
+          c.quantity!=null&&('Qté : '+c.quantity)
+        ].filter(Boolean).forEach(x=>{
+          const chip=document.createElement('span');
+          chip.className='catalog-chip';
+          chip.textContent=x;
+          m.appendChild(chip);
+        });
+        a.appendChild(m);
+      }else{
+        const h=document.createElement('h3');
+        h.textContent=c.name||'Produit';
+        a.appendChild(h);
+
+        const m=document.createElement('div');
+        m.className='catalog-meta';
+        [c.brand,c.packaging,c.barcode&&('EAN : '+c.barcode)]
+          .filter(Boolean)
+          .forEach(x=>{
+            const chip=document.createElement('span');
+            chip.className='catalog-chip';
+            chip.textContent=x;
+            m.appendChild(chip);
+          });
+        a.appendChild(m);
+      }
+
+      list.appendChild(a);
+    });
+
+    if($('barcodeLiveView')) $('barcodeLiveView').hidden=true;
+    $('catalogResults').hidden=false;
+    $('catalogModes').hidden=true;
+    $('catalogCapture').hidden=true;
+    updateValidationButton();
+  }
   async function onDetected(raw){if(!scanning)return;const code=normalizeCode(raw);if(!code)return;scanning=false;stopCameraOnly();showDetected(code);try{renderResult(await lookup(code))}catch{showDetected(code);setStatus('Produit inconnu de nos référentiels. Complète son identité : le code restera associé.');$('barcodeUnknownActions').hidden=false}}
   async function aiReadFrame(){if(!scanning||aiBusy)return;const canvas=captureFrame();if(!canvas)return;aiBusy=true;$('barcodeTarget')?.classList.add('locking');setStatus('Capture automatique — l’IA cherche le numéro…');try{const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.88));const fd=new FormData();fd.append('image',blob,'barcode.jpg');fd.append('source','barcode');const token=localStorage.getItem('whatzabi_token')||'';const r=await fetch('/pwa/catalog/analyze',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});if(r.ok){const b=await r.json(),candidate=(b.candidates||[]).find(c=>normalizeCode(c.barcode));const code=normalizeCode(candidate?.barcode);if(code){const data=canvas.toDataURL('image/jpeg',.88);$('barcodeAutoCapture').src=data;$('barcodeAutoCapture').hidden=false;sessionStorage.setItem('whatzabi_barcode_capture',data);await onDetected(code);return}}}catch{}finally{aiBusy=false;$('barcodeTarget')?.classList.remove('locking')}if(scanning)setStatus('Aucun EAN lisible — rapproche le code, je continue automatiquement.')}
   function startAILoop(){if(aiTimer)clearInterval(aiTimer);setTimeout(()=>aiReadFrame(),700);aiTimer=setInterval(()=>aiReadFrame(),2200)}
@@ -53,7 +164,7 @@
       btn.textContent='✏️ Compléter la fiche produit';
       btn.hidden=false;
     }else if(catalogSource === 'invoice'){
-      btn.textContent='✓ Ajouter les produits sélectionnés';
+      btn.textContent='✓ Vérifier les produits sélectionnés';
       btn.hidden=false;
     }else{
       btn.textContent='✓ Valider';
@@ -67,6 +178,7 @@
     ];
 
     if(
+      catalogSource !== 'invoice' &&
       cards.length===1 &&
       sessionStorage.getItem('whatzabi_catalog_selected')===null
     ){
@@ -123,6 +235,89 @@
 
     window.whatzabiOpenProductDraft(candidate);
     try{ toast(`Produit reconnu : ${candidate.name}. Complète la fiche avant validation.`); }catch{}
+  }
+
+  function prepareInvoiceProducts(e){
+    if(e){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+
+    let body=null;
+    try{body=catalogAnalysis}catch{}
+    if(!body){
+      try{
+        body=JSON.parse(
+          sessionStorage.getItem('whatzabi_catalog_draft') || 'null'
+        );
+      }catch{}
+    }
+
+    const candidates=body?.candidates||[];
+    const cards=[
+      ...document.querySelectorAll(
+        '#catalogCandidateList .catalog-candidate[data-invoice-index]'
+      )
+    ];
+
+    const prepared=[];
+
+    cards.forEach(card=>{
+      const selected=card.querySelector('.invoice-line-selected');
+      if(selected && !selected.checked) return;
+
+      const index=Number(card.dataset.invoiceIndex);
+      const original=candidates[index]||{};
+
+      const candidate={
+        ...original,
+        name:String(
+          card.querySelector('.invoice-line-name')?.value||
+          original.name||
+          ''
+        ).trim(),
+        quantity:Math.max(
+          0,
+          Number(
+            card.querySelector('.invoice-line-quantity')?.value||
+            original.quantity||
+            0
+          )
+        ),
+        purchase_price:Math.max(
+          0,
+          Number(
+            card.querySelector('.invoice-line-purchase-price')?.value||
+            original.purchase_price||
+            0
+          )
+        )
+      };
+
+      if(!candidate.name) return;
+
+      const match=exactExistingMatch(body,index,candidate);
+
+      prepared.push({
+        candidate,
+        existing_product_id:match?.product_id||null
+      });
+    });
+
+    if(!prepared.length){
+      try{toast('Sélectionne au moins une ligne de facture.')}catch{}
+      return;
+    }
+
+    const sheet=$('catalogSheet');
+    if(sheet) sheet.hidden=true;
+
+    if(typeof window.whatzabiOpenInvoiceDrafts!=='function'){
+      try{toast('Le formulaire de validation facture est indisponible.')}catch{}
+      return;
+    }
+
+    window.whatzabiOpenInvoiceDrafts(prepared);
   }
 
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
@@ -513,15 +708,7 @@
     }
 
     if(catalogSource === 'invoice'){
-      e.preventDefault();
-      e.stopImmediatePropagation();
-
-      try{
-        toast(
-          'Validation multi-produits facture : étape suivante.'
-        );
-      }catch{}
-
+      prepareInvoiceProducts(e);
       return;
     }
   },true);
