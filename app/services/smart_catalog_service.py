@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 from difflib import SequenceMatcher
 
 import requests
@@ -126,13 +127,20 @@ def analyze_catalog_image(
         raise SmartCatalogError("Image vide")
 
     encoded = base64.b64encode(image_bytes).decode("ascii")
-    model = os.getenv("OPENAI_CATALOG_MODEL", "gpt-4.1-mini")
+    model = os.getenv("OPENAI_CATALOG_MODEL", "gpt-5.6-luna")
+    image_detail = os.getenv("OPENAI_CATALOG_IMAGE_DETAIL", "high").strip().lower()
+    if image_detail not in {"auto", "low", "high", "original"}:
+        image_detail = "high"
 
     instructions = (
         "Tu es le moteur Smart Catalog de Whatzabi. Analyse l'image fournie. "
         "Le contexte est un commerce en Afrique francophone. "
         "Si source=product et qu'une étiquette, une marque ou du texte lisible est présent, "
         "identifie le produit principalement à partir de ces indices. "
+        "Le champ name doit être un nom commercial directement exploitable dans un catalogue. "
+        "Quand la marque est lisible, inclus-la dans name. Inclus aussi le format, poids ou volume "
+        "uniquement s'il est réellement lisible. Exemple: 'Cristaline Eau de source 1,5 L', "
+        "et non simplement 'Eau de source'. N'invente jamais une marque, un format ou un volume. "
         "Si source=product mais qu'il n'y a PAS d'étiquette ni de texte exploitable, "
         "ne présente jamais une identification visuelle comme certaine : retourne jusqu'à trois "
         "hypothèses plausibles classées par confiance, avec des confiances prudentes. "
@@ -149,6 +157,7 @@ def analyze_catalog_image(
     )
 
     try:
+        openai_started = time.perf_counter()
         response = _get_client().chat.completions.create(
             model=model,
             temperature=0,
@@ -163,11 +172,17 @@ def analyze_catalog_image(
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:{content_type};base64,{encoded}",
+                                "detail": image_detail,
                             },
                         },
                     ],
                 },
             ],
+        )
+        elapsed_ms = round((time.perf_counter() - openai_started) * 1000)
+        print(
+            "SMART CATALOG MODEL:",
+            {"model": model, "detail": image_detail, "source": source, "bytes": len(image_bytes), "openai_ms": elapsed_ms},
         )
         raw = response.choices[0].message.content or "{}"
         payload = json.loads(raw)
