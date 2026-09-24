@@ -480,31 +480,6 @@
 
 
 
-  document.addEventListener('click', e => {
-    const btn = e.target.closest('#catalogAnalyzeBtn');
-    if(!btn) return;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
-
-    const status = $('catalogStatus');
-
-    if(!catalogFile){
-      if(status){
-        status.textContent =
-          'Aucune image disponible pour l’analyse.';
-      }
-      return;
-    }
-
-    if(catalogAnalyzeBusy) return;
-
-    if(status){
-      status.textContent = 'Analyse demandée…';
-    }
-
-    analyzeCatalogImage();
-  }, true);
 
   document.addEventListener('click',e=>{
   if(e.target.closest('#catalogCloseBtn')){
