@@ -32,6 +32,9 @@
         head.style.display='flex';
         head.style.gap='10px';
         head.style.alignItems='center';
+        head.style.justifyContent='flex-start';
+        head.style.width='100%';
+        head.style.boxSizing='border-box';
 
         const check=document.createElement('input');
         check.type='checkbox';
@@ -72,7 +75,7 @@
         price.type='number';
         price.min='0';
         price.inputMode='decimal';
-        price.value=String(c.purchase_price??0);
+        price.value=c.purchase_price==null?'':String(c.purchase_price);
         price.placeholder='Prix achat';
 
         fields.appendChild(qty);
@@ -84,7 +87,7 @@
         [
           c.brand,
           c.packaging,
-          c.purchase_price!=null&&('Achat : '+c.purchase_price+' FCFA'),
+          c.purchase_price!=null&&('Achat : '+c.purchase_price),
           c.quantity!=null&&('Qté : '+c.quantity)
         ].filter(Boolean).forEach(x=>{
           const chip=document.createElement('span');
@@ -284,14 +287,14 @@
             0
           )
         ),
-        purchase_price:Math.max(
-          0,
-          Number(
-            card.querySelector('.invoice-line-purchase-price')?.value||
-            original.purchase_price||
-            0
-          )
-        )
+        purchase_price:(()=>{
+          const raw=String(
+            card.querySelector('.invoice-line-purchase-price')?.value ?? ''
+          ).trim();
+          if(raw==='') return null;
+          const value=Number(raw);
+          return Number.isFinite(value) ? Math.max(0,value) : null;
+        })()
       };
 
       if(!candidate.name) return;
