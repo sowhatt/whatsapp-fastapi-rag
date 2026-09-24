@@ -50,7 +50,7 @@
       btn.textContent='✓ Valider et ajouter au catalogue';
       btn.hidden=false;
     }else if(catalogSource === 'product'){
-      btn.textContent='➕ Ajouter ce produit au catalogue';
+      btn.textContent='✏️ Compléter la fiche produit';
       btn.hidden=false;
     }else if(catalogSource === 'invoice'){
       btn.textContent='✓ Ajouter les produits sélectionnés';
@@ -82,10 +82,7 @@
       e.stopImmediatePropagation();
     }
 
-    if(validationBusy) return;
-
     let body=null;
-
     try{
       body=catalogAnalysis;
     }catch{}
@@ -99,95 +96,33 @@
     }
 
     const candidates=body?.candidates || [];
-
     if(!candidates.length){
-      try{
-        toast('Aucun produit à ajouter.');
-      }catch{}
+      try{ toast('Aucun produit à préparer.'); }catch{}
       return;
     }
 
-    const index=Math.min(
-      selectedIndex(),
-      candidates.length - 1
-    );
-
+    const index=Math.min(selectedIndex(), candidates.length - 1);
     const candidate=candidates[index];
-    const btn=$('catalogPrepareBtn');
+    const existing=exactExistingMatch(body, index, candidate);
 
-    validationBusy=true;
+    const sheet=$('catalogSheet');
+    if(sheet) sheet.hidden=true;
 
-    if(btn){
-      btn.disabled=true;
-      btn.textContent='Ajout au catalogue…';
+    sessionStorage.removeItem('whatzabi_catalog_selected');
+
+    if(existing && typeof window.whatzabiEditProduct === 'function'){
+      window.whatzabiEditProduct(existing.product_id);
+      try{ toast(`Produit déjà présent : ${candidate.name}. Tu peux le modifier.`); }catch{}
+      return;
     }
 
-    try{
-      const existing=exactExistingMatch(
-        body,
-        index,
-        candidate
-      );
-
-      if(existing){
-        try{
-          await refresh();
-        }catch{}
-
-        try{
-          toast(
-            `Produit déjà présent : ${candidate.name}`
-          );
-        }catch{}
-
-        if(btn){
-          btn.textContent='✓ Déjà au catalogue';
-          btn.disabled=true;
-        }
-
-        return;
-      }
-
-      const product=await createValidatedProduct(candidate);
-
-      try{
-        await refresh();
-      }catch{}
-
-      sessionStorage.removeItem(
-        'whatzabi_catalog_selected'
-      );
-
-      try{
-        toast(
-          `Produit ajouté : ${product.name || candidate.name}`
-        );
-      }catch{}
-
-      if(btn){
-        btn.textContent='✓ Produit ajouté';
-        btn.disabled=true;
-      }
-
-    }catch(err){
-
-      const message=
-        err?.message ||
-        'Impossible d’ajouter le produit.';
-
-      try{
-        toast(message);
-      }catch{}
-
-      if(btn){
-        btn.disabled=false;
-        btn.textContent=
-          '➕ Ajouter ce produit au catalogue';
-      }
-
-    }finally{
-      validationBusy=false;
+    if(typeof window.whatzabiOpenProductDraft !== 'function'){
+      try{ toast('Le formulaire produit est indisponible.'); }catch{}
+      return;
     }
+
+    window.whatzabiOpenProductDraft(candidate);
+    try{ toast(`Produit reconnu : ${candidate.name}. Complète la fiche avant validation.`); }catch{}
   }
 
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
@@ -375,6 +310,45 @@
     return false;
   };
 
+  async function prepareCatalogImage(file){
+    if(!file || !String(file.type || '').startsWith('image/')) return file;
+
+    try{
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result);
+        reader.onerror=()=>reject(new Error('Lecture image impossible'));
+        reader.readAsDataURL(file);
+      });
+
+      const image=await new Promise((resolve,reject)=>{
+        const element=new Image();
+        element.onload=()=>resolve(element);
+        element.onerror=()=>reject(new Error('Décodage image impossible'));
+        element.src=dataUrl;
+      });
+
+      const maxSide=catalogSource === 'invoice' ? 2000 : 1400;
+      const ratio=Math.min(1,maxSide/Math.max(image.width,image.height));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(image.width*ratio));
+      canvas.height=Math.max(1,Math.round(image.height*ratio));
+      canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+
+      const quality=catalogSource === 'invoice' ? 0.86 : 0.82;
+      return await new Promise((resolve,reject)=>{
+        canvas.toBlob(
+          blob=>blob ? resolve(blob) : reject(new Error('Compression image impossible')),
+          'image/jpeg',
+          quality
+        );
+      });
+    }catch(err){
+      console.warn('[SMART-CATALOG] compression ignorée', err);
+      return file;
+    }
+  }
+
   async function analyzeCatalogImage(){
     if(!catalogFile || catalogAnalyzeBusy) return;
 
@@ -396,8 +370,21 @@
     }
 
     try{
+      const startedAt=performance.now();
+      if(status) status.textContent =
+        catalogSource === 'invoice'
+          ? 'Préparation et lecture de la facture…'
+          : 'Préparation et reconnaissance du produit…';
+
+      const preparedImage=await prepareCatalogImage(catalogFile);
       const fd = new FormData();
-      fd.append('image', catalogFile, catalogFile.name || 'catalog-image.jpg');
+      fd.append(
+        'image',
+        preparedImage,
+        preparedImage === catalogFile
+          ? (catalogFile.name || 'catalog-image.jpg')
+          : 'catalog-image.jpg'
+      );
       fd.append('source', catalogSource);
 
       const token = localStorage.getItem('whatzabi_token') || '';
@@ -440,6 +427,13 @@
       );
 
       renderResult(body);
+
+      console.info(
+        '[SMART-CATALOG] analyse terminée',
+        Math.round(performance.now() - startedAt) + ' ms',
+        'source=' + catalogSource,
+        'bytes=' + (preparedImage?.size || 0)
+      );
 
       if(status) status.textContent = '';
 
