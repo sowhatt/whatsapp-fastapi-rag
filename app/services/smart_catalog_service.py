@@ -198,6 +198,15 @@ def analyze_catalog_image(
             continue
 
         candidate.name = " ".join(candidate.name.split()).strip()
+        candidate.brand = " ".join((candidate.brand or "").split()).strip() or None
+
+        if (
+            source == "product"
+            and candidate.brand
+            and candidate.brand.casefold() not in candidate.name.casefold()
+        ):
+            candidate.name = f"{candidate.brand} {candidate.name}".strip()
+
         if candidate.name:
             candidates.append(candidate)
 
