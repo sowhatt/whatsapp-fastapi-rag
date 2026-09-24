@@ -152,15 +152,16 @@
     sessionStorage.removeItem('whatzabi_catalog_selected');
   }
 
-  document.addEventListener('click',e=>{
-    const button=e.target.closest('#quickScanner');
-    if(!button)return;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
+  window.whatzabiOpenCatalogMenu = function(event){
+    if(event){
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
 
     openCatalogMenu();
-  },true);
+    return false;
+  };
 
 
   // Photo produit / Facture
