@@ -118,6 +118,67 @@ def lookup_barcode_reference(barcode: str) -> SmartCatalogCandidate:
     raise SmartCatalogError("Code-barres reconnu mais produit absent des référentiels publics")
 
 
+
+def _coerce_optional_int(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    # Accept common OCR forms such as "1 250", "1250 FCFA", "2".
+    compact = (
+        text.replace("\u00a0", " ")
+        .replace(" ", "")
+        .replace("FCFA", "")
+        .replace("XOF", "")
+        .replace("CFA", "")
+        .strip()
+    )
+    if compact.isdigit():
+        return int(compact)
+
+    try:
+        number = float(compact.replace(",", "."))
+    except ValueError:
+        return None
+
+    return int(number) if number.is_integer() else None
+
+
+def _sanitize_candidate_payload(item: object) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+
+    name = " ".join(str(item.get("name") or "").split()).strip()
+    if not name:
+        return None
+
+    cleaned = dict(item)
+    cleaned["name"] = name
+    cleaned["purchase_price"] = _coerce_optional_int(item.get("purchase_price"))
+    cleaned["quantity"] = _coerce_optional_int(item.get("quantity"))
+
+    confidence = item.get("confidence")
+    try:
+        cleaned["confidence"] = min(1.0, max(0.0, float(confidence)))
+    except (TypeError, ValueError):
+        cleaned["confidence"] = 0.0
+
+    for key in ("brand", "variant", "packaging", "unit", "barcode"):
+        value = item.get(key)
+        cleaned[key] = " ".join(str(value).split()).strip() if value not in (None, "") else None
+
+    return cleaned
+
+
 def analyze_catalog_image(
     image_bytes: bytes,
     content_type: str,
@@ -195,10 +256,18 @@ def analyze_catalog_image(
     raw_candidates = payload.get("candidates") or []
     candidates: list[SmartCatalogCandidate] = []
 
+    skipped_candidates = 0
     for item in raw_candidates:
+        cleaned = _sanitize_candidate_payload(item)
+        if cleaned is None:
+            skipped_candidates += 1
+            continue
+
         try:
-            candidate = SmartCatalogCandidate.model_validate(item)
-        except Exception:
+            candidate = SmartCatalogCandidate.model_validate(cleaned)
+        except Exception as exc:
+            skipped_candidates += 1
+            print("SMART CATALOG CANDIDATE SKIPPED:", {"source": source, "item": cleaned, "error": str(exc)})
             continue
 
         candidate.name = " ".join(candidate.name.split()).strip()
@@ -213,6 +282,16 @@ def analyze_catalog_image(
 
         if candidate.name:
             candidates.append(candidate)
+
+    print(
+        "SMART CATALOG CANDIDATES:",
+        {
+            "source": source,
+            "raw_count": len(raw_candidates),
+            "accepted_count": len(candidates),
+            "skipped_count": skipped_candidates,
+        },
+    )
 
     if not candidates:
         raise SmartCatalogError("Aucun produit exploitable détecté")
