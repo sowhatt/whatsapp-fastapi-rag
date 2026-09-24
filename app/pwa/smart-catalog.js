@@ -326,47 +326,6 @@
   }
 
 
-  function receiveCatalogImage(event){
-    const input = event.currentTarget;
-    const files = input?.files;
-
-    console.log(
-      '[SMART-CATALOG] file event',
-      input?.id,
-      files?.length || 0
-    );
-
-    if(!files || files.length === 0){
-      if($('catalogStatus')){
-        $('catalogStatus').textContent =
-          'Aucune photo reçue par l’iPhone.';
-      }
-      return;
-    }
-
-    const file = files[0];
-
-    console.log(
-      '[SMART-CATALOG] photo reçue',
-      file.name,
-      file.type,
-      file.size
-    );
-
-    selectCatalogFile(file);
-  }
-
-  $('catalogCameraInput')?.addEventListener(
-    'change',
-    receiveCatalogImage
-  );
-
-  $('catalogGalleryInput')?.addEventListener(
-    'change',
-    receiveCatalogImage
-  );
-
-
   window.whatzabiReceiveCatalogImage = function(input){
     const files = input?.files;
 
@@ -394,6 +353,26 @@
     );
 
     selectCatalogFile(file);
+  };
+
+
+  window.whatzabiAnalyzeCatalogImage = function(event){
+    if(event){
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
+    if(!catalogFile){
+      if($('catalogStatus')){
+        $('catalogStatus').textContent =
+          'Choisis ou prends d’abord une photo.';
+      }
+      return false;
+    }
+
+    analyzeCatalogImage();
+    return false;
   };
 
   async function analyzeCatalogImage(){
