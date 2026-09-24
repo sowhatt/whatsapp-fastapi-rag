@@ -66,6 +66,7 @@ function renderPermissions() {
 
 let token = localStorage.getItem('whatzabi_token') || '';
 let state = { products: [], customers: [], sales: [], merchant: null, shops: [] };
+let editingProductId = null;
 
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -98,6 +99,72 @@ function showTab(name) {
     element.classList.toggle('active', element.dataset.tab === name),
   );
 }
+
+
+function resetProductForm() {
+  editingProductId = null;
+  $('productForm').reset();
+  $('productUnit').value = 'unité';
+  $('productStock').value = '0';
+  $('productPrice').value = '0';
+  $('productPurchasePrice').value = '0';
+  $('productThreshold').value = '0';
+  $('productType').value = '';
+  $('productBrand').value = '';
+  $('productVariant').value = '';
+  $('productPackaging').value = '';
+  $('productFormTitle').textContent = 'Ajouter un produit';
+  $('productSubmitBtn').textContent = 'Ajouter le produit';
+  $('productCancelEditBtn').hidden = true;
+}
+
+function fillProductForm(values = {}) {
+  $('productName').value = values.name || '';
+  $('productUnit').value = values.unit || 'unité';
+  $('productType').value = values.product_type || '';
+  $('productBrand').value = values.brand || '';
+  $('productVariant').value = values.variant || '';
+  $('productPackaging').value = values.packaging || '';
+  $('productStock').value = String(values.stock ?? values.quantity ?? 0);
+  $('productPrice').value = String(values.price ?? 0);
+  $('productPurchasePrice').value = String(values.purchase_price ?? 0);
+  $('productThreshold').value = String(values.threshold ?? 0);
+}
+
+window.whatzabiOpenProductDraft = function(candidate) {
+  resetProductForm();
+  fillProductForm(candidate || {});
+  setSmartCatalogStatus(
+    'Produit reconnu. Vérifie le nom, complète le prix de vente, le prix d’achat, le stock et le seuil avant de créer la fiche.',
+  );
+  showTab('products');
+  $('productCreateCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('productPrice').focus();
+};
+
+window.whatzabiEditProduct = function(productId) {
+  if (!can('product.update')) {
+    toast('Ton rôle ne permet pas de modifier un produit.');
+    return;
+  }
+
+  const product = state.products.find((item) => item.id === Number(productId));
+  if (!product) {
+    toast('Produit introuvable dans la boutique active.');
+    return;
+  }
+
+  editingProductId = product.id;
+  fillProductForm(product);
+  $('productFormTitle').textContent = 'Modifier le produit';
+  $('productSubmitBtn').textContent = 'Enregistrer les modifications';
+  $('productCancelEditBtn').hidden = false;
+  setSmartCatalogStatus(
+    `Modification de « ${product.name} ». Le stock affiché est celui de la boutique active.`,
+  );
+  showTab('products');
+  $('productCreateCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 function logout() {
   token = '';
@@ -216,7 +283,16 @@ function render() {
   $('productList').innerHTML = products.length
     ? products
         .map(
-          (product) => `<article class="item"><div class="item-main"><div class="item-title">${esc(product.name)}</div><div class="item-meta">Stock boutique: ${product.stock} ${esc(product.unit)} · Seuil: ${product.threshold}</div></div><div class="money">${fmt(product.price)}</div></article>`,
+          (product) => `<article class="item">
+            <div class="item-main">
+              <div class="item-title">${esc(product.name)}</div>
+              <div class="item-meta">Stock boutique: ${product.stock} ${esc(product.unit)} · Seuil: ${product.threshold}</div>
+            </div>
+            <div>
+              <div class="money">${fmt(product.price)}</div>
+              ${can('product.update') ? `<button type="button" class="ghost" data-edit-product="${product.id}">Modifier</button>` : ''}
+            </div>
+          </article>`,
         )
         .join('')
     : '<article class="card muted">Aucun produit.</article>';
@@ -353,37 +429,54 @@ document.querySelectorAll('[data-open-tab]').forEach((button) =>
   button.addEventListener('click', () => showTab(button.dataset.openTab)),
 );
 
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-edit-product]');
+  if (!button) return;
+  window.whatzabiEditProduct(Number(button.dataset.editProduct));
+});
+
+$('productCancelEditBtn').addEventListener('click', () => {
+  resetProductForm();
+  setSmartCatalogStatus('');
+});
+
 $('productForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+
+  const payload = {
+    name: $('productName').value,
+    product_type: $('productType').value || null,
+    brand: $('productBrand').value || null,
+    variant: $('productVariant').value || null,
+    packaging: $('productPackaging').value || null,
+    unit: $('productUnit').value,
+    stock: Number($('productStock').value),
+    price: Number($('productPrice').value),
+    purchase_price: Number($('productPurchasePrice').value),
+    threshold: Number($('productThreshold').value),
+  };
+
+  const wasEditing = editingProductId !== null;
+  const path = wasEditing
+    ? `/pwa/products/${editingProductId}`
+    : '/pwa/products';
+
   try {
-    await api('/pwa/products', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: $('productName').value,
-        product_type: $('productType').value || null,
-        brand: $('productBrand').value || null,
-        variant: $('productVariant').value || null,
-        packaging: $('productPackaging').value || null,
-        unit: $('productUnit').value,
-        stock: Number($('productStock').value),
-        price: Number($('productPrice').value),
-        purchase_price: Number($('productPurchasePrice').value),
-        threshold: Number($('productThreshold').value),
-      }),
+    await api(path, {
+      method: wasEditing ? 'PATCH' : 'POST',
+      body: JSON.stringify(payload),
     });
-    event.target.reset();
-    $('productUnit').value = 'unité';
-    $('productStock').value = '0';
-    $('productPrice').value = '0';
-    $('productPurchasePrice').value = '0';
-    $('productThreshold').value = '0';
-    $('productType').value = '';
-    $('productBrand').value = '';
-    $('productVariant').value = '';
-    $('productPackaging').value = '';
+
+    resetProductForm();
     setSmartCatalogStatus('');
     await refresh();
-    toast('Produit ajouté dans la boutique active');
+
+    toast(
+      wasEditing
+        ? 'Produit modifié dans la boutique active'
+        : 'Produit ajouté dans la boutique active',
+    );
   } catch (error) {
     toast(error.message);
   }
