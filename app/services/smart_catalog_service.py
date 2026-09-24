@@ -160,7 +160,6 @@ def analyze_catalog_image(
         openai_started = time.perf_counter()
         response = _get_client().chat.completions.create(
             model=model,
-            temperature=0,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": instructions},
