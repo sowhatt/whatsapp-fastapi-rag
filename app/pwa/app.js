@@ -16,6 +16,16 @@ function fmt(n) {
   }).format(value);
   return formatted + ' ' + (meta?.symbol || code);
 }
+
+function fmtSaleDate(value) {
+  if (!value) return 'Date indisponible';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('fr-FR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
 const ROLE_LABELS = {
   OWNER: 'Propriétaire',
   MANAGER: 'Manager',
@@ -465,7 +475,7 @@ function render() {
           (sale) => `<button type="button" class="item sale-item-button" data-sale-actions="${sale.id}">
             <div class="item-main">
               <div class="item-title">Vente #${sale.sale_number ?? sale.id}</div>
-              <div class="item-meta"><span class="badge">${esc(sale.status)}</span> · payé ${fmt(sale.paid_amount)}</div>
+              <div class="item-meta"><span class="badge">${esc(sale.status)}</span> · ${esc(fmtSaleDate(sale.created_at))} · payé ${fmt(sale.paid_amount)}</div>
             </div>
             <div class="sale-item-end">
               <div class="money">${fmt(sale.total_amount)}</div>
@@ -523,7 +533,9 @@ function openSaleActions(saleId) {
   $('saleActionTitle').textContent =
     'Vente #' + (sale.sale_number ?? sale.id);
   $('saleActionMeta').textContent =
-    saleStatusLabel(sale.status) + ' · ' + fmt(sale.total_amount);
+    fmtSaleDate(sale.created_at) + ' · ' +
+    saleStatusLabel(sale.status) + ' · ' +
+    fmt(sale.total_amount);
 
   const cancelBtn = $('saleCancelBtn');
   cancelBtn.hidden =
@@ -636,6 +648,7 @@ async function generateSaleReceipt(saleId) {
         <header>
           <h1>${receiptEscape(shopName)}</h1>
           <div>Reçu de vente #${receiptEscape(receiptNumber)}</div>
+          <div><strong>Date :</strong> ${receiptEscape(fmtSaleDate(sale.created_at))}</div>
           <div class="muted">Généré par Whatzabi</div>
           ${cancelled ? '<div class="cancelled">VENTE ANNULÉE</div>' : ''}
         </header>
@@ -673,6 +686,7 @@ async function generateSaleReceipt(saleId) {
 
         <div class="actions">
           <button onclick="window.print()">Imprimer / Enregistrer en PDF</button>
+          <button onclick="window.close()">Fermer le reçu</button>
         </div>
       </body>
       </html>
