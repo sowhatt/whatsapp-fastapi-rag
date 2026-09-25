@@ -233,9 +233,15 @@ def analyze_catalog_image(
 
     encoded = base64.b64encode(image_bytes).decode("ascii")
     model = os.getenv("OPENAI_CATALOG_MODEL", "gpt-5.6-luna")
-    image_detail = os.getenv("OPENAI_CATALOG_IMAGE_DETAIL", "high").strip().lower()
+    detail_env = (
+        "OPENAI_INVOICE_IMAGE_DETAIL"
+        if source == "invoice"
+        else "OPENAI_CATALOG_IMAGE_DETAIL"
+    )
+    detail_default = "auto" if source == "invoice" else "high"
+    image_detail = os.getenv(detail_env, detail_default).strip().lower()
     if image_detail not in {"auto", "low", "high", "original"}:
-        image_detail = "high"
+        image_detail = detail_default
 
     instructions = (
         "Tu es le moteur Smart Catalog de Whatzabi. Analyse l'image fournie. "
