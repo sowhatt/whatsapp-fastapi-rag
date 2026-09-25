@@ -585,14 +585,14 @@
         element.src=dataUrl;
       });
 
-      const maxSide=catalogSource === 'invoice' ? 2000 : 1400;
+      const maxSide=catalogSource === 'invoice' ? 1600 : 1400;
       const ratio=Math.min(1,maxSide/Math.max(image.width,image.height));
       const canvas=document.createElement('canvas');
       canvas.width=Math.max(1,Math.round(image.width*ratio));
       canvas.height=Math.max(1,Math.round(image.height*ratio));
       canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
 
-      const quality=catalogSource === 'invoice' ? 0.86 : 0.82;
+      const quality=catalogSource === 'invoice' ? 0.78 : 0.82;
       return await new Promise((resolve,reject)=>{
         canvas.toBlob(
           blob=>blob ? resolve(blob) : reject(new Error('Compression image impossible')),
