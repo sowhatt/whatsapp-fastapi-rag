@@ -241,11 +241,16 @@
   }
 
   async function convertInvoiceCandidate(candidate){
-    if(
-      candidate?.purchase_price == null ||
-      !candidate?.currency
-    ){
+    if(candidate?.purchase_price == null){
       return candidate;
+    }
+
+    if(!candidate?.currency){
+      return {
+        ...candidate,
+        purchase_price:null,
+        invoice_currency_unresolved:true
+      };
     }
 
     const token=localStorage.getItem('whatzabi_token')||'';
