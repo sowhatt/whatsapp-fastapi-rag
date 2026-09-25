@@ -235,6 +235,15 @@
             <span>›</span>
           </button>
 
+          <button data-open-tab="currencies" type="button" class="more-menu-item">
+            <span class="more-menu-icon">💱</span>
+            <span>
+              <strong>Devises & change</strong>
+              <small>Devise boutique et taux de change</small>
+            </span>
+            <span>›</span>
+          </button>
+
           <button id="moreSettings" type="button" class="more-menu-item">
             <span class="more-menu-icon">⚙️</span>
             <span>
@@ -243,6 +252,41 @@
             </span>
             <span>›</span>
           </button>
+        </article>
+      </section>
+
+      <section id="currencies" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Outils</span>
+            <h2>Devises & change</h2>
+          </div>
+        </div>
+
+        <article class="card">
+          <h2>Devise de la boutique</h2>
+          <p class="muted">
+            La devise configurée ici sera utilisée pour les prix, les achats,
+            les factures et les conversions.
+          </p>
+          <div id="currencyShopSummary" class="item">
+            <div class="item-main">
+              <div class="item-title">Devise actuelle</div>
+              <div class="item-meta">Configuration multi-devise en cours d’activation</div>
+            </div>
+            <strong>—</strong>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Taux de change</h2>
+          <p class="muted">
+            Les taux seront synchronisés et historisés pour permettre les
+            conversions de factures et la calculatrice intelligente.
+          </p>
+          <div id="currencyRatesList" class="list compact-list">
+            <p class="muted empty-state">Aucun taux chargé pour le moment.</p>
+          </div>
         </article>
       </section>
 
