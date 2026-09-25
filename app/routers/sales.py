@@ -117,7 +117,11 @@ def list_sales(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("sale.read")),
 ):
-    return _sales_query(db).all()
+    return (
+        _sales_query(db)
+        .order_by(Sale.created_at.desc(), Sale.id.desc())
+        .all()
+    )
 
 
 @router.post("/sales", response_model=SaleRead)
