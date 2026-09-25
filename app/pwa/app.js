@@ -462,7 +462,16 @@ function render() {
   $('saleList').innerHTML = sales.length
     ? sales
         .map(
-          (sale) => `<article class="item"><div class="item-main"><div class="item-title">Vente #${sale.sale_number ?? sale.id}</div><div class="item-meta"><span class="badge">${esc(sale.status)}</span> · payé ${fmt(sale.paid_amount)}</div></div><div class="money">${fmt(sale.total_amount)}</div></article>`,
+          (sale) => `<button type="button" class="item sale-item-button" data-sale-actions="${sale.id}">
+            <div class="item-main">
+              <div class="item-title">Vente #${sale.sale_number ?? sale.id}</div>
+              <div class="item-meta"><span class="badge">${esc(sale.status)}</span> · payé ${fmt(sale.paid_amount)}</div>
+            </div>
+            <div class="sale-item-end">
+              <div class="money">${fmt(sale.total_amount)}</div>
+              <span aria-hidden="true">›</span>
+            </div>
+          </button>`,
         )
         .join('')
     : '<article class="card muted">Aucune vente.</article>';
@@ -489,6 +498,256 @@ function esc(value) {
     '"': '&quot;',
   })[match]);
 }
+
+
+let selectedSaleActionId = null;
+
+function saleStatusLabel(status) {
+  const labels = {
+    paid: 'Payée',
+    credit: 'À crédit',
+    partial: 'Paiement partiel',
+    cancelled: 'Annulée',
+  };
+  return labels[status] || status || '';
+}
+
+function openSaleActions(saleId) {
+  const sale = state.sales.find((item) => Number(item.id) === Number(saleId));
+  if (!sale) {
+    toast('Vente introuvable dans la boutique active.');
+    return;
+  }
+
+  selectedSaleActionId = sale.id;
+  $('saleActionTitle').textContent =
+    'Vente #' + (sale.sale_number ?? sale.id);
+  $('saleActionMeta').textContent =
+    saleStatusLabel(sale.status) + ' · ' + fmt(sale.total_amount);
+
+  const cancelBtn = $('saleCancelBtn');
+  cancelBtn.hidden =
+    !can('sale.cancel') || String(sale.status) === 'cancelled';
+
+  $('saleActionSheet').hidden = false;
+}
+
+function closeSaleActions() {
+  $('saleActionSheet').hidden = true;
+  selectedSaleActionId = null;
+}
+
+function receiptEscape(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (match) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  })[match]);
+}
+
+async function generateSaleReceipt(saleId) {
+  const sale = state.sales.find((item) => Number(item.id) === Number(saleId));
+  if (!sale) {
+    toast('Vente introuvable.');
+    return;
+  }
+
+  // Open synchronously so mobile browsers do not block the receipt window.
+  const receiptWindow = window.open('', '_blank');
+  if (!receiptWindow) {
+    toast('Autorise les fenêtres contextuelles pour générer le reçu.');
+    return;
+  }
+
+  receiptWindow.document.write(
+    '<!doctype html><meta charset="utf-8"><title>Reçu Whatzabi</title>' +
+    '<p style="font-family:system-ui;padding:24px">Préparation du reçu…</p>'
+  );
+
+  try {
+    const [items, payments] = await Promise.all([
+      api('/pwa/sales/' + sale.id + '/items'),
+      api('/pwa/sales/' + sale.id + '/payments'),
+    ]);
+
+    const customer = sale.customer_id
+      ? state.customers.find((item) => Number(item.id) === Number(sale.customer_id))
+      : null;
+
+    const merchant = state.merchant || {};
+    const shopName =
+      merchant.active_shop_name ||
+      merchant.shop_name ||
+      'Commerce';
+
+    const rows = (items || []).map((item) => {
+      const product = state.products.find(
+        (entry) => Number(entry.id) === Number(item.product_id)
+      );
+      const name = product?.name || ('Produit #' + item.product_id);
+      return `
+        <tr>
+          <td>${receiptEscape(name)}</td>
+          <td style="text-align:center">${receiptEscape(item.quantity)}</td>
+          <td style="text-align:right">${receiptEscape(fmt(item.unit_price))}</td>
+          <td style="text-align:right">${receiptEscape(fmt(item.line_total))}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const paymentText = (payments || []).length
+      ? (payments || []).map((payment) =>
+          receiptEscape(payment.channel || 'paiement') +
+          ' : ' + receiptEscape(fmt(payment.amount))
+        ).join('<br>')
+      : 'Aucun paiement enregistré';
+
+    const receiptNumber = sale.sale_number ?? sale.id;
+    const cancelled = String(sale.status) === 'cancelled';
+
+    receiptWindow.document.open();
+    receiptWindow.document.write(`
+      <!doctype html>
+      <html lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Reçu #${receiptEscape(receiptNumber)}</title>
+        <style>
+          body{font-family:Arial,sans-serif;max-width:760px;margin:0 auto;padding:28px;color:#111}
+          header{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px}
+          h1{font-size:24px;margin:0 0 6px}
+          .muted{color:#666}
+          table{width:100%;border-collapse:collapse;margin:18px 0}
+          th,td{padding:10px 6px;border-bottom:1px solid #ddd;font-size:14px}
+          th{text-align:left}
+          .totals{margin-left:auto;max-width:330px}
+          .totals div{display:flex;justify-content:space-between;padding:5px 0}
+          .total{font-size:20px;font-weight:700;border-top:2px solid #111;margin-top:5px;padding-top:10px!important}
+          .cancelled{border:2px solid #b42318;color:#b42318;padding:8px 12px;font-weight:700;display:inline-block;margin-top:10px}
+          .actions{margin-top:28px}
+          button{padding:12px 18px;font-size:16px}
+          @media print{.actions{display:none} body{padding:0}}
+        </style>
+      </head>
+      <body>
+        <header>
+          <h1>${receiptEscape(shopName)}</h1>
+          <div>Reçu de vente #${receiptEscape(receiptNumber)}</div>
+          <div class="muted">Généré par Whatzabi</div>
+          ${cancelled ? '<div class="cancelled">VENTE ANNULÉE</div>' : ''}
+        </header>
+
+        <section>
+          <div><strong>Client :</strong> ${receiptEscape(customer?.name || 'Vente comptoir')}</div>
+          <div><strong>Statut :</strong> ${receiptEscape(saleStatusLabel(sale.status))}</div>
+        </section>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Produit</th>
+              <th style="text-align:center">Qté</th>
+              <th style="text-align:right">Prix</th>
+              <th style="text-align:right">Total</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+
+        <div class="totals">
+          <div class="total"><span>Total</span><span>${receiptEscape(fmt(sale.total_amount))}</span></div>
+          <div><span>Payé</span><span>${receiptEscape(fmt(sale.paid_amount))}</span></div>
+          <div><span>Reste</span><span>${receiptEscape(fmt(sale.remaining_amount))}</span></div>
+        </div>
+
+        <p><strong>Paiement</strong><br>${paymentText}</p>
+
+        <p class="muted">
+          Ce document est un reçu de vente Whatzabi. Il ne constitue pas une facture
+          normalisée ou fiscale tant que le module de facturation réglementaire
+          applicable n'est pas activé.
+        </p>
+
+        <div class="actions">
+          <button onclick="window.print()">Imprimer / Enregistrer en PDF</button>
+        </div>
+      </body>
+      </html>
+    `);
+    receiptWindow.document.close();
+    receiptWindow.focus();
+  } catch (error) {
+    receiptWindow.close();
+    toast(error.message || 'Impossible de générer le reçu.');
+  }
+}
+
+async function cancelSaleFromActions(saleId) {
+  const sale = state.sales.find((item) => Number(item.id) === Number(saleId));
+  if (!sale) {
+    toast('Vente introuvable.');
+    return;
+  }
+
+  if (!can('sale.cancel')) {
+    toast('Ton rôle ne permet pas d’annuler une vente.');
+    return;
+  }
+
+  const reason = window.prompt(
+    'Motif de l’annulation de la vente #' +
+    (sale.sale_number ?? sale.id) +
+    ' :',
+    ''
+  );
+
+  if (reason === null) return;
+  if (!reason.trim()) {
+    toast('Le motif d’annulation est obligatoire.');
+    return;
+  }
+
+  if (!window.confirm(
+    'Confirmer l’annulation ? Le stock sera réintégré et l’opération sera tracée.'
+  )) {
+    return;
+  }
+
+  try {
+    await api('/pwa/sales/' + sale.id + '/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+
+    closeSaleActions();
+    await refresh();
+    toast('Vente annulée. Stock réintégré.');
+  } catch (error) {
+    toast(error.message || 'Impossible d’annuler la vente.');
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const saleButton = event.target.closest('[data-sale-actions]');
+  if (saleButton) {
+    openSaleActions(saleButton.dataset.saleActions);
+  }
+});
+
+$('saleActionCloseBtn')?.addEventListener('click', closeSaleActions);
+$('saleReceiptBtn')?.addEventListener('click', () => {
+  if (selectedSaleActionId != null) {
+    generateSaleReceipt(selectedSaleActionId);
+  }
+});
+$('saleCancelBtn')?.addEventListener('click', () => {
+  if (selectedSaleActionId != null) {
+    cancelSaleFromActions(selectedSaleActionId);
+  }
+});
 
 async function selectShop(shopId, { silent = false } = {}) {
   const data = await api('/auth/select-shop', {
