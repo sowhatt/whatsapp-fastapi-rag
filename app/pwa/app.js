@@ -223,11 +223,22 @@ function openInvoiceDraftItem() {
   }
 
   $('productCancelEditBtn').hidden = false;
+  const conversionInfo =
+    candidate.invoice_original_price && candidate.invoice_original_currency
+      ? ' Prix facture : ' + candidate.invoice_original_price + ' ' +
+        candidate.invoice_original_currency + ' → ' +
+        candidate.purchase_price + ' ' +
+        (state.currencyContext?.shop_currency || candidate.currency || '') +
+        ' (taux ' + candidate.invoice_exchange_rate +
+        ', ' + candidate.invoice_rate_source + ').'
+      : '';
+
   setSmartCatalogStatus(
     'Facture : ligne ' + (invoiceDraftPosition + 1) + '/' + invoiceDraftQueue.length + '. ' +
     (existing
       ? 'Le stock proposé inclut la quantité achetée. Vérifie avant de valider.'
-      : 'Complète notamment le prix de vente avant de créer le produit.')
+      : 'Complète notamment le prix de vente avant de créer le produit.') +
+    conversionInfo
   );
 
   showTab('products');
@@ -592,7 +603,12 @@ document.querySelectorAll('[data-tab]').forEach((button) =>
 );
 
 document.querySelectorAll('[data-open-tab]').forEach((button) =>
-  button.addEventListener('click', () => showTab(button.dataset.openTab)),
+  button.addEventListener('click', () => {
+    showTab(button.dataset.openTab);
+    if (button.dataset.openTab === 'currencies') {
+      loadCurrencyRates();
+    }
+  }),
 );
 
 
