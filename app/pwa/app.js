@@ -618,6 +618,28 @@ async function generateSaleReceipt(saleId) {
 
     const receiptNumber = sale.sale_number ?? sale.id;
     const cancelled = String(sale.status) === 'cancelled';
+    const shareLines = (items || []).map((item) => {
+      const product = state.products.find(
+        (entry) => Number(entry.id) === Number(item.product_id)
+      );
+      const name = product?.name || ('Produit #' + item.product_id);
+      return item.quantity + ' × ' + name + ' — ' + fmt(item.line_total);
+    });
+    const receiptShareText = [
+      shopName,
+      'Reçu de vente #' + receiptNumber,
+      'Date : ' + fmtSaleDate(sale.created_at),
+      'Client : ' + (customer?.name || 'Vente comptoir'),
+      '',
+      ...shareLines,
+      '',
+      'Total : ' + fmt(sale.total_amount),
+      'Payé : ' + fmt(sale.paid_amount),
+      'Reste : ' + fmt(sale.remaining_amount),
+      'Statut : ' + saleStatusLabel(sale.status),
+      '',
+      'Généré par Whatzabi'
+    ].join('\n');
 
     receiptWindow.document.open();
     receiptWindow.document.write(`
@@ -685,9 +707,71 @@ async function generateSaleReceipt(saleId) {
         </p>
 
         <div class="actions">
+          <button onclick="shareReceipt()">Partager le reçu</button>
           <button onclick="window.print()">Imprimer / Enregistrer en PDF</button>
           <button onclick="window.close()">Fermer le reçu</button>
         </div>
+
+        <script>
+          const RECEIPT_SHARE_TEXT = ${JSON.stringify(receiptShareText)};
+          const RECEIPT_FILE_NAME =
+            'recu-whatzabi-${String(receiptNumber).replace(/[^a-zA-Z0-9_-]/g, '-')}.html';
+
+          async function shareReceipt() {
+            const shareButton = document.querySelector(
+              '.actions button:first-child'
+            );
+            const previousLabel = shareButton ? shareButton.textContent : '';
+
+            try {
+              if (shareButton) shareButton.textContent = 'Préparation…';
+
+              const html =
+                '<!doctype html>\\n' +
+                document.documentElement.outerHTML;
+              const file = new File(
+                [html],
+                RECEIPT_FILE_NAME,
+                { type: 'text/html' }
+              );
+
+              if (
+                navigator.share &&
+                navigator.canShare &&
+                navigator.canShare({ files: [file] })
+              ) {
+                await navigator.share({
+                  title: 'Reçu Whatzabi #${receiptEscape(receiptNumber)}',
+                  text: RECEIPT_SHARE_TEXT,
+                  files: [file]
+                });
+                return;
+              }
+
+              if (navigator.share) {
+                await navigator.share({
+                  title: 'Reçu Whatzabi #${receiptEscape(receiptNumber)}',
+                  text: RECEIPT_SHARE_TEXT
+                });
+                return;
+              }
+
+              if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(RECEIPT_SHARE_TEXT);
+                alert('Reçu copié. Tu peux maintenant le coller dans WhatsApp, SMS ou e-mail.');
+                return;
+              }
+
+              alert('Le partage natif n’est pas disponible sur cet appareil.');
+            } catch (error) {
+              if (error?.name !== 'AbortError') {
+                alert('Impossible de partager le reçu.');
+              }
+            } finally {
+              if (shareButton) shareButton.textContent = previousLabel;
+            }
+          }
+        </script>
       </body>
       </html>
     `);
