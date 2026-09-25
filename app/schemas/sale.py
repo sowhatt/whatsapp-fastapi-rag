@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -27,5 +27,6 @@ class SaleRead(BaseModel):
     remaining_amount: int
     status: str
     due_date: date | None = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
