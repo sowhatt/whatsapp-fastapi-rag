@@ -28,6 +28,17 @@ class CurrencyConvertRequest(BaseModel):
     to_currency: str | None = Field(default=None, min_length=3, max_length=3)
 
 
+class CurrencyBatchItem(BaseModel):
+    index: int = Field(ge=0)
+    amount: Decimal
+    from_currency: str = Field(min_length=3, max_length=3)
+
+
+class CurrencyBatchConvertRequest(BaseModel):
+    items: list[CurrencyBatchItem]
+    to_currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
 def _current_shop(db: Session) -> Shop:
     shop_id = get_current_shop_id(db)
     if shop_id is None:
@@ -214,4 +225,75 @@ def convert_currency(payload: CurrencyConvertRequest, db: Session = Depends(get_
         "converted_amount": str(converted),
         "rate_date": valid_date,
         "source": "Frankfurter",
+    }
+
+
+@router.post("/currencies/convert-batch")
+def convert_currency_batch(
+    payload: CurrencyBatchConvertRequest,
+    db: Session = Depends(get_db),
+):
+    shop = _current_shop(db)
+    quote = _currency(db, payload.to_currency or shop.currency_code)
+
+    if not payload.items:
+        return {
+            "to_currency": quote.code,
+            "items": [],
+            "rates": [],
+        }
+
+    grouped: dict[str, list[CurrencyBatchItem]] = {}
+    for item in payload.items:
+        code = str(item.from_currency or "").upper().strip()
+        grouped.setdefault(code, []).append(item)
+
+    converted_items = []
+    rate_rows = []
+
+    for code, items in grouped.items():
+        base = _currency(db, code)
+        rate, valid_date = _frankfurter_rate(base.code, quote.code)
+
+        _save_rate(
+            db,
+            base=base,
+            quote=quote,
+            rate=rate,
+            valid_date=valid_date,
+        )
+
+        rate_rows.append(
+            {
+                "from_currency": base.code,
+                "to_currency": quote.code,
+                "rate": str(rate),
+                "rate_date": valid_date,
+                "source": "Frankfurter",
+            }
+        )
+
+        for item in items:
+            converted_items.append(
+                {
+                    "index": item.index,
+                    "amount": str(item.amount),
+                    "from_currency": base.code,
+                    "to_currency": quote.code,
+                    "rate": str(rate),
+                    "converted_amount": str(
+                        _convert_amount(item.amount, rate, quote.decimals)
+                    ),
+                    "rate_date": valid_date,
+                    "source": "Frankfurter",
+                }
+            )
+
+    db.commit()
+
+    converted_items.sort(key=lambda item: item["index"])
+    return {
+        "to_currency": quote.code,
+        "items": converted_items,
+        "rates": rate_rows,
     }
