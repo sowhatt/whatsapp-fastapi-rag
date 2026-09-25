@@ -444,7 +444,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=15" defer></script>
+  <script src="/auth/app.js?v=16" defer></script>
   <script src="/auth/smart-catalog.js?v=41" defer></script>
   <script src="/auth/express-sale.js?v=3" defer></script>
 
@@ -551,6 +551,30 @@
 
     </div>
   </div>
+
+
+<div id="saleActionSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card sale-action-card" role="dialog" aria-modal="true" aria-labelledby="saleActionTitle">
+    <button id="saleActionCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Vente</span>
+    <h2 id="saleActionTitle">Vente</h2>
+    <p id="saleActionMeta" class="muted"></p>
+
+    <div class="sale-action-buttons">
+      <button id="saleReceiptBtn" type="button" class="primary">
+        🧾 Générer le reçu
+      </button>
+      <button id="saleCancelBtn" type="button" class="danger-action">
+        ↩ Annuler la vente
+      </button>
+    </div>
+
+    <p class="muted small">
+      Le reçu est un justificatif de vente. La facture normalisée/fiscale sera branchée
+      séparément lorsque le module réglementaire sera disponible.
+    </p>
+  </div>
+</div>
 
 <div id="voiceSheet" class="voice-sheet" hidden>
         <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
