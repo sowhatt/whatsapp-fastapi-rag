@@ -87,7 +87,7 @@
         [
           c.brand,
           c.packaging,
-          c.purchase_price!=null&&('Achat : '+c.purchase_price),
+          c.purchase_price!=null&&('Achat : '+c.purchase_price+' '+(c.currency||'')),
           c.quantity!=null&&('Qté : '+c.quantity)
         ].filter(Boolean).forEach(x=>{
           const chip=document.createElement('span');
@@ -240,7 +240,49 @@
     try{ toast(`Produit reconnu : ${candidate.name}. Complète la fiche avant validation.`); }catch{}
   }
 
-  function prepareInvoiceProducts(e){
+  async function convertInvoiceCandidate(candidate){
+    if(
+      candidate?.purchase_price == null ||
+      !candidate?.currency
+    ){
+      return candidate;
+    }
+
+    const token=localStorage.getItem('whatzabi_token')||'';
+    const response=await fetch('/pwa/currencies/convert',{
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        amount:String(candidate.purchase_price),
+        from_currency:String(candidate.currency).toUpperCase()
+      })
+    });
+
+    let body=null;
+    try{body=await response.json()}catch{}
+
+    if(!response.ok){
+      throw new Error(
+        body?.detail || 'Conversion de devise impossible.'
+      );
+    }
+
+    return {
+      ...candidate,
+      purchase_price:Number(body.converted_amount),
+      currency:body.to_currency,
+      invoice_original_price:String(body.amount),
+      invoice_original_currency:body.from_currency,
+      invoice_exchange_rate:String(body.rate),
+      invoice_rate_date:body.rate_date,
+      invoice_rate_source:body.source
+    };
+  }
+
+  async function prepareInvoiceProducts(e){
     if(e){
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -320,7 +362,18 @@
       return;
     }
 
-    window.whatzabiOpenInvoiceDrafts(prepared);
+    try{
+      const converted=[];
+      for(const item of prepared){
+        converted.push({
+          ...item,
+          candidate:await convertInvoiceCandidate(item.candidate)
+        });
+      }
+      window.whatzabiOpenInvoiceDrafts(converted);
+    }catch(err){
+      try{toast(err?.message||'Conversion de devise impossible.')}catch{}
+    }
   }
 
   async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
