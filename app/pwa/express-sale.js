@@ -32,6 +32,95 @@
     renderExpressSale();
   }
 
+
+  function addQuantity(productId, quantity) {
+    const product = state.products.find(
+      (p) => Number(p.id) === Number(productId)
+    );
+    if (!product) {
+      throw new Error('Produit introuvable dans la boutique active.');
+    }
+
+    const qty = Math.max(1, Number(quantity || 1));
+    const current = cart.get(product.id);
+    const nextQty = (current?.quantity || 0) + qty;
+    const stock = Number(product.stock || 0);
+
+    if (stock <= 0) {
+      throw new Error(product.name + ' est en rupture de stock.');
+    }
+
+    if (nextQty > stock) {
+      throw new Error(
+        'Stock insuffisant pour ' + product.name +
+        ' (disponible : ' + stock + ').'
+      );
+    }
+
+    cart.set(product.id, { product, quantity: nextQty });
+  }
+
+  window.whatzabiExpressAddVoiceLines = function(lines) {
+    const requested = Array.isArray(lines) ? lines : [];
+    if (!requested.length) {
+      throw new Error('Aucun produit vocal à ajouter.');
+    }
+
+    // Validation complète avant mutation du panier.
+    const simulated = new Map();
+    for (const line of requested) {
+      const product = state.products.find(
+        (p) => Number(p.id) === Number(line.product_id)
+      );
+      if (!product) {
+        throw new Error('Produit vocal introuvable dans la boutique active.');
+      }
+
+      const qty = Math.max(1, Number(line.quantity || 1));
+      const alreadyInCart = cart.get(product.id)?.quantity || 0;
+      const alreadyRequested = simulated.get(product.id) || 0;
+      const targetQty = alreadyInCart + alreadyRequested + qty;
+      const stock = Number(product.stock || 0);
+
+      if (stock <= 0) {
+        throw new Error(product.name + ' est en rupture de stock.');
+      }
+
+      if (targetQty > stock) {
+        throw new Error(
+          'Stock insuffisant pour ' + product.name +
+          ' (demandé : ' + targetQty +
+          ', disponible : ' + stock + ').'
+        );
+      }
+
+      simulated.set(product.id, alreadyRequested + qty);
+    }
+
+    for (const line of requested) {
+      addQuantity(line.product_id, line.quantity);
+    }
+
+    query = '';
+    if ($('expressSearch')) $('expressSearch').value = '';
+    renderExpressSale();
+
+    return {
+      line_count: requested.length,
+      total: total(),
+      cart_size: cart.size,
+    };
+  };
+
+  window.whatzabiExpressOpen = function() {
+    showTab('sales');
+    renderExpressSale();
+    $('expressCheckout')?.scrollIntoView({
+      behavior:'smooth',
+      block:'center'
+    });
+  };
+
   function renderExpressSale() {
     const grid = $('expressProductGrid');
     const cartBox = $('expressCart');
