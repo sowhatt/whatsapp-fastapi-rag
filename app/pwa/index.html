@@ -266,26 +266,25 @@
         <article class="card">
           <h2>Devise de la boutique</h2>
           <p class="muted">
-            La devise configurée ici sera utilisée pour les prix, les achats,
-            les factures et les conversions.
+            Cette devise est utilisée pour les prix, les achats et les conversions de factures.
           </p>
-          <div id="currencyShopSummary" class="item">
-            <div class="item-main">
-              <div class="item-title">Devise actuelle</div>
-              <div class="item-meta">Configuration multi-devise en cours d’activation</div>
-            </div>
-            <strong>—</strong>
-          </div>
+          <label class="field">
+            <span>Devise active</span>
+            <select id="shopCurrencySelect"></select>
+          </label>
+          <p id="currencyShopStatus" class="muted small"></p>
         </article>
 
         <article class="card">
-          <h2>Taux de change</h2>
-          <p class="muted">
-            Les taux seront synchronisés et historisés pour permettre les
-            conversions de factures et la calculatrice intelligente.
-          </p>
+          <div class="panel-heading">
+            <div>
+              <h2>Taux de change</h2>
+              <p class="muted small">Source publique : Frankfurter. Les taux sont historisés dans Whatzabi.</p>
+            </div>
+            <button id="currencyRefreshBtn" type="button" class="ghost">↻ Actualiser</button>
+          </div>
           <div id="currencyRatesList" class="list compact-list">
-            <p class="muted empty-state">Aucun taux chargé pour le moment.</p>
+            <p class="muted empty-state">Chargement des taux…</p>
           </div>
         </article>
       </section>
@@ -303,7 +302,7 @@
               <span>Prix de vente</span>
               <div class="input-with-suffix">
                 <input id="productPrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0" required>
-                <span>FCFA</span>
+                <span id="productPriceCurrency">FCFA</span>
               </div>
             </label>
 
@@ -311,7 +310,7 @@
               <span>Prix d'achat</span>
               <div class="input-with-suffix">
                 <input id="productPurchasePrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
-                <span>FCFA</span>
+                <span id="productPurchaseCurrency">FCFA</span>
               </div>
             </label>
 
