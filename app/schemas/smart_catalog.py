@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
@@ -8,8 +9,9 @@ class SmartCatalogCandidate(BaseModel):
     packaging: str | None = None
     unit: str | None = None
     barcode: str | None = None
-    purchase_price: int | None = None
+    purchase_price: Decimal | None = None
     quantity: int | None = None
+    currency: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
