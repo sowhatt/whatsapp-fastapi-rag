@@ -240,30 +240,49 @@
     try{ toast(`Produit reconnu : ${candidate.name}. Complète la fiche avant validation.`); }catch{}
   }
 
-  async function convertInvoiceCandidate(candidate){
-    if(candidate?.purchase_price == null){
-      return candidate;
-    }
+  async function convertInvoiceCandidates(items){
+    const convertible=[];
+    const output=items.map((item,index)=>{
+      const candidate={...(item.candidate||{})};
 
-    if(!candidate?.currency){
-      return {
-        ...candidate,
-        purchase_price:null,
-        invoice_currency_unresolved:true
-      };
+      if(candidate.purchase_price == null){
+        return {...item,candidate};
+      }
+
+      if(!candidate.currency){
+        return {
+          ...item,
+          candidate:{
+            ...candidate,
+            purchase_price:null,
+            invoice_currency_unresolved:true
+          }
+        };
+      }
+
+      convertible.push({
+        index,
+        amount:String(candidate.purchase_price),
+        from_currency:String(candidate.currency).toUpperCase()
+      });
+
+      return {...item,candidate};
+    });
+
+    if(!convertible.length){
+      return output;
     }
 
     const token=localStorage.getItem('whatzabi_token')||'';
-    const response=await fetch('/pwa/currencies/convert',{
+    const started=performance.now();
+
+    const response=await fetch('/pwa/currencies/convert-batch',{
       method:'POST',
       headers:{
         Authorization:`Bearer ${token}`,
         'Content-Type':'application/json'
       },
-      body:JSON.stringify({
-        amount:String(candidate.purchase_price),
-        from_currency:String(candidate.currency).toUpperCase()
-      })
+      body:JSON.stringify({items:convertible})
     });
 
     let body=null;
@@ -275,16 +294,30 @@
       );
     }
 
-    return {
-      ...candidate,
-      purchase_price:Number(body.converted_amount),
-      currency:body.to_currency,
-      invoice_original_price:String(body.amount),
-      invoice_original_currency:body.from_currency,
-      invoice_exchange_rate:String(body.rate),
-      invoice_rate_date:body.rate_date,
-      invoice_rate_source:body.source
-    };
+    (body?.items||[]).forEach(row=>{
+      const target=output[Number(row.index)];
+      if(!target) return;
+
+      target.candidate={
+        ...target.candidate,
+        purchase_price:Number(row.converted_amount),
+        currency:row.to_currency,
+        invoice_original_price:String(row.amount),
+        invoice_original_currency:row.from_currency,
+        invoice_exchange_rate:String(row.rate),
+        invoice_rate_date:row.rate_date,
+        invoice_rate_source:row.source
+      };
+    });
+
+    console.info(
+      '[SMART-CATALOG] conversion facture',
+      Math.round(performance.now()-started)+' ms',
+      'lines='+convertible.length,
+      'rates='+(body?.rates?.length||0)
+    );
+
+    return output;
   }
 
   async function prepareInvoiceProducts(e){
@@ -368,13 +401,7 @@
     }
 
     try{
-      const converted=[];
-      for(const item of prepared){
-        converted.push({
-          ...item,
-          candidate:await convertInvoiceCandidate(item.candidate)
-        });
-      }
+      const converted=await convertInvoiceCandidates(prepared);
       window.whatzabiOpenInvoiceDrafts(converted);
     }catch(err){
       try{toast(err?.message||'Conversion de devise impossible.')}catch{}
@@ -633,7 +660,9 @@
           ? 'Préparation et lecture de la facture…'
           : 'Préparation et reconnaissance du produit…';
 
+      const prepareStarted=performance.now();
       const preparedImage=await prepareCatalogImage(catalogFile);
+      const prepareMs=Math.round(performance.now()-prepareStarted);
       const fd = new FormData();
       fd.append(
         'image',
@@ -646,6 +675,7 @@
 
       const token = localStorage.getItem('whatzabi_token') || '';
 
+      const networkStarted=performance.now();
       const response = await fetch('/pwa/catalog/analyze', {
         method: 'POST',
         headers: {
@@ -654,10 +684,14 @@
         body: fd
       });
 
+      const networkMs=Math.round(performance.now()-networkStarted);
+
+      const parseStarted=performance.now();
       let body = null;
       try{
         body = await response.json();
       }catch{}
+      const parseMs=Math.round(performance.now()-parseStarted);
 
       if(!response.ok){
         throw new Error(
@@ -683,13 +717,23 @@
         JSON.stringify(body)
       );
 
+      const renderStarted=performance.now();
       renderResult(body);
+      const renderMs=Math.round(performance.now()-renderStarted);
+      const totalMs=Math.round(performance.now()-startedAt);
 
       console.info(
-        '[SMART-CATALOG] analyse terminée',
-        Math.round(performance.now() - startedAt) + ' ms',
-        'source=' + catalogSource,
-        'bytes=' + (preparedImage?.size || 0)
+        '[SMART-CATALOG] timings',
+        {
+          source:catalogSource,
+          prepare_ms:prepareMs,
+          network_server_ms:networkMs,
+          parse_ms:parseMs,
+          render_ms:renderMs,
+          total_ms:totalMs,
+          bytes:preparedImage?.size||0,
+          candidates:(body?.candidates||[]).length
+        }
       );
 
       if(status) status.textContent = '';
