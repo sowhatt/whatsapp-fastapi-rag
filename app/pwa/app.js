@@ -1257,6 +1257,88 @@ function showVoiceProblem(message) {
   });
 }
 
+
+function splitVoiceSaleSegments(transcript) {
+  const normalized = String(transcript || '')
+    .replace(/\s+(?:et|puis|avec)\s+/gi, ' | ')
+    .replace(/[;,]+/g, ' | ');
+
+  return normalized
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function resolveVoiceSegment(segment) {
+  const quantity = extractVoiceQuantity(segment);
+  const candidates = findVoiceProductCandidates(segment);
+
+  if (!candidates.length) {
+    return {
+      ok: false,
+      reason: `Produit introuvable : « ${segment} ».`,
+    };
+  }
+
+  const best = candidates[0];
+  const second = candidates[1];
+
+  if (second && second.score === best.score) {
+    const names = candidates
+      .filter((candidate) => candidate.score === best.score)
+      .slice(0, 3)
+      .map((candidate) => candidate.product.name)
+      .join(', ');
+
+    return {
+      ok: false,
+      reason: `Plusieurs produits possibles pour « ${segment} » : ${names}.`,
+    };
+  }
+
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    return {
+      ok: false,
+      reason: `Quantité non comprise pour « ${segment} ».`,
+    };
+  }
+
+  return {
+    ok: true,
+    product: best.product,
+    quantity,
+  };
+}
+
+function resolveVoiceSale(transcript) {
+  const segments = splitVoiceSaleSegments(transcript);
+  const resolved = [];
+
+  for (const segment of segments) {
+    const result = resolveVoiceSegment(segment);
+    if (!result.ok) return result;
+
+    const existing = resolved.find(
+      (line) => Number(line.product.id) === Number(result.product.id)
+    );
+
+    if (existing) {
+      existing.quantity += result.quantity;
+    } else {
+      resolved.push({
+        product: result.product,
+        quantity: result.quantity,
+      });
+    }
+  }
+
+  return {
+    ok: resolved.length > 0,
+    lines: resolved,
+    reason: resolved.length ? null : 'Aucun produit compris.',
+  };
+}
+
 $('voiceContinueBtn').addEventListener('click', () => {
   const transcript = $('voiceTranscript').textContent.trim();
 
@@ -1270,51 +1352,45 @@ $('voiceContinueBtn').addEventListener('click', () => {
     return;
   }
 
-  const quantity = extractVoiceQuantity(transcript);
+  const resolution = resolveVoiceSale(transcript);
 
-  if (!Number.isFinite(quantity) || quantity < 1) {
-    showVoiceProblem('Je n’ai pas compris la quantité.');
+  if (!resolution.ok) {
+    showVoiceProblem(resolution.reason || 'Je n’ai pas compris la vente.');
     return;
   }
 
-  const candidates = findVoiceProductCandidates(transcript);
+  if (typeof window.whatzabiExpressAddVoiceLines !== 'function') {
+    showVoiceProblem('Le panier Vente Express est indisponible.');
+    return;
+  }
 
-  if (!candidates.length) {
-    showVoiceProblem(
-      `Je ne trouve pas le produit dans ton catalogue : « ${transcript} ».`,
+  try {
+    const lines = resolution.lines.map((line) => ({
+      product_id: line.product.id,
+      quantity: line.quantity,
+    }));
+
+    const result = window.whatzabiExpressAddVoiceLines(lines);
+
+    closeVoiceSheet();
+
+    if (typeof window.whatzabiExpressOpen === 'function') {
+      window.whatzabiExpressOpen();
+    } else {
+      showTab('sales');
+    }
+
+    const summary = resolution.lines
+      .map((line) => `${line.quantity} × ${line.product.name}`)
+      .join(' · ');
+
+    toast(
+      'Vente vocale prête : ' + summary +
+      (result?.total != null ? ' · Total ' + fmt(result.total) : '')
     );
-    return;
+  } catch (error) {
+    showVoiceProblem(error?.message || 'Impossible de préparer la vente vocale.');
   }
-
-  const best = candidates[0];
-  const second = candidates[1];
-
-  // Ne pas choisir arbitrairement lorsque deux produits ont le même score.
-  if (second && second.score === best.score) {
-    const names = candidates
-      .filter((candidate) => candidate.score === best.score)
-      .slice(0, 3)
-      .map((candidate) => candidate.product.name)
-      .join(', ');
-
-    showVoiceProblem(
-      `J’ai plusieurs produits possibles : ${names}. Dis le nom plus précisément.`,
-    );
-    return;
-  }
-
-  const product = best.product;
-
-  $('saleCustomer').value = '';
-  $('saleProduct').value = String(product.id);
-  $('saleQty').value = String(quantity);
-  $('salePaid').value = '0';
-  $('saleChannel').value = 'cash';
-
-  closeVoiceSheet();
-  showTab('sales');
-
-  toast(`À vérifier : ${quantity} × ${product.name}`);
 });
 
 $('voiceRecordBtn').addEventListener('click', () => {
