@@ -153,6 +153,47 @@ def _coerce_optional_int(value):
     return int(number) if number.is_integer() else None
 
 
+def _coerce_optional_decimal(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    compact = (
+        text.replace("\u00a0", " ")
+        .replace(" ", "")
+        .replace("€", "")
+        .replace("$", "")
+        .replace("£", "")
+        .replace("₦", "")
+        .replace("GH₵", "")
+        .replace("FCFA", "")
+        .replace("XOF", "")
+        .replace("CFA", "")
+        .strip()
+    )
+
+    # OCR/business documents commonly use comma as decimal separator.
+    if "," in compact and "." not in compact:
+        compact = compact.replace(",", ".")
+    elif "," in compact and "." in compact:
+        # Keep the right-most separator as decimal separator.
+        if compact.rfind(",") > compact.rfind("."):
+            compact = compact.replace(".", "").replace(",", ".")
+        else:
+            compact = compact.replace(",", "")
+
+    try:
+        from decimal import Decimal
+        return Decimal(compact)
+    except Exception:
+        return None
+
+
 def _sanitize_candidate_payload(item: object) -> dict | None:
     if not isinstance(item, dict):
         return None
@@ -163,8 +204,11 @@ def _sanitize_candidate_payload(item: object) -> dict | None:
 
     cleaned = dict(item)
     cleaned["name"] = name
-    cleaned["purchase_price"] = _coerce_optional_int(item.get("purchase_price"))
+    cleaned["purchase_price"] = _coerce_optional_decimal(item.get("purchase_price"))
     cleaned["quantity"] = _coerce_optional_int(item.get("quantity"))
+
+    currency = str(item.get("currency") or "").upper().strip()
+    cleaned["currency"] = currency if len(currency) == 3 else None
 
     confidence = item.get("confidence")
     try:
@@ -210,11 +254,13 @@ def analyze_catalog_image(
         "Pour chaque ligne, name est le nom commercial le plus précis lisible; brand, variant et packaging "
         "sont renseignés seulement s'ils sont lisibles. quantity est la quantité achetée. "
         "purchase_price est le prix unitaire d'achat tel qu'il est affiché sur la facture, jamais le total de la ligne. "
+        "currency est le code ISO 4217 de la devise de la ligne ou de la facture (EUR, XOF, USD, NGN, GHS, GBP) "
+        "uniquement si la devise est lisible ou clairement indiquée; sinon null. "
         "Si le prix unitaire ou la quantité est ambigu, utilise null plutôt que d'inventer. "
         "Si source=barcode, lis uniquement un GTIN/EAN/UPC clairement visible et n'invente jamais les chiffres. "
         "Retourne uniquement un objet JSON avec la clé candidates. "
         "Chaque candidate contient: name, brand, variant, packaging, unit, barcode, "
-        "purchase_price, quantity, confidence. "
+        "purchase_price, quantity, currency, confidence. "
         "Ne devine pas une valeur illisible: utilise null. "
         "purchase_price est renseigné seulement si le prix unitaire est clairement visible; sinon utilise null. "
         "confidence est entre 0 et 1. "
