@@ -404,75 +404,12 @@ def ensure_catalog_schema() -> None:
         """
         INSERT INTO currencies (code, name, symbol, decimals, is_active)
         VALUES
-            ('EUR', 'Euro', '€', 2, TRUE),
+            ('EUR', 'Euro', 'EUR', 2, TRUE),
             ('XOF', 'Franc CFA BCEAO', 'FCFA', 0, TRUE),
-            ('USD', 'Dollar américain', '
-    ]
-    with engine.begin() as connection:
-        for statement in statements:
-            connection.execute(text(statement))
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Routes publiques indispensables.
-app.include_router(health_router)
-app.include_router(whatsapp_webhook_router)
-app.include_router(auth_router)
-
-# Routes PWA : authentification JWT + isolation automatique
-# par merchant_id sur la session SQLAlchemy.
-for pwa_router in (
-    categories_router,
-    products_router,
-    customers_router,
-    sales_router,
-    payments_router,
-    pwa_voice_router,
-    pwa_smart_catalog_router,
-    pwa_currency_router,
-):
-    app.include_router(
-        pwa_router,
-        prefix="/pwa",
-        dependencies=[Depends(require_pwa_merchant)],
-    )
-
-# Routes internes : accessibles uniquement avec X-Admin-Token.
-_internal_routers = (
-    categories_router,
-    products_router,
-    customers_router,
-    sales_router,
-    payments_router,
-    suppliers_router,
-    purchases_router,
-    supplier_payments_router,
-    financial_entries_router,
-    summaries_router,
-    customers_ledger_router,
-    suppliers_ledger_router,
-    allocations_router,
-    whatsapp_send_router,
-    debug_env_router,
-    admin_router,
-)
-
-for internal_router in _internal_routers:
-    app.include_router(
-        internal_router,
-        dependencies=[Depends(require_admin_token)],
-    )
-, 2, TRUE),
-            ('NGN', 'Naira nigérian', '₦', 2, TRUE),
-            ('GHS', 'Cedi ghanéen', 'GH₵', 2, TRUE),
-            ('GBP', 'Livre sterling', '£', 2, TRUE)
+            ('USD', 'Dollar americain', 'USD', 2, TRUE),
+            ('NGN', 'Naira nigerian', 'NGN', 2, TRUE),
+            ('GHS', 'Cedi ghaneen', 'GHS', 2, TRUE),
+            ('GBP', 'Livre sterling', 'GBP', 2, TRUE)
         ON CONFLICT (code) DO UPDATE SET
             name = EXCLUDED.name,
             symbol = EXCLUDED.symbol,
@@ -508,6 +445,7 @@ for pwa_router in (
     payments_router,
     pwa_voice_router,
     pwa_smart_catalog_router,
+    pwa_currency_router,
 ):
     app.include_router(
         pwa_router,
