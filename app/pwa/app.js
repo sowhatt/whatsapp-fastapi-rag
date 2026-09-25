@@ -1,5 +1,21 @@
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => new Intl.NumberFormat('fr-FR').format(Number(n || 0)) + ' FCFA';
+function currencyMeta(code) {
+  const context = state?.currencyContext || {};
+  const currencies = context.currencies || [];
+  return currencies.find((item) => item.code === code) || null;
+}
+
+function fmt(n) {
+  const code = state?.currencyContext?.shop_currency || 'XOF';
+  const meta = currencyMeta(code);
+  const decimals = Number(meta?.decimals ?? (code === 'XOF' ? 0 : 2));
+  const value = Number(n || 0);
+  const formatted = new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+  return formatted + ' ' + (meta?.symbol || code);
+}
 const ROLE_LABELS = {
   OWNER: 'Propriétaire',
   MANAGER: 'Manager',
@@ -65,7 +81,7 @@ function renderPermissions() {
 }
 
 let token = localStorage.getItem('whatzabi_token') || '';
-let state = { products: [], customers: [], sales: [], merchant: null, shops: [] };
+let state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null };
 let editingProductId = null;
 let invoiceDraftQueue = [];
 let invoiceDraftPosition = 0;
@@ -238,9 +254,66 @@ window.whatzabiOpenInvoiceDrafts = function(items) {
 function logout() {
   token = '';
   localStorage.removeItem('whatzabi_token');
-  state = { products: [], customers: [], sales: [], merchant: null, shops: [] };
+  state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null };
   $('appView').hidden = true;
   $('loginView').hidden = false;
+}
+
+function renderCurrencyPanel() {
+  const context = state.currencyContext;
+  if (!context) return;
+
+  const select = $('shopCurrencySelect');
+  if (select) {
+    select.innerHTML = (context.currencies || [])
+      .map((item) =>
+        `<option value="${esc(item.code)}" ${item.code === context.shop_currency ? 'selected' : ''}>${esc(item.code)} — ${esc(item.name)} (${esc(item.symbol || item.code)})</option>`
+      )
+      .join('');
+  }
+
+  const meta = currencyMeta(context.shop_currency);
+  if ($('currencyShopStatus')) {
+    $('currencyShopStatus').textContent =
+      'Devise active : ' + context.shop_currency +
+      (meta?.symbol ? ' (' + meta.symbol + ')' : '');
+  }
+
+  if ($('productPriceCurrency')) {
+    $('productPriceCurrency').textContent = meta?.symbol || context.shop_currency;
+  }
+  if ($('productPurchaseCurrency')) {
+    $('productPurchaseCurrency').textContent = meta?.symbol || context.shop_currency;
+  }
+}
+
+async function loadCurrencyRates() {
+  const list = $('currencyRatesList');
+  const base = state.currencyContext?.shop_currency || 'EUR';
+
+  if (list) {
+    list.innerHTML = '<p class="muted empty-state">Chargement des taux…</p>';
+  }
+
+  try {
+    const rows = await api('/pwa/currencies/rates?base=' + encodeURIComponent(base));
+    if (!list) return;
+
+    list.innerHTML = rows.length
+      ? rows.map((row) =>
+          `<article class="activity-row">
+            <div>
+              <strong>1 ${esc(row.base)} = ${esc(row.rate)} ${esc(row.quote)}</strong>
+              <span>${esc(row.source)} · ${esc(row.date)}</span>
+            </div>
+          </article>`
+        ).join('')
+      : '<p class="muted empty-state">Aucun taux disponible.</p>';
+  } catch (error) {
+    if (list) {
+      list.innerHTML = '<p class="error">' + esc(error.message) + '</p>';
+    }
+  }
 }
 
 function renderIdentity() {
@@ -267,6 +340,7 @@ function render() {
 
   renderIdentity();
   renderPermissions();
+  renderCurrencyPanel();
   const revenue = sales.reduce(
     (sum, sale) => sum + Number(sale.total_amount || 0),
     0,
@@ -432,11 +506,13 @@ async function loadContext() {
 
 async function refresh() {
   await loadContext();
-  const [products, customers, sales] = await Promise.all([
+  const [currencyContext, products, customers, sales] = await Promise.all([
+    api('/pwa/currencies/context'),
     api('/pwa/products'),
     api('/pwa/customers'),
     api('/pwa/sales'),
   ]);
+  state.currencyContext = currencyContext;
   state.products = products;
   state.customers = customers;
   state.sales = sales;
@@ -489,6 +565,27 @@ $('shopSelector').addEventListener('change', async (event) => {
 });
 
 $('logoutBtn').addEventListener('click', logout);
+
+$('shopCurrencySelect')?.addEventListener('change', async (event) => {
+  const previous = state.currencyContext?.shop_currency || 'XOF';
+  try {
+    await api('/pwa/currencies/shop', {
+      method: 'PUT',
+      body: JSON.stringify({ currency_code: event.target.value }),
+    });
+    await refresh();
+    await loadCurrencyRates();
+    toast('Devise boutique mise à jour');
+  } catch (error) {
+    event.target.value = previous;
+    toast(error.message);
+  }
+});
+
+$('currencyRefreshBtn')?.addEventListener('click', async () => {
+  await loadCurrencyRates();
+});
+
 
 document.querySelectorAll('[data-tab]').forEach((button) =>
   button.addEventListener('click', () => showTab(button.dataset.tab)),
