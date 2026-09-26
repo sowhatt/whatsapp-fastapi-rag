@@ -9,9 +9,28 @@ from app.models.purchase import Purchase
 from app.models.purchase_item import PurchaseItem
 from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
+from app.models.shop_operation import ShopOperation
+from app.rbac import require_permission
 from app.schemas.purchase import PurchaseCreate, PurchaseRead, CancelPurchasePayload
+from app.services.shop_context_service import adjust_stock, get_current_shop_id, get_effective_stock, record_shop_operation
 
 router = APIRouter(tags=["achats"])
+
+
+def _purchases_query(db: Session):
+    query = db.query(Purchase)
+    shop_id = get_current_shop_id(db)
+    if shop_id is None:
+        return query
+    return query.join(
+        ShopOperation,
+        (ShopOperation.entity_type == "purchase")
+        & (ShopOperation.entity_id == Purchase.id),
+    ).filter(ShopOperation.shop_id == shop_id)
+
+
+def _purchase_in_current_shop(db: Session, purchase_id: int):
+    return _purchases_query(db).filter(Purchase.id == purchase_id).first()
 
 
 def add_event(
@@ -59,13 +78,20 @@ def add_stock_movement(
 
 
 @router.get("/purchases", response_model=list[PurchaseRead])
-def list_purchases(db: Session = Depends(get_db)):
-    """Liste tous les achats fournisseurs."""
-    return db.query(Purchase).all()
+def list_purchases(
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("purchase.read")),
+):
+    """Liste les achats de la boutique active, du plus récent au plus ancien."""
+    return _purchases_query(db).order_by(Purchase.created_at.desc(), Purchase.id.desc()).all()
 
 
 @router.post("/purchases", response_model=PurchaseRead)
-def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
+def create_purchase(
+    payload: PurchaseCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("purchase.create")),
+):
     """Crée un achat multi-produits, augmente le stock et met à jour la dette fournisseur."""
     supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
     if not supplier:
@@ -104,6 +130,12 @@ def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
 
     remaining_amount = total_amount - paid_amount
 
+    if remaining_amount > 0 and payload.due_date is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Une date d'échéance est obligatoire pour une dette fournisseur",
+        )
+
     if remaining_amount == 0:
         status = "paid"
     elif paid_amount == 0:
@@ -130,9 +162,10 @@ def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
     )
     db.add(purchase)
     db.flush()
+    record_shop_operation("purchase", purchase.id, db)
 
     for product, quantity, unit_cost, line_total in resolved_items:
-        product.stock += quantity
+        adjust_stock(product, quantity, db)
 
         db.add(
             PurchaseItem(
@@ -185,9 +218,13 @@ def create_purchase(payload: PurchaseCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/purchases/{purchase_id}/items")
-def get_purchase_items(purchase_id: int, db: Session = Depends(get_db)):
-    """Affiche les lignes produit d’un achat."""
-    purchase = db.query(Purchase).filter(Purchase.id == purchase_id).first()
+def get_purchase_items(
+    purchase_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("purchase.read")),
+):
+    """Affiche les lignes produit d’un achat de la boutique active."""
+    purchase = _purchase_in_current_shop(db, purchase_id)
     if not purchase:
         raise HTTPException(status_code=404, detail="Achat introuvable")
 
@@ -195,9 +232,13 @@ def get_purchase_items(purchase_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/purchases/{purchase_id}/payments")
-def get_purchase_payments(purchase_id: int, db: Session = Depends(get_db)):
-    """Affiche les paiements liés à un achat."""
-    purchase = db.query(Purchase).filter(Purchase.id == purchase_id).first()
+def get_purchase_payments(
+    purchase_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("purchase.read")),
+):
+    """Affiche les paiements liés à un achat de la boutique active."""
+    purchase = _purchase_in_current_shop(db, purchase_id)
     if not purchase:
         raise HTTPException(status_code=404, detail="Achat introuvable")
 
@@ -205,9 +246,14 @@ def get_purchase_payments(purchase_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/purchases/{purchase_id}/cancel", response_model=PurchaseRead)
-def cancel_purchase(purchase_id: int, payload: CancelPurchasePayload, db: Session = Depends(get_db)):
+def cancel_purchase(
+    purchase_id: int,
+    payload: CancelPurchasePayload,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("purchase.cancel")),
+):
     """Annule un achat sans le supprimer, corrige le stock et la dette fournisseur."""
-    purchase = db.query(Purchase).filter(Purchase.id == purchase_id).first()
+    purchase = _purchase_in_current_shop(db, purchase_id)
     if not purchase:
         raise HTTPException(status_code=404, detail="Achat introuvable")
 
@@ -227,13 +273,13 @@ def cancel_purchase(purchase_id: int, payload: CancelPurchasePayload, db: Sessio
         if not product:
             continue
 
-        if product.stock < item.quantity:
+        if get_effective_stock(product, db) < item.quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Impossible d’annuler l’achat : stock insuffisant pour le produit {product.name}",
             )
 
-        product.stock -= item.quantity
+        adjust_stock(product, -item.quantity, db)
 
         add_stock_movement(
             db=db,
