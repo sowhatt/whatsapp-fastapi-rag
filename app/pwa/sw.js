@@ -1,10 +1,11 @@
-const CACHE = 'whatzabi-pwa-v29';
+const CACHE = 'whatzabi-pwa-v30';
 
 const ASSETS = [
   '/auth/app',
-  '/auth/styles.css?v=11',
-  '/auth/app.js?v=20',
+  '/auth/styles.css?v=12',
+  '/auth/app.js?v=21',
   '/auth/smart-catalog.js?v=45',
+  '/auth/purchases.js?v=1',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
@@ -48,6 +49,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname === '/auth/app' ||
     url.pathname === '/auth/app.js' ||
     url.pathname === '/auth/smart-catalog.js' ||
+    url.pathname === '/auth/purchases.js' ||
     url.pathname === '/auth/styles.css'
   ) {
     event.respondWith(
