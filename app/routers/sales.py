@@ -317,6 +317,12 @@ def create_sale(
             detail="Un client est obligatoire pour une vente à crédit ou partiellement payée",
         )
 
+    if remaining_amount > 0 and payload.due_date is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Une date d'échéance est obligatoire pour une créance client",
+        )
+
     if remaining_amount == 0:
         status = "paid"
     elif paid_amount == 0:
