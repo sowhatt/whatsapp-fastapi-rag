@@ -1,10 +1,10 @@
-const CACHE = 'whatzabi-pwa-v23';
+const CACHE = 'whatzabi-pwa-v24';
 
 const ASSETS = [
   '/auth/app',
   '/auth/styles.css?v=11',
-  '/auth/app.js?v=18',
-  '/auth/smart-catalog.js?v=41',
+  '/auth/app.js?v=19',
+  '/auth/smart-catalog.js?v=42',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
