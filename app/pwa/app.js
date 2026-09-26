@@ -562,9 +562,18 @@ function render() {
 
   $('customerList').innerHTML = customers.length
     ? customers
-        .map(
-          (customer) => `<article class="item"><div class="item-main"><div class="item-title">${esc(customer.name)}</div><div class="item-meta">${esc(customer.phone || 'Sans téléphone')}</div></div><div class="money">Dette ${fmt(customer.debt)}</div></article>`,
-        )
+        .map((customer) => {
+          const debt = Number(customer.debt || 0);
+          return `<article class="item">
+            <div class="item-main">
+              <div class="item-title">${esc(customer.name)}</div>
+              <div class="item-meta">${esc(customer.phone || 'Sans téléphone')}</div>
+            </div>
+            ${debt > 0 && can('payment.create')
+              ? `<button type="button" class="debt-link" data-customer-debt="${customer.id}">Dette ${fmt(debt)} ›</button>`
+              : `<div class="money">Dette ${fmt(debt)}</div>`}
+          </article>`;
+        })
         .join('')
     : '<article class="card muted">Aucun client.</article>';
 
@@ -966,7 +975,8 @@ function openReceivablePayment(saleId) {
   $('receivablePaymentMeta').textContent =
     'Vente #' + (sale.sale_number ?? sale.id) +
     ' · reste ' + fmt(sale.remaining_amount) +
-    ' · échéance ' + fmtDueDate(sale.due_date);
+    ' · échéance ' + fmtDueDate(sale.due_date) +
+    ' · paiement partiel possible';
   $('receivablePaymentAmount').value = String(sale.remaining_amount);
   $('receivablePaymentAmount').max = String(sale.remaining_amount);
   $('receivablePaymentReference').value = '';
@@ -1025,7 +1035,47 @@ async function submitReceivablePayment() {
   }
 }
 
+function openCustomerDebtPayment(customerId) {
+  const customer = state.customers.find(
+    (item) => Number(item.id) === Number(customerId)
+  );
+  const openSales = state.sales
+    .filter((sale) =>
+      Number(sale.customer_id) === Number(customerId) &&
+      Number(sale.remaining_amount || 0) > 0 &&
+      String(sale.status) !== 'cancelled'
+    )
+    .sort((a, b) => {
+      const dueA = a.due_date || '9999-12-31';
+      const dueB = b.due_date || '9999-12-31';
+      if (dueA !== dueB) return dueA.localeCompare(dueB);
+      return Number(a.id) - Number(b.id);
+    });
+
+  if (!openSales.length) {
+    toast('Aucune créance ouverte pour ce client.');
+    return;
+  }
+
+  showTab('customers');
+  openReceivablePayment(openSales[0].id);
+
+  if (openSales.length > 1) {
+    toast(
+      (customer?.name || 'Client') +
+      ' a ' + openSales.length +
+      ' créances ouvertes. Le paiement commence par la plus ancienne.'
+    );
+  }
+}
+
 document.addEventListener('click', (event) => {
+  const debtButton = event.target.closest('[data-customer-debt]');
+  if (debtButton) {
+    openCustomerDebtPayment(debtButton.dataset.customerDebt);
+    return;
+  }
+
   const payButton = event.target.closest('[data-receivable-pay]');
   if (payButton) {
     openReceivablePayment(payButton.dataset.receivablePay);
