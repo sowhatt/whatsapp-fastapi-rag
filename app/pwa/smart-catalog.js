@@ -447,6 +447,13 @@
   };
 
 
+  $('quickScanner')?.addEventListener('click', function(event){
+    event.preventDefault();
+    event.stopPropagation();
+    openCatalogMenu();
+  });
+
+
   // Photo produit / Facture
   let catalogSource = 'product';
   let catalogFile = null;
