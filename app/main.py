@@ -446,6 +446,9 @@ for pwa_router in (
     pwa_voice_router,
     pwa_smart_catalog_router,
     pwa_currency_router,
+    suppliers_router,
+    purchases_router,
+    supplier_payments_router,
 ):
     app.include_router(
         pwa_router,
