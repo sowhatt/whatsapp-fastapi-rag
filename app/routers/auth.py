@@ -103,6 +103,14 @@ def pwa_express_sale_styles():
     )
 
 
+@router.get("/purchases.js", include_in_schema=False)
+def pwa_purchases_script():
+    return FileResponse(
+        PWA_DIR / "purchases.js",
+        media_type="application/javascript",
+    )
+
+
 @router.get("/manifest.webmanifest", include_in_schema=False)
 def pwa_manifest():
     return FileResponse(PWA_DIR / "manifest.webmanifest", media_type="application/manifest+json")
