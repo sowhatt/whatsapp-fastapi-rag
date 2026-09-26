@@ -26,6 +26,20 @@ function fmtSaleDate(value) {
     timeStyle: 'short',
   }).format(date);
 }
+
+function fmtDueDate(value) {
+  if (!value) return 'Sans échéance';
+  const date = new Date(value + 'T00:00:00');
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(date);
+}
+
+function localDateKey(date = new Date()) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
 const ROLE_LABELS = {
   OWNER: 'Propriétaire',
   MANAGER: 'Manager',
@@ -461,6 +475,76 @@ function render() {
         .join('')
     : '<article class="card muted">Aucun produit.</article>';
 
+
+  const todayKey = localDateKey();
+  const receivables = sales
+    .filter((sale) =>
+      Number(sale.remaining_amount || 0) > 0 &&
+      String(sale.status) !== 'cancelled' &&
+      sale.customer_id != null
+    )
+    .sort((a, b) => {
+      const dueA = a.due_date || '9999-12-31';
+      const dueB = b.due_date || '9999-12-31';
+      if (dueA !== dueB) return dueA.localeCompare(dueB);
+      return Number(b.id) - Number(a.id);
+    });
+
+  const overdue = receivables.filter((sale) => sale.due_date && sale.due_date < todayKey);
+  const dueToday = receivables.filter((sale) => sale.due_date === todayKey);
+  const upcoming = receivables.filter((sale) => !sale.due_date || sale.due_date > todayKey);
+  const receivableTotal = receivables.reduce(
+    (sum, sale) => sum + Number(sale.remaining_amount || 0),
+    0,
+  );
+
+  if ($('receivableTotal')) $('receivableTotal').textContent = fmt(receivableTotal);
+  if ($('receivableOverdue')) $('receivableOverdue').textContent = fmt(
+    overdue.reduce((sum, sale) => sum + Number(sale.remaining_amount || 0), 0)
+  );
+  if ($('receivableToday')) $('receivableToday').textContent = fmt(
+    dueToday.reduce((sum, sale) => sum + Number(sale.remaining_amount || 0), 0)
+  );
+  if ($('receivableUpcoming')) $('receivableUpcoming').textContent = fmt(
+    upcoming.reduce((sum, sale) => sum + Number(sale.remaining_amount || 0), 0)
+  );
+
+  if ($('receivableList')) {
+    $('receivableList').innerHTML = receivables.length
+      ? receivables.map((sale) => {
+          const customer = customers.find(
+            (item) => Number(item.id) === Number(sale.customer_id)
+          );
+          const overdueSale = sale.due_date && sale.due_date < todayKey;
+          const dueTodaySale = sale.due_date === todayKey;
+          const dueState = overdueSale
+            ? '<span class="receivable-state receivable-overdue">En retard</span>'
+            : dueTodaySale
+              ? '<span class="receivable-state receivable-today">Aujourd’hui</span>'
+              : '<span class="receivable-state receivable-upcoming">À venir</span>';
+
+          return `
+            <article class="receivable-row">
+              <div class="receivable-main">
+                <div class="receivable-title">
+                  <strong>${esc(customer?.name || 'Client')}</strong>
+                  ${dueState}
+                </div>
+                <span>Vente #${sale.sale_number ?? sale.id} · échéance ${esc(fmtDueDate(sale.due_date))}</span>
+                <small>Total ${fmt(sale.total_amount)} · payé ${fmt(sale.paid_amount)}</small>
+              </div>
+              <div class="receivable-end">
+                <strong>${fmt(sale.remaining_amount)}</strong>
+                ${can('payment.create')
+                  ? `<button type="button" class="primary receivable-pay-btn" data-receivable-pay="${sale.id}">Enregistrer paiement</button>`
+                  : ''}
+              </div>
+            </article>
+          `;
+        }).join('')
+      : '<p class="muted empty-state">Aucune créance ouverte.</p>';
+  }
+
   $('customerList').innerHTML = customers.length
     ? customers
         .map(
@@ -846,6 +930,95 @@ $('saleCancelBtn')?.addEventListener('click', () => {
     cancelSaleFromActions(selectedSaleActionId);
   }
 });
+
+
+let selectedReceivableSaleId = null;
+
+function openReceivablePayment(saleId) {
+  const sale = state.sales.find((item) => Number(item.id) === Number(saleId));
+  if (!sale || Number(sale.remaining_amount || 0) <= 0) {
+    toast('Créance introuvable ou déjà soldée.');
+    return;
+  }
+
+  const customer = state.customers.find(
+    (item) => Number(item.id) === Number(sale.customer_id)
+  );
+
+  selectedReceivableSaleId = sale.id;
+  $('receivablePaymentTitle').textContent =
+    'Paiement · ' + (customer?.name || 'Client');
+  $('receivablePaymentMeta').textContent =
+    'Vente #' + (sale.sale_number ?? sale.id) +
+    ' · reste ' + fmt(sale.remaining_amount) +
+    ' · échéance ' + fmtDueDate(sale.due_date);
+  $('receivablePaymentAmount').value = String(sale.remaining_amount);
+  $('receivablePaymentAmount').max = String(sale.remaining_amount);
+  $('receivablePaymentReference').value = '';
+  $('receivablePaymentSheet').hidden = false;
+}
+
+function closeReceivablePayment() {
+  $('receivablePaymentSheet').hidden = true;
+  selectedReceivableSaleId = null;
+}
+
+async function submitReceivablePayment() {
+  const sale = state.sales.find(
+    (item) => Number(item.id) === Number(selectedReceivableSaleId)
+  );
+  if (!sale) {
+    toast('Créance introuvable.');
+    return;
+  }
+
+  const amount = Number($('receivablePaymentAmount').value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    toast('Montant de paiement invalide.');
+    return;
+  }
+  if (amount > Number(sale.remaining_amount || 0)) {
+    toast('Le paiement dépasse le reste dû.');
+    return;
+  }
+
+  const button = $('receivablePaymentSubmitBtn');
+  button.disabled = true;
+  try {
+    await api('/pwa/payments', {
+      method: 'POST',
+      body: JSON.stringify({
+        sale_id: sale.id,
+        customer_id: sale.customer_id,
+        amount,
+        channel: $('receivablePaymentChannel').value,
+        reference: $('receivablePaymentReference').value.trim() || null,
+      }),
+    });
+
+    closeReceivablePayment();
+    await refresh();
+    toast(
+      amount === Number(sale.remaining_amount || 0)
+        ? 'Créance soldée.'
+        : 'Paiement enregistré. Créance mise à jour.'
+    );
+  } catch (error) {
+    toast(error.message || 'Impossible d’enregistrer le paiement.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const payButton = event.target.closest('[data-receivable-pay]');
+  if (payButton) {
+    openReceivablePayment(payButton.dataset.receivablePay);
+  }
+});
+
+$('receivablePaymentCloseBtn')?.addEventListener('click', closeReceivablePayment);
+$('receivablePaymentSubmitBtn')?.addEventListener('click', submitReceivablePayment);
 
 async function selectShop(shopId, { silent = false } = {}) {
   const data = await api('/auth/select-shop', {
