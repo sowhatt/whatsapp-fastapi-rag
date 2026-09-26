@@ -441,3 +441,10 @@
   font: inherit;
   cursor: pointer;
 }
+
+.express-frequent-grid {
+  margin-bottom: 8px;
+}
+.express-product-frequent {
+  border-width: 2px;
+}
