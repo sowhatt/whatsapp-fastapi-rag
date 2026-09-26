@@ -9,6 +9,7 @@ from app.models.purchase import Purchase
 from app.models.purchase_item import PurchaseItem
 from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
+from app.models.supplier_payment_allocation import SupplierPaymentAllocation
 from app.models.shop_operation import ShopOperation
 from app.rbac import require_permission
 from app.schemas.purchase import PurchaseCreate, PurchaseRead, CancelPurchasePayload
@@ -164,21 +165,56 @@ def create_purchase(
     db.flush()
     record_shop_operation("purchase", purchase.id, db)
 
+    supplier_payment = None
+    if paid_amount > 0:
+        supplier_payment = SupplierPayment(
+            purchase_id=purchase.id,
+            supplier_id=supplier.id,
+            amount=paid_amount,
+            channel=payload.payment_channel,
+            reference=None,
+        )
+        db.add(supplier_payment)
+        db.flush()
+
+    remaining_to_allocate = paid_amount
+
     for product, quantity, unit_cost, line_total in resolved_items:
         adjust_stock(product, quantity, db)
 
-        db.add(
-            PurchaseItem(
-                purchase_id=purchase.id,
-                product_id=product.id,
-                quantity=quantity,
-                unit_cost=unit_cost,
-                line_total=line_total,
-                paid_amount=0,
-                remaining_amount=line_total,
-                status="credit",
-            )
+        allocated_amount = min(remaining_to_allocate, line_total)
+        line_remaining = line_total - allocated_amount
+
+        if line_remaining == 0:
+            line_status = "paid"
+        elif allocated_amount == 0:
+            line_status = "credit"
+        else:
+            line_status = "partial"
+
+        purchase_item = PurchaseItem(
+            purchase_id=purchase.id,
+            product_id=product.id,
+            quantity=quantity,
+            unit_cost=unit_cost,
+            line_total=line_total,
+            paid_amount=allocated_amount,
+            remaining_amount=line_remaining,
+            status=line_status,
         )
+        db.add(purchase_item)
+        db.flush()
+
+        if supplier_payment is not None and allocated_amount > 0:
+            db.add(
+                SupplierPaymentAllocation(
+                    supplier_payment_id=supplier_payment.id,
+                    purchase_item_id=purchase_item.id,
+                    allocated_amount=allocated_amount,
+                )
+            )
+
+        remaining_to_allocate -= allocated_amount
 
         add_stock_movement(
             db=db,
@@ -188,17 +224,6 @@ def create_purchase(
             reference_type="purchase",
             reference_id=purchase.id,
             note=f"Achat chez le fournisseur {supplier.name}",
-        )
-
-    if paid_amount > 0:
-        db.add(
-            SupplierPayment(
-                purchase_id=purchase.id,
-                supplier_id=supplier.id,
-                amount=paid_amount,
-                channel=payload.payment_channel,
-                reference=None,
-            )
         )
 
     supplier.debt += remaining_amount
