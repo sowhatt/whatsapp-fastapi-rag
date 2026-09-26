@@ -5,6 +5,33 @@
   const money = (n) => fmt(Number(n || 0));
   const total = () => [...cart.values()].reduce((sum, line) => sum + Number(line.product.price || 0) * line.quantity, 0);
 
+  function isCreditMode() {
+    const channel = $('expressChannel')?.value;
+    return channel === 'credit' || channel === 'partial';
+  }
+
+  function setDueDateDays(days) {
+    const input = $('expressDueDate');
+    if (!input) return;
+    const date = new Date();
+    date.setDate(date.getDate() + Number(days || 0));
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    input.value = yyyy + '-' + mm + '-' + dd;
+  }
+
+  function syncCreditFields() {
+    const credit = isCreditMode();
+    const wrap = $('expressCreditFields');
+    const due = $('expressDueDate');
+    const customer = $('expressCustomer');
+    if (wrap) wrap.hidden = !credit;
+    if (due) due.required = credit;
+    if (customer) customer.required = credit;
+    if (credit && due && !due.value) setDueDateDays(30);
+  }
+
   function normalizeSearch(value) {
     return String(value || '')
       .normalize('NFD')
@@ -209,12 +236,15 @@
     const customerId = customerValue ? Number(customerValue) : null;
     const channel = $('expressChannel').value;
     const amount = total();
+    const dueDate = $('expressDueDate')?.value || null;
     let paidAmount = amount;
     if (channel === 'credit') {
       if (!customerId) return toast('Choisissez un client pour une vente à crédit');
+      if (!dueDate) return toast('Choisissez une date d’échéance');
       paidAmount = 0;
     } else if (channel === 'partial') {
       if (!customerId) return toast('Choisissez un client pour un paiement partiel');
+      if (!dueDate) return toast('Choisissez une date d’échéance');
       const raw = window.prompt(`Montant encaissé sur ${money(amount)}`, '0');
       if (raw === null) return;
       paidAmount = Number(raw);
@@ -222,10 +252,20 @@
     }
     $('expressCheckout').disabled = true;
     try {
-      await api('/pwa/sales', { method: 'POST', body: JSON.stringify({ customer_id: customerId, items: [...cart.values()].map(({ product, quantity }) => ({ product_id: product.id, quantity })), paid_amount: paidAmount, payment_channel: channel === 'credit' || channel === 'partial' ? 'cash' : channel }) });
+      await api('/pwa/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_id: customerId,
+          items: [...cart.values()].map(({ product, quantity }) => ({ product_id: product.id, quantity })),
+          paid_amount: paidAmount,
+          payment_channel: channel === 'credit' || channel === 'partial' ? 'cash' : channel,
+          due_date: channel === 'credit' || channel === 'partial' ? dueDate : null
+        })
+      });
       cart.clear();
       query = '';
       $('expressSearch').value = '';
+      if ($('expressDueDate')) $('expressDueDate').value = '';
       await refresh();
       syncExpressCustomers();
       renderExpressSale();
@@ -254,6 +294,11 @@
     if (minus) return change(minus.dataset.cartMinus, -1);
   });
   $('expressSearch')?.addEventListener('input', (event) => { query = event.target.value; renderExpressSale(); });
+  $('expressChannel')?.addEventListener('change', syncCreditFields);
+  $('expressCustomer')?.addEventListener('change', syncCreditFields);
+  document.querySelectorAll('[data-due-days]').forEach((button) => {
+    button.addEventListener('click', () => setDueDateDays(button.dataset.dueDays));
+  });
   $('expressCheckout')?.addEventListener('click', checkout);
   $('expressVoice')?.addEventListener('click', () => $('voiceNavBtn')?.click());
   window.whatzabiExpressAddScannedProduct = function(productId) {
@@ -277,6 +322,7 @@
     renderExpressSale();
   };
   syncExpressCustomers();
+  syncCreditFields();
   renderExpressSale();
   loadFrequentProducts();
 })();
