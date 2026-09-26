@@ -1,4 +1,4 @@
-const CACHE = 'whatzabi-pwa-v27';
+const CACHE = 'whatzabi-pwa-v28';
 
 const ASSETS = [
   '/auth/app',
