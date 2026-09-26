@@ -450,7 +450,7 @@
   $('quickScanner')?.addEventListener('click', function(event){
     event.preventDefault();
     event.stopPropagation();
-    openCatalogMenu();
+    startLiveScanner();
   });
 
 
