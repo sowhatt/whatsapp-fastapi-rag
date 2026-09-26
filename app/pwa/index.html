@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=14">
+  <link rel="stylesheet" href="/auth/styles.css?v=15">
   <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
@@ -87,17 +87,17 @@
             <small>Boutique active</small>
           </article>
 
-          <article class="card home-stat">
+          <button id="statSalesCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="sales" data-scroll-target="saleList">
             <span>Ventes</span>
             <strong id="statSales">0</strong>
-            <small>Boutique active</small>
-          </article>
+            <small>Dernières ventes ›</small>
+          </button>
 
-          <article class="card home-stat">
+          <button id="statCustomerDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="customers" data-scroll-target="receivableList">
             <span>Créances clients</span>
             <strong id="statDebt">0 FCFA</strong>
-            <small id="statDebtCustomers">0 client</small>
-          </article>
+            <small><span id="statDebtCustomers">0 client</span> · Voir échéances ›</small>
+          </button>
 
           <article class="card home-stat home-stat-alert">
             <span>Stock faible</span>
@@ -105,7 +105,7 @@
             <small>produits</small>
           </article>
 
-          <button id="statSupplierDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="purchases" hidden>
+          <button id="statSupplierDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="purchases" data-scroll-target="supplierPayablesList" hidden>
             <span>Dettes fournisseurs</span>
             <strong id="statSupplierDebt">0 FCFA</strong>
             <small id="statSupplierDebtCount">0 fournisseur</small>
@@ -635,7 +635,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=22" defer></script>
+  <script src="/auth/app.js?v=23" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
   <script src="/auth/purchases.js?v=5" defer></script>
