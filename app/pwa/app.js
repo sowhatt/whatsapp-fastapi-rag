@@ -114,6 +114,9 @@ function renderPermissions() {
 
   $('productCreateCard').hidden = !productCreate;
   $('quickAddSale').hidden = !saleCreate;
+  if ($('quickAddPurchase')) {
+    $('quickAddPurchase').hidden = !can('purchase.create');
+  }
 }
 
 let token = localStorage.getItem('whatzabi_token') || '';
@@ -1462,16 +1465,8 @@ $('catalogCameraInput').addEventListener('change', async (event) => {
   }
 });
 
-$('quickAddPurchase').addEventListener('click', () => {
-  toast('Module achats : interface PWA à brancher');
-});
-
-$('moreSuppliers').addEventListener('click', () => {
-  toast('Fournisseurs : interface PWA à brancher');
-});
-
-$('morePurchases').addEventListener('click', () => {
-  toast('Achats : interface PWA à brancher');
+$('quickAddPurchase')?.addEventListener('click', () => {
+  showTab('purchases');
 });
 
 $('moreFinancial').addEventListener('click', () => {
