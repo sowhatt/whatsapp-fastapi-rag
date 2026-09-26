@@ -3,6 +3,8 @@
   let suppliers = [];
   let purchases = [];
   let selectedPayablePurchaseId = null;
+  let loadedShopId = null;
+  let loadingPurchasingData = false;
 
   const money = (value) => fmt(Number(value || 0));
 
@@ -207,7 +209,8 @@
   }
 
   async function loadPurchasingData() {
-    if (!token) return;
+    if (!token || loadingPurchasingData) return;
+    loadingPurchasingData = true;
     try {
       const results = await Promise.all([
         can('supplier.read') ? api('/pwa/suppliers') : Promise.resolve([]),
@@ -215,12 +218,15 @@
       ]);
       suppliers = results[0] || [];
       purchases = results[1] || [];
+      loadedShopId = state.merchant?.shop_id ?? null;
       syncPurchaseSelectors();
       renderSupplierWorkspace();
       renderPurchases();
       renderPurchaseCart();
     } catch (error) {
       toast(error.message || 'Impossible de charger les achats.');
+    } finally {
+      loadingPurchasingData = false;
     }
   }
 
@@ -416,7 +422,24 @@
     renderSupplierWorkspace();
     renderPurchases();
     renderPurchaseCart();
+
+    const currentShopId = state.merchant?.shop_id ?? null;
+    if (
+      token &&
+      state.merchant &&
+      currentShopId !== loadedShopId &&
+      !loadingPurchasingData
+    ) {
+      loadPurchasingData();
+    }
   };
+
+  document.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-open-tab]');
+    if (tab && (tab.dataset.openTab === 'suppliers' || tab.dataset.openTab === 'purchases')) {
+      loadPurchasingData();
+    }
+  });
 
   loadPurchasingData();
 })();
