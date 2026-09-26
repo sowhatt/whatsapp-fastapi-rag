@@ -65,6 +65,49 @@
     }
   }
 
+  function syncPurchaseDetailsVisibility() {
+    const supplierId = Number($('purchaseSupplier')?.value || 0);
+    const details = $('purchaseDetails');
+    const hint = $('purchaseSupplierHint');
+
+    if (details) details.hidden = !supplierId;
+    if (hint) {
+      hint.hidden = Boolean(supplierId);
+      if (!supplierId) {
+        hint.textContent = 'Choisis d’abord un fournisseur pour préparer l’achat.';
+      }
+    }
+
+    if (supplierId && $('purchaseProduct')) {
+      const productCount = Array.isArray(state.products) ? state.products.length : 0;
+      if (!productCount) {
+        $('purchaseProduct').innerHTML =
+          '<option value="">Aucun produit dans la boutique active</option>';
+        toast('Aucun produit disponible dans cette boutique. Ajoute d’abord un produit au catalogue.');
+      }
+    }
+  }
+
+  async function onPurchaseSupplierChanged() {
+    const supplierId = Number($('purchaseSupplier')?.value || 0);
+    syncPurchaseDetailsVisibility();
+    if (!supplierId) return;
+
+    try {
+      // Recharge le catalogue de la boutique active pour éviter un sélecteur produit obsolète.
+      const products = await api('/pwa/products');
+      state.products = Array.isArray(products) ? products : [];
+      syncPurchaseSelectors();
+      syncPurchaseDetailsVisibility();
+
+      if (state.products.length) {
+        $('purchaseProduct')?.focus();
+      }
+    } catch (error) {
+      toast(error.message || 'Impossible de charger les produits de la boutique.');
+    }
+  }
+
   function renderPurchaseCart() {
     const box = $('purchaseCart');
     if (!box) return;
@@ -220,6 +263,7 @@
       purchases = results[1] || [];
       loadedShopId = state.merchant?.shop_id ?? null;
       syncPurchaseSelectors();
+      syncPurchaseDetailsVisibility();
       renderSupplierWorkspace();
       renderPurchases();
       renderPurchaseCart();
@@ -250,6 +294,8 @@
       toast(error.message);
     }
   });
+
+  $('purchaseSupplier')?.addEventListener('change', onPurchaseSupplierChanged);
 
   $('purchaseAddLineBtn')?.addEventListener('click', () => {
     const productId = Number($('purchaseProduct').value);
@@ -441,5 +487,6 @@
     }
   });
 
+  syncPurchaseDetailsVisibility();
   loadPurchasingData();
 })();
