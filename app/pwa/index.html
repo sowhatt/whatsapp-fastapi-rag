@@ -417,6 +417,19 @@
             <option value="partial">Paiement partiel</option>
           </select>
 
+          <div id="expressCreditFields" class="express-credit-fields" hidden>
+            <label>
+              <span>Échéance de paiement</span>
+              <input id="expressDueDate" type="date">
+            </label>
+            <div class="express-due-presets">
+              <button type="button" data-due-days="7">+7 j</button>
+              <button type="button" data-due-days="15">+15 j</button>
+              <button type="button" data-due-days="30">+30 j</button>
+            </div>
+            <small class="muted">Client + échéance obligatoires pour crédit ou paiement partiel.</small>
+          </div>
+
           <button
             id="expressCheckout"
             type="button"
@@ -454,7 +467,7 @@
   </main>
   <script src="/auth/app.js?v=19" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
-  <script src="/auth/express-sale.js?v=5" defer></script>
+  <script src="/auth/express-sale.js?v=6" defer></script>
 
 
   <div id="catalogSheet" class="catalog-sheet" hidden>
