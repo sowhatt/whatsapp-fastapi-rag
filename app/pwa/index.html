@@ -195,7 +195,7 @@
             <span>›</span>
           </button>
 
-          <button id="moreSuppliers" type="button" class="more-menu-item">
+          <button data-open-tab="suppliers" type="button" class="more-menu-item">
             <span class="more-menu-icon">🚚</span>
             <span>
               <strong>Fournisseurs</strong>
@@ -204,7 +204,7 @@
             <span>›</span>
           </button>
 
-          <button id="morePurchases" type="button" class="more-menu-item">
+          <button data-open-tab="purchases" type="button" class="more-menu-item">
             <span class="more-menu-icon">📥</span>
             <span>
               <strong>Achats</strong>
@@ -252,6 +252,124 @@
             </span>
             <span>›</span>
           </button>
+        </article>
+      </section>
+
+      <section id="suppliers" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Approvisionnement</span>
+            <h2>Fournisseurs</h2>
+          </div>
+        </div>
+
+        <div class="grid supplier-stats">
+          <article class="card">
+            <span>Fournisseurs</span>
+            <strong id="supplierCount">0</strong>
+          </article>
+          <article class="card">
+            <span>Dettes fournisseurs</span>
+            <strong id="supplierDebtTotal">0</strong>
+          </article>
+        </div>
+
+        <article id="supplierCreateCard" class="card">
+          <h2>Nouveau fournisseur</h2>
+          <form id="supplierForm" class="form-grid">
+            <input id="supplierName" placeholder="Nom du fournisseur" required>
+            <input id="supplierPhone" placeholder="Téléphone">
+            <button type="submit">Ajouter le fournisseur</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Mes fournisseurs</h2>
+          <div id="supplierList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="purchases" class="panel purchase-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Approvisionnement</span>
+            <h2>Nouvel achat</h2>
+          </div>
+        </div>
+
+        <article class="card purchase-builder">
+          <label class="field">
+            <span>Fournisseur</span>
+            <select id="purchaseSupplier"></select>
+          </label>
+
+          <div class="purchase-add-line">
+            <label class="field">
+              <span>Produit</span>
+              <select id="purchaseProduct"></select>
+            </label>
+            <label class="field">
+              <span>Quantité</span>
+              <input id="purchaseQty" type="number" min="1" value="1">
+            </label>
+            <label class="field">
+              <span>Coût unitaire</span>
+              <input id="purchaseUnitCost" type="number" min="0" value="0">
+            </label>
+            <button id="purchaseAddLineBtn" type="button">Ajouter la ligne</button>
+          </div>
+
+          <div id="purchaseCart" class="purchase-cart"></div>
+          <div class="purchase-total">
+            <span>Total achat</span>
+            <strong id="purchaseTotal">0</strong>
+          </div>
+
+          <label class="field">
+            <span>Montant payé maintenant</span>
+            <input id="purchasePaidAmount" type="number" min="0" value="0">
+          </label>
+
+          <label class="field">
+            <span>Mode de paiement</span>
+            <select id="purchasePaymentChannel">
+              <option value="cash">Espèces</option>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="card">Carte</option>
+              <option value="bank_transfer">Virement</option>
+            </select>
+          </label>
+
+          <div id="purchaseDueWrap" class="express-credit-fields">
+            <label>
+              <span>Échéance si reste à payer</span>
+              <input id="purchaseDueDate" type="date">
+            </label>
+            <div class="express-due-presets">
+              <button type="button" data-purchase-due-days="7">+7 j</button>
+              <button type="button" data-purchase-due-days="15">+15 j</button>
+              <button type="button" data-purchase-due-days="30">+30 j</button>
+            </div>
+          </div>
+
+          <button id="purchaseSubmitBtn" type="button" class="primary-action">
+            Enregistrer l’achat
+          </button>
+        </article>
+
+        <article class="card">
+          <div class="panel-heading">
+            <div>
+              <h2>Dettes fournisseurs</h2>
+              <p class="muted small">Achats non soldés et échéances.</p>
+            </div>
+          </div>
+          <div id="supplierPayablesList" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Derniers achats</h2>
+          <div id="purchaseList" class="list"></div>
         </article>
       </section>
 
@@ -508,6 +626,7 @@
   <script src="/auth/app.js?v=20" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
+  <script src="/auth/purchases.js?v=1" defer></script>
 
 
   <div id="catalogSheet" class="catalog-sheet" hidden>
@@ -667,6 +786,34 @@
     <button id="receivablePaymentSubmitBtn" type="button" class="primary">
       Enregistrer le paiement
     </button>
+  </div>
+</div>
+
+<div id="supplierPaymentSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card receivable-payment-card" role="dialog" aria-modal="true">
+    <button id="supplierPaymentCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Dette fournisseur</span>
+    <h2 id="supplierPaymentTitle">Enregistrer un paiement</h2>
+    <p id="supplierPaymentMeta" class="muted"></p>
+
+    <label class="field">
+      <span>Montant payé</span>
+      <input id="supplierPaymentAmount" type="number" min="1">
+    </label>
+    <label class="field">
+      <span>Mode de paiement</span>
+      <select id="supplierPaymentChannel">
+        <option value="cash">Espèces</option>
+        <option value="mobile_money">Mobile Money</option>
+        <option value="card">Carte</option>
+        <option value="bank_transfer">Virement</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Référence (optionnel)</span>
+      <input id="supplierPaymentReference" placeholder="Référence">
+    </label>
+    <button id="supplierPaymentSubmitBtn" type="button" class="primary">Enregistrer le paiement</button>
   </div>
 </div>
 
