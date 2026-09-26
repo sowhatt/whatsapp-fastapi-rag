@@ -496,3 +496,15 @@
   .purchase-line-end{justify-items:stretch}
   .purchase-line-end>strong{text-align:right}
 }
+
+.debt-link{
+  border:0;
+  background:transparent;
+  padding:8px 0 8px 12px;
+  color:#b42318;
+  font:inherit;
+  font-weight:800;
+  cursor:pointer;
+  text-align:right;
+}
+.debt-link:hover,.debt-link:focus-visible{text-decoration:underline}
