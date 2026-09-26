@@ -303,6 +303,11 @@
             <select id="purchaseSupplier"></select>
           </label>
 
+          <p id="purchaseSupplierHint" class="muted small">
+            Choisis d’abord un fournisseur pour préparer l’achat.
+          </p>
+
+          <div id="purchaseDetails" hidden>
           <div class="purchase-add-line">
             <label class="field">
               <span>Produit</span>
@@ -355,6 +360,7 @@
           <button id="purchaseSubmitBtn" type="button" class="primary-action">
             Enregistrer l’achat
           </button>
+          </div>
         </article>
 
         <article class="card">
@@ -626,7 +632,7 @@
   <script src="/auth/app.js?v=21" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
-  <script src="/auth/purchases.js?v=2" defer></script>
+  <script src="/auth/purchases.js?v=3" defer></script>
 
 
   <div id="catalogSheet" class="catalog-sheet" hidden>
