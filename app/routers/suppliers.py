@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierRead
+from app.rbac import require_permission
 
 router = APIRouter(tags=["fournisseurs"])
 
@@ -30,13 +31,20 @@ def add_event(
 
 
 @router.get("/suppliers", response_model=list[SupplierRead])
-def list_suppliers(db: Session = Depends(get_db)):
+def list_suppliers(
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("supplier.read")),
+):
     """Liste tous les fournisseurs."""
     return db.query(Supplier).all()
 
 
 @router.post("/suppliers", response_model=SupplierRead)
-def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
+def create_supplier(
+    payload: SupplierCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("supplier.create")),
+):
     """Crée un fournisseur."""
     existing = db.query(Supplier).filter(Supplier.name == payload.name).first()
     if existing:
@@ -64,7 +72,11 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/suppliers/{supplier_id}/debt")
-def get_supplier_debt(supplier_id: int, db: Session = Depends(get_db)):
+def get_supplier_debt(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("supplier.read")),
+):
     """Retourne la dette totale d’un fournisseur précis."""
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
