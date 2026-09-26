@@ -11,8 +11,10 @@ from app.models.merchant import Merchant
 from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
+from app.models.product_barcode import ProductBarcode
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.shop_inventory import ShopInventory
 from app.models.shop_operation import ShopOperation
 from app.rbac import require_permission
 from app.schemas.cancel_sale import CancelSalePayload
@@ -122,6 +124,107 @@ def list_sales(
         .order_by(Sale.created_at.desc(), Sale.id.desc())
         .all()
     )
+
+
+
+@router.get("/sales/frequent-products")
+def frequent_sale_products(
+    limit: int = 8,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.read")),
+):
+    shop_id = get_current_shop_id(db)
+    if shop_id is None:
+        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
+
+    safe_limit = max(1, min(int(limit or 8), 20))
+
+    rows = (
+        db.query(
+            SaleItem.product_id.label("product_id"),
+            func.sum(SaleItem.quantity).label("quantity_sold"),
+            func.count(SaleItem.id).label("line_count"),
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .join(
+            ShopOperation,
+            (ShopOperation.entity_type == "sale")
+            & (ShopOperation.entity_id == Sale.id),
+        )
+        .filter(
+            ShopOperation.shop_id == shop_id,
+            Sale.status != "cancelled",
+        )
+        .group_by(SaleItem.product_id)
+        .order_by(
+            func.sum(SaleItem.quantity).desc(),
+            func.count(SaleItem.id).desc(),
+            SaleItem.product_id.asc(),
+        )
+        .limit(safe_limit)
+        .all()
+    )
+
+    return [
+        {
+            "product_id": int(row.product_id),
+            "quantity_sold": int(row.quantity_sold or 0),
+            "line_count": int(row.line_count or 0),
+        }
+        for row in rows
+    ]
+
+
+@router.get("/sales/barcode/{barcode}")
+def lookup_sale_barcode(
+    barcode: str,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("sale.create")),
+):
+    shop_id = get_current_shop_id(db)
+    merchant_id = get_current_merchant(db)
+    if shop_id is None:
+        raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
+
+    code = "".join(ch for ch in str(barcode or "") if ch.isdigit())
+    if len(code) < 8 or len(code) > 14:
+        raise HTTPException(status_code=422, detail="Code-barres invalide.")
+
+    row = (
+        db.query(Product, ShopInventory)
+        .join(
+            ProductBarcode,
+            (ProductBarcode.product_id == Product.id)
+            & (ProductBarcode.barcode == code),
+        )
+        .join(
+            ShopInventory,
+            (ShopInventory.product_id == Product.id)
+            & (ShopInventory.shop_id == shop_id),
+        )
+        .filter(
+            ProductBarcode.merchant_id == merchant_id,
+            Product.merchant_id == merchant_id,
+            ShopInventory.merchant_id == merchant_id,
+        )
+        .first()
+    )
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ce code-barres n'est pas associé à un produit de la boutique active.",
+        )
+
+    product, inventory = row
+    return {
+        "product_id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "stock": int(inventory.stock or 0),
+        "unit": product.unit,
+        "barcode": code,
+    }
 
 
 @router.post("/sales", response_model=SaleRead)
