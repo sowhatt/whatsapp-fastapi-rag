@@ -517,3 +517,7 @@
 }
 .home-stat-clickable strong{color:#b42318}
 .home-stat-clickable:active{transform:translateY(1px)}
+
+.home-stat-clickable small{font-weight:700;color:#0f766e}
+.home-stat-clickable:hover{border-color:#b9d8d2}
+.home-stat-clickable:focus-visible{outline:3px solid rgba(15,118,110,.18);outline-offset:2px}
