@@ -12,6 +12,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         "sale.create", "sale.cancel", "sale.read", "stock.read", "stock.adjust",
         "product.read", "product.create", "product.update", "customer.read",
         "customer.create", "payment.create", "report.read", "staff.read",
+        "supplier.read", "supplier.create", "purchase.read", "purchase.create",
+        "purchase.cancel", "supplier_payment.create",
     }),
     "SELLER": frozenset({
         "sale.create", "sale.read", "stock.read", "product.read",
@@ -19,9 +21,11 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     }),
     "STOCK_MANAGER": frozenset({
         "stock.read", "stock.adjust", "product.read", "product.create", "product.update",
+        "supplier.read", "purchase.read", "purchase.create",
     }),
     "ACCOUNTANT": frozenset({
         "sale.read", "stock.read", "product.read", "customer.read", "report.read",
+        "supplier.read", "purchase.read", "supplier_payment.create",
     }),
 }
 
