@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel
 
@@ -16,12 +16,7 @@ class PurchaseCreate(BaseModel):
     payment_channel: str = "cash"
     due_date: date | None = None
 
-    # total_amount sera toujours recalculé en XOF par le routeur.
-    original_amount: int | None = None
-    original_currency: str = "XOF"
-    exchange_rate: Decimal | None = None
-
-    # total_amount sera toujours recalculé en XOF par le routeur.
+    # total_amount sera toujours recalculé dans la devise comptable de la boutique.
     original_amount: int | None = None
     original_currency: str = "XOF"
     exchange_rate: Decimal | None = None
@@ -37,6 +32,8 @@ class PurchaseRead(BaseModel):
     original_amount: int | None = None
     original_currency: str = "XOF"
     exchange_rate: Decimal | None = None
+    due_date: date | None = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
