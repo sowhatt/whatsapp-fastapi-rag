@@ -157,6 +157,40 @@
     return labels[status] || status || '';
   }
 
+  function renderSupplierDebtDashboard() {
+    const card = $('statSupplierDebtCard');
+    const totalEl = $('statSupplierDebt');
+    const countEl = $('statSupplierDebtCount');
+
+    if (!card || !totalEl || !countEl) return;
+
+    const allowed = can('supplier.read') && can('purchase.read');
+    card.hidden = !allowed;
+    if (!allowed) return;
+
+    // purchases is already scoped by the backend to the active shop.
+    const openPurchases = purchases.filter((purchase) =>
+      Number(purchase.remaining_amount || 0) > 0 &&
+      String(purchase.status) !== 'cancelled'
+    );
+
+    const totalDebt = openPurchases.reduce(
+      (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
+      0,
+    );
+
+    const supplierIds = new Set(
+      openPurchases
+        .map((purchase) => Number(purchase.supplier_id || 0))
+        .filter((id) => id > 0)
+    );
+
+    totalEl.textContent = money(totalDebt);
+    countEl.textContent =
+      supplierIds.size +
+      (supplierIds.size > 1 ? ' fournisseurs' : ' fournisseur');
+  }
+
   function renderSupplierWorkspace() {
     if ($('supplierCount')) $('supplierCount').textContent = String(suppliers.length);
     if ($('supplierDebtTotal')) {
@@ -270,6 +304,7 @@
       syncPurchaseSelectors();
       syncPurchaseDetailsVisibility();
       renderSupplierWorkspace();
+      renderSupplierDebtDashboard();
       renderPurchases();
       renderPurchaseCart();
     } catch (error) {
@@ -512,6 +547,7 @@
     originalRender();
     syncPurchaseSelectors();
     renderSupplierWorkspace();
+    renderSupplierDebtDashboard();
     renderPurchases();
     renderPurchaseCart();
 
