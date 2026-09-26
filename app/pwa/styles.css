@@ -448,3 +448,26 @@
 .express-product-frequent {
   border-width: 2px;
 }
+
+.receivable-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.receivable-stats .card{display:grid;gap:6px}
+.receivable-stats span{font-size:13px;color:#6c7f7c}
+.receivable-stats strong{font-size:20px}
+.receivable-alert strong{color:#b42318}
+.receivable-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid #edf2f0}
+.receivable-row:last-child{border-bottom:0}
+.receivable-main{display:grid;gap:4px}
+.receivable-title{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.receivable-main span,.receivable-main small{color:#6c7f7c}
+.receivable-end{display:grid;gap:8px;justify-items:end}
+.receivable-pay-btn{padding:9px 12px;font-size:13px}
+.receivable-state{padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800}
+.receivable-overdue{background:#fde8e7;color:#9f241c}
+.receivable-today{background:#fff2cc;color:#7a5700}
+.receivable-upcoming{background:#e7f6f1;color:#0f6f5f}
+.receivable-payment-card{display:grid;gap:14px;text-align:left}
+@media(max-width:520px){
+  .receivable-row{grid-template-columns:1fr}
+  .receivable-end{justify-items:stretch}
+  .receivable-end>strong{text-align:right}
+}
