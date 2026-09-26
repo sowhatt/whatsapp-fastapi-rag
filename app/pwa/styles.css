@@ -508,3 +508,12 @@
   text-align:right;
 }
 .debt-link:hover,.debt-link:focus-visible{text-decoration:underline}
+
+.home-stat-clickable{
+  width:100%;
+  text-align:left;
+  color:inherit;
+  cursor:pointer;
+}
+.home-stat-clickable strong{color:#b42318}
+.home-stat-clickable:active{transform:translateY(1px)}
