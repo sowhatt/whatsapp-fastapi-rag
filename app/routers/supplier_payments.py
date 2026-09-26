@@ -7,7 +7,10 @@ from app.models.purchase_item import PurchaseItem
 from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
 from app.models.supplier_payment_allocation import SupplierPaymentAllocation
+from app.models.shop_operation import ShopOperation
+from app.rbac import require_permission
 from app.schemas.supplier_payment import SupplierPaymentCreate, SupplierPaymentRead
+from app.services.shop_context_service import get_current_shop_id
 
 router = APIRouter(tags=["paiements fournisseurs"])
 
@@ -34,9 +37,22 @@ def add_event(
 
 
 @router.post("/supplier-payments", response_model=SupplierPaymentRead)
-def create_supplier_payment(payload: SupplierPaymentCreate, db: Session = Depends(get_db)):
+def create_supplier_payment(
+    payload: SupplierPaymentCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("supplier_payment.create")),
+):
     """Enregistre un paiement fournisseur et l’impute en FIFO sur les lignes d’achat."""
-    purchase = db.query(Purchase).filter(Purchase.id == payload.purchase_id).first()
+    purchase_query = db.query(Purchase)
+    shop_id = get_current_shop_id(db)
+    if shop_id is not None:
+        purchase_query = purchase_query.join(
+            ShopOperation,
+            (ShopOperation.entity_type == "purchase")
+            & (ShopOperation.entity_id == Purchase.id),
+        ).filter(ShopOperation.shop_id == shop_id)
+
+    purchase = purchase_query.filter(Purchase.id == payload.purchase_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Achat introuvable")
 
