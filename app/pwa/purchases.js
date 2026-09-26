@@ -171,15 +171,20 @@
 
     if ($('supplierList')) {
       $('supplierList').innerHTML = suppliers.length
-        ? suppliers.map((supplier) => `
-            <article class="item">
-              <div class="item-main">
-                <div class="item-title">${esc(supplier.name)}</div>
-                <div class="item-meta">${esc(supplier.phone || 'Sans téléphone')}</div>
-              </div>
-              <div class="money">Dette ${money(supplier.debt)}</div>
-            </article>
-          `).join('')
+        ? suppliers.map((supplier) => {
+            const debt = Number(supplier.debt || 0);
+            return `
+              <article class="item">
+                <div class="item-main">
+                  <div class="item-title">${esc(supplier.name)}</div>
+                  <div class="item-meta">${esc(supplier.phone || 'Sans téléphone')}</div>
+                </div>
+                ${debt > 0 && can('supplier_payment.create')
+                  ? '<button type="button" class="debt-link" data-supplier-debt="' + supplier.id + '">Dette ' + money(debt) + ' ›</button>'
+                  : '<div class="money">Dette ' + money(debt) + '</div>'}
+              </article>
+            `;
+          }).join('')
         : '<p class="muted empty-state">Aucun fournisseur.</p>';
     }
   }
@@ -339,6 +344,12 @@
       return;
     }
 
+    const debt = event.target.closest('[data-supplier-debt]');
+    if (debt) {
+      openSupplierDebtPayment(Number(debt.dataset.supplierDebt));
+      return;
+    }
+
     const pay = event.target.closest('[data-supplier-pay]');
     if (pay) {
       openSupplierPayment(Number(pay.dataset.supplierPay));
@@ -399,6 +410,40 @@
     }
   });
 
+  function openSupplierDebtPayment(supplierId) {
+    const supplier = suppliers.find(
+      (item) => Number(item.id) === Number(supplierId)
+    );
+    const openPurchases = purchases
+      .filter((purchase) =>
+        Number(purchase.supplier_id) === Number(supplierId) &&
+        Number(purchase.remaining_amount || 0) > 0 &&
+        String(purchase.status) !== 'cancelled'
+      )
+      .sort((a, b) => {
+        const dueA = a.due_date || '9999-12-31';
+        const dueB = b.due_date || '9999-12-31';
+        if (dueA !== dueB) return dueA.localeCompare(dueB);
+        return Number(a.id) - Number(b.id);
+      });
+
+    if (!openPurchases.length) {
+      toast('Aucune dette ouverte pour ce fournisseur.');
+      return;
+    }
+
+    showTab('purchases');
+    openSupplierPayment(openPurchases[0].id);
+
+    if (openPurchases.length > 1) {
+      toast(
+        (supplier?.name || 'Fournisseur') +
+        ' a ' + openPurchases.length +
+        ' achats non soldés. Le paiement commence par le plus ancien.'
+      );
+    }
+  }
+
   function openSupplierPayment(purchaseId) {
     const purchase = purchases.find((item) => Number(item.id) === Number(purchaseId));
     if (!purchase) return toast('Achat introuvable.');
@@ -407,7 +452,8 @@
     $('supplierPaymentTitle').textContent = 'Paiement · ' + supplierName(purchase.supplier_id);
     $('supplierPaymentMeta').textContent =
       'Achat #' + purchase.id + ' · reste ' + money(purchase.remaining_amount) +
-      ' · échéance ' + fmtDueDate(purchase.due_date);
+      ' · échéance ' + fmtDueDate(purchase.due_date) +
+      ' · paiement partiel possible';
     $('supplierPaymentAmount').value = String(purchase.remaining_amount);
     $('supplierPaymentAmount').max = String(purchase.remaining_amount);
     $('supplierPaymentReference').value = '';
