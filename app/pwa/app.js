@@ -1203,6 +1203,16 @@ document.querySelectorAll('[data-open-tab]').forEach((button) =>
     if (button.dataset.openTab === 'currencies') {
       loadCurrencyRates();
     }
+
+    const targetId = button.dataset.scrollTarget;
+    if (targetId) {
+      requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    }
   }),
 );
 
