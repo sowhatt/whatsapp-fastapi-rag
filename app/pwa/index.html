@@ -345,6 +345,42 @@
       </section>
 
       <section id="customers" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Clients</span>
+            <h2>Créances clients</h2>
+          </div>
+        </div>
+
+        <div class="grid receivable-stats">
+          <article class="card">
+            <span>Encours total</span>
+            <strong id="receivableTotal">0</strong>
+          </article>
+          <article class="card receivable-alert">
+            <span>En retard</span>
+            <strong id="receivableOverdue">0</strong>
+          </article>
+          <article class="card">
+            <span>Échéance aujourd’hui</span>
+            <strong id="receivableToday">0</strong>
+          </article>
+          <article class="card">
+            <span>À venir</span>
+            <strong id="receivableUpcoming">0</strong>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="panel-heading">
+            <div>
+              <h2>Créances ouvertes</h2>
+              <p class="muted small">Ventes à crédit et paiements partiels non soldés.</p>
+            </div>
+          </div>
+          <div id="receivableList" class="list"></div>
+        </article>
+
         <article class="card">
           <h2>Nouveau client</h2>
           <form id="customerForm" class="form-grid">
@@ -353,7 +389,11 @@
             <button type="submit">Ajouter</button>
           </form>
         </article>
-        <div id="customerList" class="list"></div>
+
+        <article class="card">
+          <h2>Clients</h2>
+          <div id="customerList" class="list"></div>
+        </article>
       </section>
 
       <section id="sales" class="panel express-sale-panel">
@@ -465,7 +505,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=19" defer></script>
+  <script src="/auth/app.js?v=20" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
 
@@ -594,6 +634,39 @@
       Le reçu est un justificatif de vente. La facture normalisée/fiscale sera branchée
       séparément lorsque le module réglementaire sera disponible.
     </p>
+  </div>
+</div>
+
+<div id="receivablePaymentSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card receivable-payment-card" role="dialog" aria-modal="true" aria-labelledby="receivablePaymentTitle">
+    <button id="receivablePaymentCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Créance client</span>
+    <h2 id="receivablePaymentTitle">Enregistrer un paiement</h2>
+    <p id="receivablePaymentMeta" class="muted"></p>
+
+    <label class="field">
+      <span>Montant encaissé</span>
+      <input id="receivablePaymentAmount" type="number" min="1" inputmode="numeric">
+    </label>
+
+    <label class="field">
+      <span>Mode de paiement</span>
+      <select id="receivablePaymentChannel">
+        <option value="cash">Espèces</option>
+        <option value="mobile_money">Mobile Money</option>
+        <option value="card">Carte</option>
+        <option value="bank_transfer">Virement</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Référence (optionnel)</span>
+      <input id="receivablePaymentReference" placeholder="Ex. référence Mobile Money">
+    </label>
+
+    <button id="receivablePaymentSubmitBtn" type="button" class="primary">
+      Enregistrer le paiement
+    </button>
   </div>
 </div>
 
