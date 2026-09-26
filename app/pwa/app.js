@@ -394,13 +394,13 @@ function render() {
     ? sales
         .slice(0, 4)
         .map(
-          (sale) => `<article class="recent-row">
+          (sale) => `<button type="button" class="recent-row sale-row-button" data-sale-actions="${sale.id}">
             <div>
               <strong>Vente #${sale.sale_number ?? sale.id}</strong>
-              <span>${esc(sale.status)} · payé ${fmt(sale.paid_amount)}</span>
+              <span>${esc(sale.status)} · ${esc(fmtSaleDate(sale.created_at))} · payé ${fmt(sale.paid_amount)}</span>
             </div>
             <strong>${fmt(sale.total_amount)}</strong>
-          </article>`,
+          </button>`,
         )
         .join('')
     : '<p class="muted empty-state">Aucune activité récente.</p>';
@@ -433,13 +433,13 @@ function render() {
     ? sales
         .slice(0, 8)
         .map(
-          (sale) => `<article class="activity-row">
+          (sale) => `<button type="button" class="activity-row sale-row-button" data-sale-actions="${sale.id}">
             <div>
               <strong>Vente #${sale.sale_number ?? sale.id}</strong>
-              <span>${esc(sale.status)}</span>
+              <span>${esc(sale.status)} · ${esc(fmtSaleDate(sale.created_at))}</span>
             </div>
             <strong>${fmt(sale.total_amount)}</strong>
-          </article>`,
+          </button>`,
         )
         .join('')
     : '<p class="muted empty-state">Aucune vente.</p>';
