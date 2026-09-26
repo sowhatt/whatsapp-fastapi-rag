@@ -1,5 +1,5 @@
 (() => {
-  let controls=null,scanning=false,zxingPromise=null,detectedBarcode='',nativeStream=null,nativeTimer=null,aiTimer=null,aiBusy=false,validationBusy=false;
+  let controls=null,scanning=false,zxingPromise=null,detectedBarcode='',nativeStream=null,nativeTimer=null,aiTimer=null,aiBusy=false,validationBusy=false,saleBarcodeMode=false;
   const $=id=>document.getElementById(id);
   function ensureUI(){if($('barcodeLiveView'))return;const v=document.createElement('section');v.id='barcodeLiveView';v.className='barcode-live-view';v.hidden=true;v.innerHTML=`<div class="barcode-live-head"><button id="barcodeLiveBack" type="button" class="ghost">‹ Retour</button><strong>Scanner le code-barres</strong></div><div class="barcode-camera-frame"><video id="barcodeLiveVideo" autoplay playsinline muted></video><div id="barcodeTarget" class="barcode-target" aria-hidden="true"><span></span></div></div><div id="barcodeDetectedBox" hidden style="margin:14px 0;padding:12px;border-radius:14px;background:#e8f3f1;text-align:center"><small style="display:block;color:#607874">✓ Code-barres détecté</small><strong id="barcodeDetectedValue" style="display:block;margin-top:4px;font-size:20px;letter-spacing:.06em"></strong></div><img id="barcodeAutoCapture" hidden alt="Capture automatique" style="width:100%;max-height:150px;object-fit:contain;border-radius:12px;margin:8px 0"><p id="barcodeLiveStatus" class="barcode-live-status">Recherche du code-barres…</p><p class="muted small">Garde le code dans le cadre. Whatzabi capture automatiquement des images et l’IA tente de lire l’EAN.</p><div id="barcodeUnknownActions" hidden style="display:grid;gap:8px"><button id="barcodePhotoFallback" type="button">📷 Photographier le produit</button><button id="barcodeNameBtn" type="button" class="ghost">⌨️ Saisir le nom</button><button id="barcodeVoiceBtn" type="button" class="ghost">🎙️ Dicter le nom</button></div>`;document.querySelector('.catalog-sheet-card')?.appendChild(v);$('barcodeLiveBack').onclick=openCatalogMenu;$('barcodePhotoFallback').onclick=openPhotoFallback;$('barcodeNameBtn').onclick=enterName;$('barcodeVoiceBtn').onclick=dictateName}
   function setStatus(t){if($('barcodeLiveStatus'))$('barcodeLiveStatus').textContent=t}
@@ -123,7 +123,50 @@
     $('catalogCapture').hidden=true;
     updateValidationButton();
   }
-  async function onDetected(raw){if(!scanning)return;const code=normalizeCode(raw);if(!code)return;scanning=false;stopCameraOnly();showDetected(code);try{renderResult(await lookup(code))}catch{showDetected(code);setStatus('Produit inconnu de nos référentiels. Complète son identité : le code restera associé.');$('barcodeUnknownActions').hidden=false}}
+  async function onDetected(raw){
+    if(!scanning)return;
+    const code=normalizeCode(raw);
+    if(!code)return;
+    scanning=false;
+    stopCameraOnly();
+    showDetected(code);
+
+    if(saleBarcodeMode){
+      setStatus('Ajout du produit au panier…');
+      try{
+        const token=localStorage.getItem('whatzabi_token')||'';
+        const response=await fetch('/pwa/sales/barcode/'+encodeURIComponent(code),{
+          headers:{Authorization:'Bearer '+token}
+        });
+        let body=null;
+        try{body=await response.json()}catch{}
+        if(!response.ok) throw new Error(body?.detail||'Produit introuvable.');
+
+        if(typeof window.whatzabiExpressAddScannedProduct!=='function'){
+          throw new Error('Panier Vente Express indisponible.');
+        }
+
+        window.whatzabiExpressAddScannedProduct(body.product_id);
+        saleBarcodeMode=false;
+        if($('catalogSheet')) $('catalogSheet').hidden=true;
+        try{toast(body.name+' ajouté au panier.')}catch{}
+      }catch(err){
+        scanning=true;
+        setStatus(err?.message||'Code-barres non reconnu pour cette boutique.');
+        $('barcodeUnknownActions').hidden=true;
+        try{await openCamera();startNativeDetector().catch(()=>{});startZXingWatcher().catch(()=>{})}catch{}
+      }
+      return;
+    }
+
+    try{
+      renderResult(await lookup(code));
+    }catch{
+      showDetected(code);
+      setStatus('Produit inconnu de nos référentiels. Complète son identité : le code restera associé.');
+      $('barcodeUnknownActions').hidden=false;
+    }
+  }
   async function aiReadFrame(){if(!scanning||aiBusy)return;const canvas=captureFrame();if(!canvas)return;aiBusy=true;$('barcodeTarget')?.classList.add('locking');setStatus('Capture automatique — l’IA cherche le numéro…');try{const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.88));const fd=new FormData();fd.append('image',blob,'barcode.jpg');fd.append('source','barcode');const token=localStorage.getItem('whatzabi_token')||'';const r=await fetch('/pwa/catalog/analyze',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});if(r.ok){const b=await r.json(),candidate=(b.candidates||[]).find(c=>normalizeCode(c.barcode));const code=normalizeCode(candidate?.barcode);if(code){const data=canvas.toDataURL('image/jpeg',.88);$('barcodeAutoCapture').src=data;$('barcodeAutoCapture').hidden=false;sessionStorage.setItem('whatzabi_barcode_capture',data);await onDetected(code);return}}}catch{}finally{aiBusy=false;$('barcodeTarget')?.classList.remove('locking')}if(scanning)setStatus('Aucun EAN lisible — rapproche le code, je continue automatiquement.')}
   function startAILoop(){if(aiTimer)clearInterval(aiTimer);setTimeout(()=>aiReadFrame(),700);aiTimer=setInterval(()=>aiReadFrame(),2200)}
   async function openCamera(){nativeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});const video=$('barcodeLiveVideo');video.srcObject=nativeStream;await video.play();const track=nativeStream.getVideoTracks()[0];try{const caps=track.getCapabilities?.()||{},advanced=[];if(caps.focusMode?.includes('continuous'))advanced.push({focusMode:'continuous'});if(advanced.length)await track.applyConstraints({advanced})}catch{}setStatus('Recherche du code-barres…');startAILoop()}
@@ -413,6 +456,7 @@
   document.addEventListener('click',e=>{const b=e.target.closest('[data-catalog-source="barcode"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();startLiveScanner()},true);
 
   function openCatalogMenu(){
+    saleBarcodeMode=false;
     scanning=false;
     stopCameraOnly();
 
@@ -434,6 +478,12 @@
 
     sessionStorage.removeItem('whatzabi_catalog_selected');
   }
+
+  window.whatzabiStartSaleBarcodeScan = function(){
+    saleBarcodeMode=true;
+    startLiveScanner();
+    setStatus('Scanne le code-barres du produit à vendre.');
+  };
 
   window.whatzabiOpenCatalogMenu = function(event){
     if(event){
