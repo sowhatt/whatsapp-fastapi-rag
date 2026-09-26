@@ -1,14 +1,67 @@
 (() => {
   const cart = new Map();
   let query = '';
+  let frequentProductIds = [];
   const money = (n) => fmt(Number(n || 0));
   const total = () => [...cart.values()].reduce((sum, line) => sum + Number(line.product.price || 0) * line.quantity, 0);
 
+  function normalizeSearch(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('fr')
+      .trim();
+  }
+
+  function productSearchScore(product, q) {
+    const name = normalizeSearch(product?.name);
+    const brand = normalizeSearch(product?.brand);
+    const variant = normalizeSearch(product?.variant);
+    const packaging = normalizeSearch(product?.packaging);
+    const haystack = [name, brand, variant, packaging].filter(Boolean).join(' ');
+
+    if (!q) return 0;
+    if (name === q) return 100;
+    if (name.startsWith(q)) return 80;
+    if (name.includes(q)) return 60;
+    if (haystack.includes(q)) return 40;
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const matched = tokens.filter((token) => haystack.includes(token)).length;
+    return matched ? matched * 10 : 0;
+  }
+
   function availableProducts() {
-    const q = query.trim().toLocaleLowerCase('fr');
-    const products = state.products;
+    const q = normalizeSearch(query);
+    const products = Array.isArray(state.products) ? state.products : [];
     if (!q) return products.slice(0, 20);
-    return products.filter((p) => String(p.name || '').toLocaleLowerCase('fr').includes(q)).slice(0, 30);
+
+    return products
+      .map((product) => ({
+        product,
+        score: productSearchScore(product, q),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score || String(a.product.name).localeCompare(String(b.product.name), 'fr'))
+      .slice(0, 30)
+      .map((entry) => entry.product);
+  }
+
+  function frequentProducts() {
+    return frequentProductIds
+      .map((id) => state.products.find((product) => Number(product.id) === Number(id)))
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+
+  async function loadFrequentProducts() {
+    try {
+      const rows = await api('/pwa/sales/frequent-products?limit=8');
+      frequentProductIds = (rows || []).map((row) => Number(row.product_id));
+    } catch {
+      frequentProductIds = [];
+    }
+    renderExpressSale();
   }
 
   function add(productId) {
@@ -126,9 +179,21 @@
     const cartBox = $('expressCart');
     if (!grid || !cartBox) return;
     const products = availableProducts();
+    const frequent = frequentProducts();
+    const frequentSection = $('expressFrequentSection');
+    const frequentGrid = $('expressFrequentGrid');
+
+    if (frequentSection && frequentGrid) {
+      frequentSection.hidden = query.trim().length > 0 || frequent.length === 0;
+      frequentGrid.innerHTML = frequent.map((p) => {
+        const out = Number(p.stock || 0) <= 0;
+        return `<button type="button" class="express-product express-product-frequent${out ? ' out-of-stock' : ''}" data-add-product="${p.id}" aria-disabled="${out ? 'true' : 'false'}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>${out ? 'Rupture' : `Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}`}</small><span class="express-add">${out ? 'Indisponible' : '+1 au panier'}</span></button>`;
+      }).join('');
+    }
+
     grid.innerHTML = products.length ? products.map((p) => {
       const out = Number(p.stock || 0) <= 0;
-      return `<button type="button" class="express-product${out ? ' out-of-stock' : ''}" data-add-product="${p.id}" aria-disabled="${out ? 'true' : 'false'}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>${out ? 'Rupture' : `Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}`}</small><span class="express-add">${out ? 'Indisponible' : '+ Ajouter'}</span></button>`;
+      return `<button type="button" class="express-product${out ? ' out-of-stock' : ''}" data-add-product="${p.id}" aria-disabled="${out ? 'true' : 'false'}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>${out ? 'Rupture' : `Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}`}</small><span class="express-add">${out ? 'Indisponible' : '+1 au panier'}</span></button>`;
     }).join('') : '<p class="muted express-empty">Aucun produit dans cette boutique.</p>';
 
     const lines = [...cart.values()];
@@ -165,6 +230,7 @@
       syncExpressCustomers();
       renderExpressSale();
       toast('Vente express enregistrée');
+      await loadFrequentProducts();
     } catch (error) {
       toast(error.message);
       renderExpressSale();
@@ -190,7 +256,19 @@
   $('expressSearch')?.addEventListener('input', (event) => { query = event.target.value; renderExpressSale(); });
   $('expressCheckout')?.addEventListener('click', checkout);
   $('expressVoice')?.addEventListener('click', () => $('voiceNavBtn')?.click());
-  $('expressScan')?.addEventListener('click', () => document.querySelector('[data-catalog-source="barcode"]')?.click());
+  window.whatzabiExpressAddScannedProduct = function(productId) {
+    add(productId);
+    showTab('sales');
+    $('expressCheckout')?.scrollIntoView({ behavior:'smooth', block:'center' });
+  };
+
+  $('expressScan')?.addEventListener('click', () => {
+    if (typeof window.whatzabiStartSaleBarcodeScan === 'function') {
+      window.whatzabiStartSaleBarcodeScan();
+    } else {
+      toast('Scanner de vente indisponible.');
+    }
+  });
 
   const originalRender = render;
   render = function () {
@@ -200,4 +278,5 @@
   };
   syncExpressCustomers();
   renderExpressSale();
+  loadFrequentProducts();
 })();
