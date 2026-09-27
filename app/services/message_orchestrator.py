@@ -861,6 +861,44 @@ def advance_workflow(
             "action": action,
         }
 
+    # S2.1 — Une opération laissant un solde dû doit avoir une échéance
+    # avant de pouvoir être présentée à la confirmation.
+    if (
+        action.get("type") in {"sale", "purchase"}
+        and int(action.get("remaining") or 0) > 0
+        and not action.get("due_date")
+    ):
+        action["_awaiting"] = "operation_due_date"
+        set_pending_action(sender_id, action)
+
+        entity = (
+            action.get("customer")
+            if action.get("type") == "sale"
+            else action.get("supplier")
+        )
+
+        if action.get("type") == "sale":
+            question = (
+                f"📅 Quand {entity} doit-il payer ?"
+                if entity
+                else "📅 Quand le client doit-il payer ?"
+            )
+        else:
+            question = (
+                f"📅 Quand dois-tu payer {entity} ?"
+                if entity
+                else "📅 Quand dois-tu payer le fournisseur ?"
+            )
+
+        return {
+            "status": "reply",
+            "reply_text": (
+                (prefix + "\n\n" if prefix else "")
+                + question
+            ),
+            "action": action,
+        }
+
     mark_ready_for_confirmation(action)
     set_pending_action(sender_id, action)
     return {
@@ -1521,6 +1559,44 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 set_pending_action(sender_id, pending)
                 return {"status": "reply", "reply_text": "Cash, crédit, Moov ou MTN ?", "action": pending}
 
+    # S2.1 — Réponse à la question d'échéance d'une vente/achat
+    # à crédit ou partiellement payé.
+    if pending and pending.get("_awaiting") == "operation_due_date":
+        due_date = _extract_due_date_from_text(text)
+
+        # Ici le contexte est déjà connu : Whatzabi attend une échéance.
+        # Une réponse naturelle comme "dans 15 jours" est donc équivalente
+        # à "échéance dans 15 jours".
+        if due_date is None:
+            due_date = _extract_due_date_from_text(f"échéance {text}")
+
+        if due_date is None:
+            due_date = _extract_natural_due_date(text)
+
+        if due_date is None:
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "Je n’ai pas compris la date d’échéance. "
+                    "Tu peux répondre par exemple : « dans 15 jours », "
+                    "« demain », « vendredi » ou donner une date précise."
+                ),
+                "action": pending,
+            }
+
+        pending["due_date"] = (
+            due_date.isoformat()
+            if hasattr(due_date, "isoformat")
+            else str(due_date)
+        )
+        pending.pop("_awaiting", None)
+
+        return advance_workflow(
+            sender_id,
+            pending,
+            db,
+        )
+
     if pending and pending.get("_awaiting") == "operation_payment":
         payment = normalize_payment_answer(text)
         if payment is None:
@@ -1597,15 +1673,18 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             pending["remaining"] = 0
 
         pending.pop("_awaiting", None)
-        mark_ready_for_confirmation(pending)
-        set_pending_action(sender_id, pending)
-        return {
-            "status": "reply",
-            "reply_text": (
-                build_confirmation_message(pending)
-            ),
-            "action": pending,
-        }
+
+        # Repasser systématiquement par le workflow central :
+        # - solde restant > 0 -> demander l'échéance si absente ;
+        # - opération soldée -> préparer normalement la confirmation.
+        #
+        # Cela évite que la réponse "crédit" contourne les règles
+        # métier appliquées dans advance_workflow().
+        return advance_workflow(
+            sender_id,
+            pending,
+            db,
+        )
 
     if lower in {"oui", "ok", "confirmer", "valider"}:
         if not pending:

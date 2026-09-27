@@ -43,12 +43,12 @@ def test_paiement_reparti_sur_deux_ventes_ouvertes():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    send("Vends un sac de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends un sac de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=1, amount=30000, payment="credit", confidence=0.9)
     ))
     send("oui")
 
-    send("Vends cinq sacs de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends cinq sacs de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=5, amount=150000, payment="credit", confidence=0.9)
     ))
     send("oui")
@@ -80,7 +80,7 @@ def test_paiement_qui_depasse_la_dette_totale_est_rejete():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    send("Vends un sac de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends un sac de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=1, amount=30000, payment="credit", confidence=0.9)
     ))
     send("oui")
@@ -107,11 +107,11 @@ def test_paiement_qui_solde_exactement_toutes_les_ventes():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    send("Vends un sac de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends un sac de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=1, amount=30000, payment="credit", confidence=0.9)
     ))
     send("oui")
-    send("Vends cinq sacs de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends cinq sacs de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=5, amount=150000, payment="credit", confidence=0.9)
     ))
     send("oui")

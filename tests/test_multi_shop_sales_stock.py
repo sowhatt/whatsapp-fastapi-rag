@@ -256,6 +256,7 @@ def test_identified_customer_sale_still_supports_credit():
             ],
             paid_amount=4000,
             payment_channel="cash",
+            due_date="2026-12-31",
         ),
         db,
     )
@@ -291,6 +292,7 @@ def test_cross_shop_payment_cannot_modify_sale():
             ],
             paid_amount=4000,
             payment_channel="cash",
+            due_date="2026-12-31",
         ),
         db,
     )

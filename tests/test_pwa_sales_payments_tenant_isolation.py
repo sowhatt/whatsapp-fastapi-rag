@@ -145,6 +145,7 @@ def create_credit_sale(
             ],
             "paid_amount": 0,
             "payment_channel": "cash",
+            "due_date": "2026-12-31",
         },
     )
 

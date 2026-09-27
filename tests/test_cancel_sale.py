@@ -37,7 +37,7 @@ def test_annulation_vente_confirmee_restaure_stock_et_dette():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    send("Vends deux sacs de riz à Awa à crédit", fake=lambda t, d: _to_business_action(
+    send("Vends deux sacs de riz à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz", unit="Sac", quantity=2, amount=100000, payment="credit", confidence=0.9)
     ))
     send("oui")
