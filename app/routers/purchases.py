@@ -115,7 +115,18 @@ def create_purchase(
         if not product:
             raise HTTPException(status_code=404, detail=f"Produit introuvable : {item.product_id}")
 
-        line_total = item.unit_cost * item.quantity
+        line_total = (
+            item.line_total
+            if item.line_total is not None
+            else item.unit_cost * item.quantity
+        )
+
+        if line_total < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Le montant de la ligne ne peut pas être négatif",
+            )
+
         total_amount += line_total
         resolved_items.append((product, item.quantity, item.unit_cost, line_total))
 

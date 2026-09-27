@@ -861,7 +861,49 @@ def advance_workflow(
             "action": action,
         }
 
-    # S2.1 — Une opération laissant un solde dû doit avoir une échéance
+    # S2.2 — Normaliser le paiement partiel AVANT la règle d'échéance.
+    #
+    # Si l'IntentAgent fournit déjà le moyen de paiement (cash/Moov/MTN)
+    # ainsi que paid_amount, le workflow ne passe pas par
+    # operation_payment. Il faut donc calculer ici le reste dû.
+    #
+    # Exemple achat :
+    # total 50 000, payé 30 000 -> reste 20 000.
+    if action.get("type") in {"sale", "purchase"}:
+        total_amount = int(action.get("amount") or 0)
+        intent_paid_amount = action.get("paid_amount")
+        intent_remaining = action.get("remaining")
+
+        if intent_paid_amount is not None:
+            paid_amount = int(intent_paid_amount)
+            paid_amount = max(0, min(paid_amount, total_amount))
+
+            action["paid_amount"] = paid_amount
+            action["remaining"] = total_amount - paid_amount
+
+        elif (
+            intent_remaining is not None
+            and int(intent_remaining) > 0
+            and int(intent_remaining) < total_amount
+        ):
+            remaining_amount = int(intent_remaining)
+
+            action["remaining"] = remaining_amount
+            action["paid_amount"] = total_amount - remaining_amount
+
+        elif action.get("payment") == "credit":
+            action["paid_amount"] = 0
+            action["remaining"] = total_amount
+
+        elif action.get("payment") in {"cash", "moov", "mtn", "bank"}:
+            # Compatibilité avec le comportement historique :
+            # si un moyen de paiement immédiat est explicitement connu
+            # mais qu'aucun montant partiel n'est fourni, l'opération
+            # est considérée comme intégralement payée.
+            action["paid_amount"] = total_amount
+            action["remaining"] = 0
+
+    # S2.1/S2.2 — Une opération laissant un solde dû doit avoir une échéance
     # avant de pouvoir être présentée à la confirmation.
     if (
         action.get("type") in {"sale", "purchase"}

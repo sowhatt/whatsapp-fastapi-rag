@@ -278,6 +278,7 @@ def build_purchase_create_payload(resolved: ResolvedPurchase) -> PurchaseCreate:
                     if line.quantity
                     else 0
                 ),
+                line_total=line.line_total,
             )
             for line in resolved.lines
         ],

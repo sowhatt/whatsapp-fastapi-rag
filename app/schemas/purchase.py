@@ -7,6 +7,9 @@ class PurchaseItemCreate(BaseModel):
     product_id: int
     quantity: int
     unit_cost: int
+    # Conserve le total exact de la ligne lorsque le coût unitaire
+    # ne permet pas de le reconstruire sans écart d'arrondi.
+    line_total: int | None = None
 
 
 class PurchaseCreate(BaseModel):

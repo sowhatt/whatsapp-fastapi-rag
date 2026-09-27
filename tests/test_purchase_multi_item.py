@@ -11,7 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from app.agents.intent_agent import AIIntent, AIIntentItem, _to_business_action
 from app.agents.validation_agent import validate_before_confirmation
 from app.db.base import Base
+from app.models.merchant_user import MerchantUser  # noqa: F401 - enregistre merchant_users
 from app.models.product import Product
+from app.models.shop import Shop  # noqa: F401 - enregistre shops
 from app.models.supplier import Supplier
 from app.services import message_orchestrator as mo
 from app.services.purchases_service import (
@@ -92,6 +94,8 @@ def test_resolution_achat_multi_lignes_montant_global(db):
     assert sum(line.line_total for line in resolved.lines) == 250000
     payload = build_purchase_create_payload(resolved)
     assert len(payload.items) == 2
+    assert sum(item.line_total for item in payload.items) == 250000
+    assert sum(item.line_total for item in payload.items) == 250000
 
 
 def test_resolution_achat_incoherence_entre_lignes_et_total(db):
