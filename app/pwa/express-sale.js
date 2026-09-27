@@ -61,7 +61,7 @@
   function availableProducts() {
     const q = normalizeSearch(query);
     const products = Array.isArray(state.products) ? state.products : [];
-    if (!q) return products.slice(0, 20);
+    if (!q) return [];
 
     return products
       .map((product) => ({
@@ -78,18 +78,28 @@
     return frequentProductIds
       .map((id) => state.products.find((product) => Number(product.id) === Number(id)))
       .filter(Boolean)
-      .slice(0, 8);
+      .slice(0, 20);
   }
 
   async function loadFrequentProducts() {
+    // Ne jamais appeler une route PWA avant authentification.
+    // Cela évite le 401 observé au chargement de l'écran de connexion.
+    if (!localStorage.getItem('whatzabi_token')) {
+      frequentProductIds = [];
+      renderExpressSale();
+      return;
+    }
+
     try {
-      const rows = await api('/pwa/sales/frequent-products?limit=8');
+      const rows = await api('/pwa/sales/frequent-products?limit=20');
       frequentProductIds = (rows || []).map((row) => Number(row.product_id));
     } catch {
       frequentProductIds = [];
     }
     renderExpressSale();
   }
+
+  window.whatzabiReloadFrequentProducts = loadFrequentProducts;
 
   function add(productId) {
     const product = state.products.find((p) => Number(p.id) === Number(productId));
@@ -209,6 +219,7 @@
     const frequent = frequentProducts();
     const frequentSection = $('expressFrequentSection');
     const frequentGrid = $('expressFrequentGrid');
+    const catalogSection = $('expressCatalogSection');
 
     if (frequentSection && frequentGrid) {
       frequentSection.hidden = query.trim().length > 0 || frequent.length === 0;
@@ -216,6 +227,10 @@
         const out = Number(p.stock || 0) <= 0;
         return `<button type="button" class="express-product express-product-frequent${out ? ' out-of-stock' : ''}" data-add-product="${p.id}" aria-disabled="${out ? 'true' : 'false'}"><span class="express-product-name">${esc(p.name)}</span><strong>${money(p.price)}</strong><small>${out ? 'Rupture' : `Stock ${Number(p.stock || 0)} ${esc(p.unit || '')}`}</small><span class="express-add">${out ? 'Indisponible' : '+1 au panier'}</span></button>`;
       }).join('');
+    }
+
+    if (catalogSection) {
+      catalogSection.hidden = normalizeSearch(query).length === 0;
     }
 
     grid.innerHTML = products.length ? products.map((p) => {
