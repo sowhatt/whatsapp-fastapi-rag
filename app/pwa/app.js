@@ -120,7 +120,7 @@ function renderPermissions() {
 }
 
 let token = localStorage.getItem('whatzabi_token') || '';
-let state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null };
+let state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null, finance: null, financePeriod: 'month' };
 let editingProductId = null;
 let invoiceDraftQueue = [];
 let invoiceDraftPosition = 0;
@@ -157,6 +157,162 @@ function showTab(name) {
   );
 }
 
+
+
+const FINANCE_PERIOD_LABELS = {
+  today: "Aujourd'hui",
+  week: 'Cette semaine',
+  month: 'Ce mois',
+  all: 'Toutes les données',
+};
+
+function financePercent(value) {
+  const number = Number(value || 0);
+
+  return new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(number) + ' %';
+}
+
+function setFinanceStatus(message = '', isError = false) {
+  const element = $('financeStatus');
+  if (!element) return;
+
+  if (!message) {
+    element.hidden = true;
+    element.textContent = '';
+    element.classList.remove('finance-status-error');
+    return;
+  }
+
+  element.hidden = false;
+  element.textContent = message;
+  element.classList.toggle(
+    'finance-status-error',
+    Boolean(isError),
+  );
+}
+
+function renderFinancePeriodButtons() {
+  document
+    .querySelectorAll('[data-finance-period]')
+    .forEach((button) => {
+      button.classList.toggle(
+        'active',
+        button.dataset.financePeriod ===
+          state.financePeriod,
+      );
+    });
+}
+
+function renderFinanceOverview(data) {
+  if (!data) return;
+
+  const activity = data.activity || {};
+  const cashflow = data.cashflow || {};
+  const receivables = data.receivables || {};
+  const payables = data.payables || {};
+  const stock = data.stock || {};
+  const position = data.position || {};
+
+  if ($('financeShopName')) {
+    $('financeShopName').textContent =
+      state.merchant?.active_shop_name ||
+      state.merchant?.shop_name ||
+      'Boutique active';
+  }
+
+  $('financeRevenue').textContent =
+    fmt(activity.sales_total);
+
+  $('financeGrossMargin').textContent =
+    fmt(activity.gross_margin);
+
+  $('financeMarginRate').textContent =
+    financePercent(activity.gross_margin_rate);
+
+  $('financeSalesPaid').textContent =
+    fmt(activity.sales_paid);
+
+  $('financeReceivables').textContent =
+    fmt(receivables.total);
+
+  $('financeOverdue').textContent =
+    fmt(receivables.overdue) + ' en retard';
+
+  $('financePayables').textContent =
+    fmt(payables.total);
+
+  $('financeExpenses').textContent =
+    fmt(cashflow.expenses_total);
+
+  $('financeCashflow').textContent =
+    fmt(cashflow.net_cash_flow);
+
+  $('financeStockValue').textContent =
+    fmt(stock.value);
+
+  $('financePotentialSales').textContent =
+    fmt(stock.potential_sales_value);
+
+  $('financeAssets').textContent =
+    fmt(position.estimated_current_assets);
+
+  $('financeLiabilities').textContent =
+    fmt(position.estimated_current_liabilities);
+
+  $('financeNetPosition').textContent =
+    fmt(position.estimated_net_position);
+
+  $('financePeriodLabel').textContent =
+    FINANCE_PERIOD_LABELS[data.period] ||
+    FINANCE_PERIOD_LABELS[state.financePeriod] ||
+    'Période';
+
+  renderFinancePeriodButtons();
+}
+
+async function loadFinanceOverview(
+  period = state.financePeriod || 'month',
+) {
+  if (!can('report.read')) {
+    toast(
+      "Tu n'as pas accès à l'analyse financière."
+    );
+    showTab('more');
+    return;
+  }
+
+  state.financePeriod = period;
+  renderFinancePeriodButtons();
+
+  setFinanceStatus(
+    "Chargement de l'analyse financière…"
+  );
+
+  try {
+    const data = await api(
+      '/pwa/finance/overview?period=' +
+        encodeURIComponent(period)
+    );
+
+    state.finance = data;
+    renderFinanceOverview(data);
+    setFinanceStatus();
+  } catch (error) {
+    console.error(
+      'Finance overview error:',
+      error
+    );
+
+    setFinanceStatus(
+      error.message ||
+        "Impossible de charger l'analyse financière.",
+      true,
+    );
+  }
+}
 
 function resetProductForm() {
   editingProductId = null;
@@ -304,7 +460,7 @@ window.whatzabiOpenInvoiceDrafts = function(items) {
 function logout() {
   token = '';
   localStorage.removeItem('whatzabi_token');
-  state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null };
+  state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null, finance: null, financePeriod: 'month' };
   $('appView').hidden = true;
   $('loginView').hidden = false;
 }
@@ -1569,9 +1725,40 @@ $('quickAddPurchase')?.addEventListener('click', () => {
   showTab('purchases');
 });
 
-$('moreFinancial').addEventListener('click', () => {
-  showTab('activity');
+$('moreFinancial').addEventListener('click', async () => {
+  if (!can('report.read')) {
+    toast(
+      "Tu n'as pas accès à l'analyse financière."
+    );
+    return;
+  }
+
+  showTab('finance');
+  await loadFinanceOverview(
+    state.financePeriod || 'month'
+  );
 });
+
+
+document
+  .querySelectorAll('[data-finance-period]')
+  .forEach((button) => {
+    button.addEventListener('click', async () => {
+      const period =
+        button.dataset.financePeriod || 'month';
+
+      await loadFinanceOverview(period);
+    });
+  });
+
+$('financeRefreshBtn')?.addEventListener(
+  'click',
+  async () => {
+    await loadFinanceOverview(
+      state.financePeriod || 'month'
+    );
+  },
+);
 
 $('moreCalculator').addEventListener('click', () => {
   toast('Calculatrice Whatzabi : à brancher');

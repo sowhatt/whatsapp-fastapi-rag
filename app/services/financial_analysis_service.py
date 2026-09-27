@@ -46,10 +46,36 @@ def get_financial_overview(
     *,
     merchant_id: int,
     db: Session,
+    shop_id: int | None = None,
     since: date | None = None,
     until: date | None = None,
 ) -> FinancialOverview:
-    conditions = [
+    """
+    Retourne la situation financière de gestion.
+
+    shop_id=None:
+        vue consolidée historique du commerçant.
+
+    shop_id=<id>:
+        vue strictement limitée à la boutique sélectionnée.
+    """
+
+    if shop_id is None:
+        daily_view = "mv_daily_business_metrics"
+        customer_view = "mv_customer_financial_position"
+        supplier_view = "mv_supplier_financial_position"
+        stock_view = "mv_stock_analytics"
+    else:
+        daily_view = "mv_daily_business_metrics_by_shop"
+        customer_view = "mv_customer_financial_position_by_shop"
+        supplier_view = "mv_supplier_financial_position_by_shop"
+        stock_view = "mv_stock_analytics_by_shop"
+
+    activity_conditions = [
+        "merchant_id = :merchant_id"
+    ]
+
+    position_conditions = [
         "merchant_id = :merchant_id"
     ]
 
@@ -57,19 +83,34 @@ def get_financial_overview(
         "merchant_id": merchant_id,
     }
 
+    if shop_id is not None:
+        activity_conditions.append(
+            "shop_id = :shop_id"
+        )
+        position_conditions.append(
+            "shop_id = :shop_id"
+        )
+        params["shop_id"] = shop_id
+
     if since is not None:
-        conditions.append(
+        activity_conditions.append(
             "business_date >= :since"
         )
         params["since"] = since
 
     if until is not None:
-        conditions.append(
+        activity_conditions.append(
             "business_date <= :until"
         )
         params["until"] = until
 
-    where = " AND ".join(conditions)
+    activity_where = " AND ".join(
+        activity_conditions
+    )
+
+    position_where = " AND ".join(
+        position_conditions
+    )
 
     activity = db.execute(
         text(f"""
@@ -104,14 +145,14 @@ def get_financial_overview(
                 COALESCE(SUM(net_cash_flow), 0)
                     AS net_cash_flow
 
-            FROM mv_daily_business_metrics
-            WHERE {where}
+            FROM {daily_view}
+            WHERE {activity_where}
         """),
         params,
     ).mappings().one()
 
     customers = db.execute(
-        text("""
+        text(f"""
             SELECT
                 COALESCE(
                     SUM(outstanding_amount),
@@ -123,28 +164,28 @@ def get_financial_overview(
                     0
                 ) AS overdue
 
-            FROM mv_customer_financial_position
-            WHERE merchant_id = :merchant_id
+            FROM {customer_view}
+            WHERE {position_where}
         """),
-        {"merchant_id": merchant_id},
+        params,
     ).mappings().one()
 
     suppliers = db.execute(
-        text("""
+        text(f"""
             SELECT
                 COALESCE(
                     SUM(outstanding_amount),
                     0
                 ) AS payables
 
-            FROM mv_supplier_financial_position
-            WHERE merchant_id = :merchant_id
+            FROM {supplier_view}
+            WHERE {position_where}
         """),
-        {"merchant_id": merchant_id},
+        params,
     ).mappings().one()
 
     stock = db.execute(
-        text("""
+        text(f"""
             SELECT
                 COALESCE(
                     SUM(stock_value),
@@ -156,10 +197,10 @@ def get_financial_overview(
                     0
                 ) AS potential_sales_value
 
-            FROM mv_stock_analytics
-            WHERE merchant_id = :merchant_id
+            FROM {stock_view}
+            WHERE {position_where}
         """),
-        {"merchant_id": merchant_id},
+        params,
     ).mappings().one()
 
     sales_total = _integer(

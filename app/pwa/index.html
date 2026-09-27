@@ -267,6 +267,158 @@
         </article>
       </section>
 
+      <section id="finance" class="panel finance-panel">
+        <div class="panel-heading finance-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Analyse financière</h2>
+            <small id="financeShopName" class="muted">—</small>
+          </div>
+
+          <button id="financeRefreshBtn"
+                  type="button"
+                  class="ghost finance-refresh"
+                  aria-label="Actualiser l'analyse financière">
+            ↻
+          </button>
+        </div>
+
+        <div class="finance-periods"
+             role="group"
+             aria-label="Période d'analyse">
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="today">
+            Aujourd'hui
+          </button>
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="week">
+            Semaine
+          </button>
+          <button type="button"
+                  class="finance-period active"
+                  data-finance-period="month">
+            Mois
+          </button>
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="all">
+            Tout
+          </button>
+        </div>
+
+        <div id="financeStatus"
+             class="card finance-status"
+             hidden>
+        </div>
+
+        <article class="card finance-hero">
+          <span>Chiffre d'affaires</span>
+          <strong id="financeRevenue">0</strong>
+          <small id="financePeriodLabel">
+            Ce mois
+          </small>
+        </article>
+
+        <div class="finance-grid">
+          <article class="card finance-metric">
+            <span>Marge brute</span>
+            <strong id="financeGrossMargin">0</strong>
+            <small>
+              <span id="financeMarginRate">0 %</span>
+              de marge
+            </small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Encaissé</span>
+            <strong id="financeSalesPaid">0</strong>
+            <small>Ventes encaissées</small>
+          </article>
+
+          <article class="card finance-metric finance-alert-card">
+            <span>Créances clients</span>
+            <strong id="financeReceivables">0</strong>
+            <small id="financeOverdue">
+              0 en retard
+            </small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Dettes fournisseurs</span>
+            <strong id="financePayables">0</strong>
+            <small>Reste à payer</small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Dépenses</span>
+            <strong id="financeExpenses">0</strong>
+            <small>Sur la période</small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Flux net</span>
+            <strong id="financeCashflow">0</strong>
+            <small>Trésorerie estimée</small>
+          </article>
+        </div>
+
+        <article class="card finance-section-card">
+          <div class="finance-section-title">
+            <div>
+              <span class="eyebrow">Marchandises</span>
+              <h2>Stock</h2>
+            </div>
+            <span>📦</span>
+          </div>
+
+          <div class="finance-lines">
+            <div>
+              <span>Valeur du stock</span>
+              <strong id="financeStockValue">0</strong>
+            </div>
+
+            <div>
+              <span>Potentiel de vente</span>
+              <strong id="financePotentialSales">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="card finance-section-card">
+          <div class="finance-section-title">
+            <div>
+              <span class="eyebrow">Situation estimée</span>
+              <h2>Position financière</h2>
+            </div>
+            <span>📊</span>
+          </div>
+
+          <div class="finance-lines">
+            <div>
+              <span>Actifs</span>
+              <strong id="financeAssets">0</strong>
+            </div>
+
+            <div>
+              <span>Passifs</span>
+              <strong id="financeLiabilities">0</strong>
+            </div>
+
+            <div class="finance-net-line">
+              <span>Position nette</span>
+              <strong id="financeNetPosition">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <p class="finance-disclaimer">
+          Indicateurs de pilotage de la boutique active.
+          Ils ne constituent pas une comptabilité réglementaire.
+        </p>
+      </section>
+
       <section id="suppliers" class="panel">
         <div class="panel-heading">
           <div>
