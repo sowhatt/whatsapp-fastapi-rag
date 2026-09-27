@@ -1123,6 +1123,9 @@ async function refresh() {
   state.customers = customers;
   state.sales = sales;
   render();
+  if (typeof window.whatzabiReloadFrequentProducts === 'function') {
+    await window.whatzabiReloadFrequentProducts();
+  }
 }
 
 async function boot() {
