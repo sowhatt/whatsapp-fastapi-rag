@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import func
@@ -129,7 +130,7 @@ def list_sales(
 
 @router.get("/sales/frequent-products")
 def frequent_sale_products(
-    limit: int = 8,
+    limit: int = 20,
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("sale.read")),
 ):
@@ -137,7 +138,7 @@ def frequent_sale_products(
     if shop_id is None:
         raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
 
-    safe_limit = max(1, min(int(limit or 8), 20))
+    safe_limit = max(1, min(int(limit or 20), 20))
 
     rows = (
         db.query(
@@ -154,6 +155,7 @@ def frequent_sale_products(
         .filter(
             ShopOperation.shop_id == shop_id,
             Sale.status != "cancelled",
+            Sale.created_at >= datetime.utcnow() - timedelta(days=30),
         )
         .group_by(SaleItem.product_id)
         .order_by(
