@@ -9,6 +9,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
+from app.models.shop import Shop  # noqa: F401 - register shops table for SQLite metadata
+from app.models.merchant_user import MerchantUser  # noqa: F401 - register merchant_users table
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
 from app.models.product import Product

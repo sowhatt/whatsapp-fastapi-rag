@@ -3,9 +3,29 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.financial_entry import FinancialEntry
+from app.models.shop_operation import ShopOperation
 from app.schemas.financial_entry import FinancialEntryCreate, FinancialEntryRead
+from app.services.shop_context_service import (
+    get_current_shop_id,
+    record_shop_operation,
+)
 
 router = APIRouter(tags=["trésorerie libre"])
+
+
+def _financial_entries_query(db: Session):
+    """Scope financial entries to the active shop when one is selected."""
+    query = db.query(FinancialEntry)
+    shop_id = get_current_shop_id(db)
+
+    if shop_id is None:
+        return query
+
+    return query.join(
+        ShopOperation,
+        (ShopOperation.entity_type == "financial_entry")
+        & (ShopOperation.entity_id == FinancialEntry.id),
+    ).filter(ShopOperation.shop_id == shop_id)
 
 
 def add_event(
@@ -37,7 +57,7 @@ def find_recent_possible_duplicate_financial_entry(
     label: str,
 ):
     return (
-        db.query(FinancialEntry)
+        _financial_entries_query(db)
         .filter(
             FinancialEntry.entry_type == entry_type,
             FinancialEntry.amount == amount,
@@ -53,7 +73,11 @@ def find_recent_possible_duplicate_financial_entry(
 @router.get("/financial-entries", response_model=list[FinancialEntryRead])
 def list_financial_entries(db: Session = Depends(get_db)):
     """Liste les recettes et dépenses libres non rattachées à une vente ou un achat détaillé."""
-    return db.query(FinancialEntry).order_by(FinancialEntry.created_at.desc()).all()
+    return (
+        _financial_entries_query(db)
+        .order_by(FinancialEntry.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/financial-entries", response_model=FinancialEntryRead)
@@ -94,6 +118,8 @@ def create_financial_entry(payload: FinancialEntryCreate, db: Session = Depends(
     )
     db.add(entry)
     db.flush()
+
+    record_shop_operation("financial_entry", entry.id, db)
 
     signed_amount = payload.amount if payload.entry_type == "income" else -payload.amount
 

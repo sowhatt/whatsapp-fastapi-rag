@@ -109,6 +109,15 @@ def test_currency_conversion_detection():
     )
 
 
+def test_expense_in_fcfa_is_not_currency_conversion():
+    assert (
+        looks_like_currency_conversion(
+            "J'ai payé 25 000 FCFA d'électricité en espèces"
+        )
+        is False
+    )
+
+
 def test_whatsapp_ngn_to_xof_uses_cached_rate(db):
     add_rate(
         db,

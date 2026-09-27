@@ -9,6 +9,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.business.assistant import is_summary_keyword_request
 from app.db.base import Base
+from app.models.shop import Shop  # noqa: F401 - register shops table for SQLite metadata
+from app.models.merchant_user import MerchantUser  # noqa: F401 - register merchant_users table
 from app.services import message_orchestrator as mo
 from app.state.pending_actions import pending_actions
 

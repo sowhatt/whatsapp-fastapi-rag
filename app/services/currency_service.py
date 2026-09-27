@@ -305,37 +305,16 @@ def _normalize_currency_alias(value: str) -> str | None:
 
 
 def looks_like_currency_conversion(text: str) -> bool:
-    normalized = " ".join(text.lower().split())
+    """
+    Détecte uniquement une conversion de devise réellement analysable.
 
-    currency_words = (
-        "naira",
-        "nairas",
-        "ngn",
-        "cfa",
-        "fcfa",
-        "xof",
-        "euro",
-        "euros",
-        "eur",
-        "dollar",
-        "dollars",
-        "usd",
-    )
+    Exemple valide :
+        "250000 nairas en CFA"
 
-    has_currency = any(
-        word in normalized
-        for word in currency_words
-    )
-
-    has_conversion_marker = bool(
-        re.search(
-            r"\b(en|vers|convertis?|convertir|ça fait combien|"
-            r"ca fait combien|combien en)\b",
-            normalized,
-        )
-    )
-
-    return has_currency and has_conversion_marker
+    Une opération métier contenant une devise ne doit pas être détournée :
+        "J'ai payé 25 000 FCFA d'électricité en espèces"
+    """
+    return parse_currency_conversion(text) is not None
 
 
 def parse_currency_conversion(
