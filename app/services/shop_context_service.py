@@ -37,6 +37,53 @@ def get_effective_stock(product: Product, db: Session) -> int:
     return int(inventory.stock if inventory is not None else 0)
 
 
+def get_effective_threshold(product: Product, db: Session) -> int:
+    """Retourne le seuil d'alerte de la boutique active ou le seuil legacy."""
+    shop_id = get_current_shop_id(db)
+
+    if shop_id is None:
+        return int(product.threshold or 0)
+
+    inventory = _inventory_row(product, db)
+
+    if inventory is None:
+        return int(product.threshold or 0)
+
+    return int(inventory.threshold or 0)
+
+
+def set_shop_threshold(product: Product, threshold: int, db: Session) -> int:
+    """Modifie le seuil de la boutique active sans affecter les autres."""
+    if threshold < 0:
+        raise ValueError("Le seuil de stock ne peut pas être négatif.")
+
+    shop_id = get_current_shop_id(db)
+    merchant_id = get_current_merchant(db) or getattr(product, "merchant_id", None)
+
+    if shop_id is None:
+        product.threshold = threshold
+        return threshold
+
+    if merchant_id is None:
+        raise ValueError("merchant_id requis pour un stock de boutique")
+
+    inventory = _inventory_row(product, db, lock=True)
+
+    if inventory is None:
+        inventory = ShopInventory(
+            merchant_id=merchant_id,
+            shop_id=shop_id,
+            product_id=product.id,
+            stock=0,
+            threshold=threshold,
+        )
+        db.add(inventory)
+    else:
+        inventory.threshold = threshold
+
+    return threshold
+
+
 def adjust_stock(product: Product, quantity_delta: int, db: Session) -> int:
     shop_id = get_current_shop_id(db)
     merchant_id = get_current_merchant(db) or getattr(product, "merchant_id", None)
