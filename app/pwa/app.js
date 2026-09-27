@@ -416,6 +416,46 @@ function render() {
     customersWithDebt + (customersWithDebt > 1 ? ' clients' : ' client');
   $('statLowStock').textContent = lowStockProducts.length;
 
+  if ($('criticalStockCount')) {
+    $('criticalStockCount').textContent =
+      lowStockProducts.length +
+      (lowStockProducts.length > 1 ? ' produits' : ' produit');
+  }
+
+  if ($('criticalStockItems')) {
+    $('criticalStockItems').innerHTML = lowStockProducts.length
+      ? lowStockProducts
+          .sort((a, b) => {
+            const stockA = Number(a.stock || 0);
+            const stockB = Number(b.stock || 0);
+
+            if (stockA !== stockB) return stockA - stockB;
+
+            return String(a.name || '').localeCompare(
+              String(b.name || ''),
+              'fr',
+            );
+          })
+          .map((product) => {
+            const stock = Number(product.stock || 0);
+            const threshold = Number(product.threshold || 0);
+
+            const status = stock <= 0
+              ? '<span class="stock-state stock-out">Rupture</span>'
+              : '<span class="stock-state stock-low">Faible</span>';
+
+            return `<article class="activity-row">
+              <div>
+                <strong>${esc(product.name)}</strong>
+                <span>Stock ${stock} ${esc(product.unit)} · seuil ${threshold}</span>
+              </div>
+              ${status}
+            </article>`;
+          })
+          .join('')
+      : '<p class="muted empty-state">Aucun produit en stock critique.</p>';
+  }
+
   $('activityRevenue').textContent = fmt(revenue);
   $('activityDebt').textContent = fmt(customerDebt);
 

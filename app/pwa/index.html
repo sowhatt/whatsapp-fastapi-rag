@@ -99,11 +99,17 @@
             <small><span id="statDebtCustomers">0 client</span> · Voir échéances ›</small>
           </button>
 
-          <article class="card home-stat home-stat-alert">
+          <button
+            id="statLowStockCard"
+            type="button"
+            class="card home-stat home-stat-alert home-stat-clickable"
+            data-open-tab="catalog"
+            data-scroll-target="criticalStockList"
+          >
             <span>Stock faible</span>
             <strong id="statLowStock">0</strong>
-            <small>produits</small>
-          </article>
+            <small>Voir les produits critiques ›</small>
+          </button>
 
           <button id="statSupplierDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="purchases" data-scroll-target="supplierPayablesList" hidden>
             <span>Dettes fournisseurs</span>
@@ -471,6 +477,18 @@
             <button id="productCancelEditBtn" type="button" class="ghost" hidden>Annuler la modification</button>
           </form>
         </article>
+
+        <section id="criticalStockList" class="card">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Inventaire</span>
+              <h3>Stock critique</h3>
+            </div>
+            <strong id="criticalStockCount">0 produit</strong>
+          </div>
+          <div id="criticalStockItems" class="list"></div>
+        </section>
+
         <div id="productList" class="list"></div>
       </section>
 
