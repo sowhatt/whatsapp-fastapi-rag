@@ -10,6 +10,7 @@ from app.routers.pwa_voice import router as pwa_voice_router
 from app.routers.pwa_smart_catalog import router as pwa_smart_catalog_router
 from app.routers.pwa_currency import router as pwa_currency_router
 from app.routers.pwa_finance import router as pwa_finance_router
+from app.routers.pwa_expenses import router as pwa_expenses_router
 from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
@@ -448,6 +449,7 @@ for pwa_router in (
     pwa_smart_catalog_router,
     pwa_currency_router,
     pwa_finance_router,
+    pwa_expenses_router,
     suppliers_router,
     purchases_router,
     supplier_payments_router,

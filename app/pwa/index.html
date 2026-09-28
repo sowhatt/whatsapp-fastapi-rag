@@ -100,6 +100,17 @@
           </button>
 
           <button
+            id="statExpensesCard"
+            type="button"
+            class="card home-stat home-stat-clickable"
+            data-open-tab="expenses"
+          >
+            <span>Dépenses</span>
+            <strong id="statExpenses">0 FCFA</strong>
+            <small>Ce mois · Voir détail ›</small>
+          </button>
+
+          <button
             id="statLowStockCard"
             type="button"
             class="card home-stat home-stat-alert home-stat-clickable"
@@ -132,6 +143,11 @@
             <button id="quickAddPurchase" type="button" class="home-action">
               <span class="home-action-icon">📦</span>
               <span>Nouvel achat</span>
+            </button>
+
+            <button id="quickAddExpense" type="button" class="home-action">
+              <span class="home-action-icon">💸</span>
+              <span>Nouvelle dépense</span>
             </button>
 
             <button id="quickScanner" type="button" class="home-action">
@@ -216,6 +232,15 @@
             <span>›</span>
           </button>
 
+          <button id="moreExpenses" data-open-tab="expenses" type="button" class="more-menu-item">
+            <span class="more-menu-icon">💸</span>
+            <span>
+              <strong>Dépenses</strong>
+              <small>Saisie et historique des dépenses</small>
+            </span>
+            <span>›</span>
+          </button>
+
           <button data-open-tab="purchases" type="button" class="more-menu-item">
             <span class="more-menu-icon">📥</span>
             <span>
@@ -264,6 +289,136 @@
             </span>
             <span>›</span>
           </button>
+        </article>
+      </section>
+
+      <section id="expenses" class="panel expenses-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Dépenses</h2>
+            <small id="expensesShopName" class="muted">—</small>
+          </div>
+
+          <button
+            id="expenseAddBtn"
+            type="button"
+            class="primary"
+          >
+            + Ajouter
+          </button>
+        </div>
+
+        <article class="card expense-hero">
+          <span>Dépenses du mois</span>
+          <strong id="expensesTotal">0 FCFA</strong>
+          <small id="expensesCount">0 dépense</small>
+        </article>
+
+        <div class="expense-periods" role="group" aria-label="Période des dépenses">
+          <button type="button" class="expense-period" data-expense-period="today">
+            Aujourd'hui
+          </button>
+          <button type="button" class="expense-period" data-expense-period="week">
+            Semaine
+          </button>
+          <button type="button" class="expense-period active" data-expense-period="month">
+            Mois
+          </button>
+          <button type="button" class="expense-period" data-expense-period="all">
+            Tout
+          </button>
+        </div>
+
+        <article class="card">
+          <div class="home-section-heading">
+            <h2>Historique</h2>
+            <button id="expensesRefreshBtn" type="button" class="text-action">
+              Actualiser
+            </button>
+          </div>
+
+          <div id="expensesList" class="expense-list">
+            <p class="muted empty-state">Aucune dépense.</p>
+          </div>
+        </article>
+
+        <article id="expenseFormCard" class="card expense-form-card" hidden>
+          <div class="home-section-heading">
+            <h2>Nouvelle dépense</h2>
+            <button id="expenseFormCloseBtn" type="button" class="ghost">
+              Fermer
+            </button>
+          </div>
+
+          <form id="expenseForm" class="expense-form">
+            <label>
+              Montant
+              <input
+                id="expenseAmount"
+                name="amount"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                placeholder="5 000"
+                required
+              >
+            </label>
+
+            <label>
+              Catégorie
+              <select id="expenseCategory" name="category">
+                <option value="transport">Transport</option>
+                <option value="loyer">Loyer</option>
+                <option value="electricite">Électricité</option>
+                <option value="salaire">Salaire</option>
+                <option value="carburant">Carburant</option>
+                <option value="livraison">Livraison</option>
+                <option value="fournitures">Fournitures</option>
+                <option value="taxes">Taxes</option>
+                <option value="autre" selected>Autre</option>
+              </select>
+            </label>
+
+            <label>
+              Libellé
+              <input
+                id="expenseLabel"
+                name="label"
+                maxlength="100"
+                placeholder="Ex. Livraison marchandises"
+                required
+              >
+            </label>
+
+            <label>
+              Paiement
+              <select id="expenseChannel" name="channel">
+                <option value="cash">Espèces</option>
+                <option value="mtn_momo">MTN MoMo</option>
+                <option value="moov_money">Moov Money</option>
+                <option value="bank">Banque</option>
+              </select>
+            </label>
+
+            <label>
+              Note
+              <textarea
+                id="expenseNote"
+                name="note"
+                maxlength="255"
+                rows="3"
+                placeholder="Facultatif"
+              ></textarea>
+            </label>
+
+            <button id="expenseSubmitBtn" type="submit" class="primary">
+              Enregistrer la dépense
+            </button>
+
+            <p id="expenseFormError" class="error"></p>
+          </form>
         </article>
       </section>
 
@@ -351,11 +506,16 @@
             <small>Reste à payer</small>
           </article>
 
-          <article class="card finance-metric">
+          <button
+            id="financeExpensesCard"
+            type="button"
+            class="card finance-metric finance-metric-button"
+            data-open-tab="expenses"
+          >
             <span>Dépenses</span>
             <strong id="financeExpenses">0</strong>
-            <small>Sur la période</small>
-          </article>
+            <small>Sur la période · Voir détail ›</small>
+          </button>
 
           <article class="card finance-metric">
             <span>Flux net</span>

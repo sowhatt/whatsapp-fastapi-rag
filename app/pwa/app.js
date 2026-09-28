@@ -120,7 +120,18 @@ function renderPermissions() {
 }
 
 let token = localStorage.getItem('whatzabi_token') || '';
-let state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null, finance: null, financePeriod: 'month' };
+let state = {
+  products: [],
+  customers: [],
+  sales: [],
+  expenses: [],
+  expensePeriod: 'month',
+  merchant: null,
+  shops: [],
+  currencyContext: null,
+  finance: null,
+  financePeriod: 'month',
+};
 let editingProductId = null;
 let invoiceDraftQueue = [];
 let invoiceDraftPosition = 0;
@@ -622,7 +633,12 @@ function render() {
           (sale) => `<button type="button" class="recent-row sale-row-button" data-sale-actions="${sale.id}">
             <div>
               <strong>Vente #${sale.sale_number ?? sale.id}</strong>
-              <span>${esc(sale.status)} · ${esc(fmtSaleDate(sale.created_at))} · payé ${fmt(sale.paid_amount)}</span>
+              <span>${esc(sale.status)} · ${esc(fmtSaleDate(sale.created_at))}</span>
+              <small class="sale-payment-summary">
+                Total ${fmt(sale.total_amount)} ·
+                Payé ${fmt(sale.paid_amount)} ·
+                Reste ${fmt(sale.remaining_amount)}
+              </small>
             </div>
             <strong>${fmt(sale.total_amount)}</strong>
           </button>`,
@@ -1319,6 +1335,20 @@ async function refresh() {
   state.customers = customers;
   state.sales = sales;
   render();
+
+  /*
+   * Les dépenses ne sont chargées que pour les rôles disposant
+   * de report.read. Un vendeur ne doit donc pas faire échouer refresh().
+   */
+  if (canReadExpenses()) {
+    await Promise.all([
+      loadExpenses(),
+      loadHomeExpenseMetric(),
+    ]);
+  } else {
+    state.expenses = [];
+    renderExpenses();
+  }
 }
 
 async function boot() {
@@ -2223,4 +2253,324 @@ $('voiceRecordBtn').addEventListener('click', () => {
   } else {
     startVoiceRecording();
   }
+});
+
+/* =========================================================
+   WHATZABI — PWA EXPENSES
+   ========================================================= */
+
+const EXPENSE_CATEGORY_LABELS = {
+  transport: 'Transport',
+  loyer: 'Loyer',
+  electricite: 'Électricité',
+  salaire: 'Salaire',
+  carburant: 'Carburant',
+  livraison: 'Livraison',
+  fournitures: 'Fournitures',
+  taxes: 'Taxes',
+  autre: 'Autre',
+};
+
+const EXPENSE_CHANNEL_LABELS = {
+  cash: 'Espèces',
+  mtn_momo: 'MTN MoMo',
+  moov_money: 'Moov Money',
+  bank: 'Banque',
+};
+
+function canReadExpenses() {
+  return can('report.read');
+}
+
+function canCreateExpense() {
+  return ['OWNER', 'MANAGER'].includes(
+    String(state.merchant?.role || '').toUpperCase()
+  );
+}
+
+function expenseDate(entry) {
+  if (!entry?.created_at) return null;
+  const date = new Date(entry.created_at);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function expenseMatchesPeriod(entry, period) {
+  if (period === 'all') return true;
+
+  const date = expenseDate(entry);
+  if (!date) return false;
+
+  const now = new Date();
+
+  if (period === 'today') {
+    return localDateKey(date) === localDateKey(now);
+  }
+
+  if (period === 'week') {
+    const start = new Date(now);
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+    start.setHours(0, 0, 0, 0);
+
+    return date >= start && date <= now;
+  }
+
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth()
+  );
+}
+
+function filteredExpenses() {
+  return (state.expenses || []).filter((entry) =>
+    expenseMatchesPeriod(entry, state.expensePeriod || 'month')
+  );
+}
+
+function renderExpenses() {
+  const panel = $('expenses');
+  if (!panel) return;
+
+  const allowed = canReadExpenses();
+  panel.dataset.allowed = allowed ? 'true' : 'false';
+
+  if ($('expensesShopName')) {
+    $('expensesShopName').textContent =
+      state.merchant?.active_shop_name ||
+      state.merchant?.shop_name ||
+      'Boutique active';
+  }
+
+  if ($('expenseAddBtn')) {
+    $('expenseAddBtn').hidden = !canCreateExpense();
+  }
+
+  if ($('quickAddExpense')) {
+    $('quickAddExpense').hidden = !canCreateExpense();
+  }
+
+  if ($('moreExpenses')) {
+    $('moreExpenses').hidden = !allowed;
+  }
+
+  if ($('statExpensesCard')) {
+    $('statExpensesCard').hidden = !allowed;
+  }
+
+  document.querySelectorAll('[data-expense-period]').forEach((button) => {
+    button.classList.toggle(
+      'active',
+      button.dataset.expensePeriod === (state.expensePeriod || 'month')
+    );
+  });
+
+  if (!allowed) return;
+
+  const rows = filteredExpenses();
+
+  const total = rows.reduce(
+    (sum, entry) => sum + Number(entry.amount || 0),
+    0
+  );
+
+  if ($('expensesTotal')) {
+    $('expensesTotal').textContent = fmt(total);
+  }
+
+  if ($('expensesCount')) {
+    $('expensesCount').textContent =
+      rows.length + (rows.length > 1 ? ' dépenses' : ' dépense');
+  }
+
+  const list = $('expensesList');
+  if (!list) return;
+
+  list.innerHTML = rows.length
+    ? rows.map((entry) => {
+        const category =
+          EXPENSE_CATEGORY_LABELS[entry.category] ||
+          entry.category ||
+          'Autre';
+
+        const channel =
+          EXPENSE_CHANNEL_LABELS[entry.channel] ||
+          entry.channel ||
+          '—';
+
+        const date = expenseDate(entry);
+
+        const formattedDate = date
+          ? new Intl.DateTimeFormat('fr-FR', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            }).format(date)
+          : 'Date indisponible';
+
+        return `
+          <article class="expense-row">
+            <div class="expense-row-main">
+              <span class="expense-category">${esc(category)}</span>
+              <strong>${esc(entry.label || 'Dépense')}</strong>
+              <small>${esc(channel)} · ${esc(formattedDate)}</small>
+              ${
+                entry.note
+                  ? `<small class="expense-note">${esc(entry.note)}</small>`
+                  : ''
+              }
+            </div>
+            <strong class="expense-amount">− ${fmt(entry.amount)}</strong>
+          </article>
+        `;
+      }).join('')
+    : '<p class="muted empty-state">Aucune dépense sur cette période.</p>';
+}
+
+async function loadExpenses() {
+  if (!canReadExpenses()) {
+    state.expenses = [];
+    renderExpenses();
+    return;
+  }
+
+  state.expenses = await api('/pwa/expenses');
+  renderExpenses();
+}
+
+async function loadHomeExpenseMetric() {
+  if (!canReadExpenses()) {
+    if ($('statExpensesCard')) $('statExpensesCard').hidden = true;
+    return;
+  }
+
+  try {
+    const finance = await api('/pwa/finance/overview?period=month');
+
+    if ($('statExpenses')) {
+      $('statExpenses').textContent =
+        fmt(finance?.cashflow?.expenses_total || 0);
+    }
+  } catch (error) {
+    console.warn('KPI dépenses indisponible', error);
+  }
+}
+
+function openExpenseForm() {
+  if (!canCreateExpense()) {
+    toast("Vous n'avez pas l'autorisation d'enregistrer une dépense.");
+    return;
+  }
+
+  showTab('expenses');
+
+  if ($('expenseFormCard')) {
+    $('expenseFormCard').hidden = false;
+  }
+
+  if ($('expenseFormError')) {
+    $('expenseFormError').textContent = '';
+  }
+
+  setTimeout(() => $('expenseAmount')?.focus(), 50);
+}
+
+function closeExpenseForm() {
+  if ($('expenseFormCard')) {
+    $('expenseFormCard').hidden = true;
+  }
+
+  if ($('expenseFormError')) {
+    $('expenseFormError').textContent = '';
+  }
+}
+
+async function submitExpense(event) {
+  event.preventDefault();
+
+  const error = $('expenseFormError');
+  if (error) error.textContent = '';
+
+  const amount = Number($('expenseAmount')?.value || 0);
+  const label = String($('expenseLabel')?.value || '').trim();
+  const category = String($('expenseCategory')?.value || 'autre');
+  const channel = String($('expenseChannel')?.value || 'cash');
+  const note = String($('expenseNote')?.value || '').trim();
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    if (error) error.textContent = 'Saisis un montant supérieur à zéro.';
+    return;
+  }
+
+  if (!label) {
+    if (error) error.textContent = 'Le libellé est obligatoire.';
+    return;
+  }
+
+  const button = $('expenseSubmitBtn');
+
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Enregistrement…';
+    }
+
+    await api('/pwa/expenses', {
+      method: 'POST',
+      body: JSON.stringify({
+        entry_type: 'expense',
+        amount: Math.round(amount),
+        channel,
+        label,
+        category,
+        note: note || null,
+      }),
+    });
+
+    $('expenseForm')?.reset();
+    closeExpenseForm();
+
+    await Promise.all([
+      loadExpenses(),
+      loadHomeExpenseMetric(),
+    ]);
+
+    /*
+     * Si Finance a déjà été ouverte, on recharge également son overview
+     * afin que Dépenses / Flux net soient immédiatement cohérents.
+     */
+    if (typeof loadFinanceOverview === 'function' && state.finance) {
+      await loadFinanceOverview(state.financePeriod || 'month');
+    }
+
+    toast('Dépense enregistrée');
+  } catch (err) {
+    if (error) {
+      error.textContent = err.message || "Impossible d'enregistrer la dépense.";
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Enregistrer la dépense';
+    }
+  }
+}
+
+$('quickAddExpense')?.addEventListener('click', openExpenseForm);
+$('expenseAddBtn')?.addEventListener('click', openExpenseForm);
+$('expenseFormCloseBtn')?.addEventListener('click', closeExpenseForm);
+$('expenseForm')?.addEventListener('submit', submitExpense);
+
+$('expensesRefreshBtn')?.addEventListener('click', async () => {
+  try {
+    await loadExpenses();
+    toast('Dépenses actualisées');
+  } catch (error) {
+    toast(error.message || 'Actualisation impossible');
+  }
+});
+
+document.querySelectorAll('[data-expense-period]').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.expensePeriod = button.dataset.expensePeriod || 'month';
+    renderExpenses();
+  });
 });
