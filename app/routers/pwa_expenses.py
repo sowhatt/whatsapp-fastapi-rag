@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -9,8 +9,91 @@ from app.schemas.financial_entry import FinancialEntryCreate
 from app.routers.financial_entries import create_financial_entry
 from app.services.shop_context_service import get_current_shop_id
 from app.services.analytics_service import refresh_shop_analytics
+from app.schemas.expense_scan import ExpenseScanResponse
+from app.services.expense_scan_service import ExpenseScanError, analyze_expense_image
 
 router = APIRouter(prefix="/expenses", tags=["PWA dépenses"])
+
+MAX_EXPENSE_IMAGE_BYTES = 12 * 1024 * 1024
+
+ALLOWED_EXPENSE_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
+
+
+def _require_expense_writer(db: Session) -> None:
+    role = str(db.info.get("pwa_role") or "").upper()
+
+    if role not in {"OWNER", "MANAGER"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Seuls le propriétaire et le manager peuvent enregistrer une dépense.",
+        )
+
+
+@router.post("/scan", response_model=ExpenseScanResponse)
+async def scan_expense(
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("report.read")),
+):
+    _require_expense_writer(db)
+
+    shop_id = get_current_shop_id(db)
+    if shop_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Sélectionne d'abord une boutique.",
+        )
+
+    content_type = (
+        (image.content_type or "")
+        .split(";", 1)[0]
+        .strip()
+        .lower()
+    )
+
+    if content_type not in ALLOWED_EXPENSE_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail="Format d'image non pris en charge.",
+        )
+
+    image_bytes = await image.read(MAX_EXPENSE_IMAGE_BYTES + 1)
+
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Image vide.",
+        )
+
+    if len(image_bytes) > MAX_EXPENSE_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image trop volumineuse.",
+        )
+
+    try:
+        result = analyze_expense_image(
+            image_bytes=image_bytes,
+            content_type=content_type,
+        )
+    except ExpenseScanError as exc:
+        print("EXPENSE SCAN ERROR:", str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Analyse du justificatif indisponible. Réessaie dans quelques instants.",
+        ) from exc
+
+    return ExpenseScanResponse(
+        result=result,
+        requires_confirmation=True,
+    )
+
 
 
 def _expense_query(db: Session):
@@ -69,12 +152,7 @@ def create_expense(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("report.read")),
 ):
-    role = str(db.info.get("pwa_role") or "").upper()
-    if role not in {"OWNER", "MANAGER"}:
-        raise HTTPException(
-            status_code=403,
-            detail="Seuls le propriétaire et le manager peuvent enregistrer une dépense.",
-        )
+    _require_expense_writer(db)
 
     if payload.entry_type != "expense":
         raise HTTPException(

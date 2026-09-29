@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=15">
+  <link rel="stylesheet" href="/auth/styles.css?v=16">
   <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
@@ -351,6 +351,72 @@
             </button>
           </div>
 
+          <div class="expense-scan-box">
+            <div class="expense-scan-heading">
+              <div>
+                <strong>Ajouter depuis un justificatif</strong>
+                <small>Photographie un reçu ou une facture. Vérifie les informations avant d'enregistrer.</small>
+              </div>
+              <span aria-hidden="true">📷</span>
+            </div>
+
+            <div class="expense-scan-actions">
+              <label class="expense-scan-action primary">
+                📷 Prendre une photo
+                <input
+                  id="expenseScanCameraInput"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  hidden
+                >
+              </label>
+
+              <label class="expense-scan-action ghost">
+                🖼️ Photothèque
+                <input
+                  id="expenseScanGalleryInput"
+                  type="file"
+                  accept="image/*"
+                  hidden
+                >
+              </label>
+            </div>
+
+            <div id="expenseScanPreviewBox" class="expense-scan-preview" hidden>
+              <img
+                id="expenseScanPreview"
+                alt="Aperçu du justificatif"
+              >
+
+              <div class="expense-scan-preview-actions">
+                <button
+                  id="expenseScanAnalyzeBtn"
+                  type="button"
+                  class="primary"
+                >
+                  ✨ Analyser le justificatif
+                </button>
+
+                <button
+                  id="expenseScanClearBtn"
+                  type="button"
+                  class="ghost"
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+
+            <div
+              id="expenseScanStatus"
+              class="expense-scan-status"
+              role="status"
+              aria-live="polite"
+              hidden
+            ></div>
+          </div>
+
           <form id="expenseForm" class="expense-form">
             <label>
               Montant
@@ -394,7 +460,8 @@
 
             <label>
               Paiement
-              <select id="expenseChannel" name="channel">
+              <select id="expenseChannel" name="channel" required>
+                <option value="" selected>À préciser</option>
                 <option value="cash">Espèces</option>
                 <option value="mtn_momo">MTN MoMo</option>
                 <option value="moov_money">Moov Money</option>
@@ -965,7 +1032,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=23" defer></script>
+  <script src="/auth/app.js?v=24" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
   <script src="/auth/purchases.js?v=5" defer></script>

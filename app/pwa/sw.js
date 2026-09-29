@@ -2,8 +2,8 @@ const CACHE = 'whatzabi-pwa-v35';
 
 const ASSETS = [
   '/auth/app',
-  '/auth/styles.css?v=15',
-  '/auth/app.js?v=23',
+  '/auth/styles.css?v=16',
+  '/auth/app.js?v=24',
   '/auth/smart-catalog.js?v=45',
   '/auth/purchases.js?v=5',
   '/auth/manifest.webmanifest',

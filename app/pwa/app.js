@@ -2454,6 +2454,306 @@ async function loadHomeExpenseMetric() {
   }
 }
 
+
+let expenseScanFile = null;
+let expenseScanPreviewUrl = null;
+
+const EXPENSE_SCAN_ALLOWED_CATEGORIES = new Set([
+  'transport',
+  'loyer',
+  'electricite',
+  'salaire',
+  'carburant',
+  'livraison',
+  'fournitures',
+  'taxes',
+  'autre',
+]);
+
+const EXPENSE_SCAN_ALLOWED_CHANNELS = new Set([
+  'cash',
+  'mtn_momo',
+  'moov_money',
+  'bank',
+]);
+
+function setExpenseScanStatus(message = '', kind = '') {
+  const box = $('expenseScanStatus');
+  if (!box) return;
+
+  if (!message) {
+    box.hidden = true;
+    box.textContent = '';
+    box.className = 'expense-scan-status';
+    return;
+  }
+
+  box.hidden = false;
+  box.textContent = message;
+  box.className = `expense-scan-status${kind ? ` ${kind}` : ''}`;
+}
+
+function clearExpenseScan() {
+  expenseScanFile = null;
+
+  if (expenseScanPreviewUrl) {
+    URL.revokeObjectURL(expenseScanPreviewUrl);
+    expenseScanPreviewUrl = null;
+  }
+
+  const previewBox = $('expenseScanPreviewBox');
+  const preview = $('expenseScanPreview');
+
+  if (previewBox) previewBox.hidden = true;
+
+  if (preview) {
+    preview.removeAttribute('src');
+  }
+
+  if ($('expenseScanCameraInput')) {
+    $('expenseScanCameraInput').value = '';
+  }
+
+  if ($('expenseScanGalleryInput')) {
+    $('expenseScanGalleryInput').value = '';
+  }
+
+  setExpenseScanStatus();
+}
+
+function selectExpenseScanFile(file) {
+  if (!file) return;
+
+  if (!String(file.type || '').startsWith('image/')) {
+    setExpenseScanStatus(
+      'Sélectionne une photo de reçu ou de facture.',
+      'error'
+    );
+    return;
+  }
+
+  if (file.size > 12 * 1024 * 1024) {
+    setExpenseScanStatus(
+      'La photo est trop volumineuse. Maximum : 12 Mo.',
+      'error'
+    );
+    return;
+  }
+
+  clearExpenseScan();
+  expenseScanFile = file;
+  expenseScanPreviewUrl = URL.createObjectURL(file);
+
+  const preview = $('expenseScanPreview');
+  const previewBox = $('expenseScanPreviewBox');
+
+  if (preview) preview.src = expenseScanPreviewUrl;
+  if (previewBox) previewBox.hidden = false;
+
+  setExpenseScanStatus(
+    'Photo prête. Appuie sur « Analyser le justificatif ».',
+    'ready'
+  );
+}
+
+async function prepareExpenseScanImage(file) {
+  /*
+   * Même principe que Smart Catalog :
+   * on réduit la photo avant l'envoi pour accélérer l'analyse sur mobile.
+   * En cas d'échec de compression, on conserve le fichier original.
+   */
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+
+    const maxSide = 1600;
+    const scale = Math.min(
+      1,
+      maxSide / Math.max(image.naturalWidth, image.naturalHeight)
+    );
+
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+
+    if (!context) return file;
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.8);
+    });
+
+    if (!blob) return file;
+
+    return new File(
+      [blob],
+      'depense.jpg',
+      { type: 'image/jpeg' }
+    );
+  } catch (error) {
+    console.warn('Compression justificatif impossible', error);
+    return file;
+  }
+}
+
+function applyExpenseScanResult(result) {
+  if (!result) return;
+
+  if (result.amount != null && Number(result.amount) > 0) {
+    $('expenseAmount').value = String(result.amount);
+  }
+
+  if (
+    result.category &&
+    EXPENSE_SCAN_ALLOWED_CATEGORIES.has(result.category)
+  ) {
+    $('expenseCategory').value = result.category;
+  } else {
+    $('expenseCategory').value = 'autre';
+  }
+
+  if (result.merchant_name) {
+    $('expenseLabel').value = String(result.merchant_name).slice(0, 100);
+  }
+
+  /*
+   * Important :
+   * si le ticket ne prouve pas le moyen de paiement,
+   * on laisse volontairement "À préciser".
+   */
+  if (
+    result.payment_channel &&
+    EXPENSE_SCAN_ALLOWED_CHANNELS.has(result.payment_channel)
+  ) {
+    $('expenseChannel').value = result.payment_channel;
+  } else {
+    $('expenseChannel').value = '';
+  }
+
+  const noteParts = [];
+
+  if (result.note) {
+    noteParts.push(String(result.note));
+  }
+
+  if (result.reference) {
+    noteParts.push(`Réf. ${result.reference}`);
+  }
+
+  if (noteParts.length) {
+    $('expenseNote').value = noteParts.join(' · ').slice(0, 255);
+  }
+
+  const details = [];
+
+  if (result.document_date) {
+    details.push(`Date lue : ${result.document_date}`);
+  }
+
+  if (result.currency) {
+    details.push(`Devise : ${result.currency}`);
+  }
+
+  if (Number.isFinite(Number(result.confidence))) {
+    details.push(
+      `Confiance : ${Math.round(Number(result.confidence) * 100)} %`
+    );
+  }
+
+  const suffix = details.length
+    ? ` ${details.join(' · ')}.`
+    : '';
+
+  setExpenseScanStatus(
+    `Analyse terminée.${suffix} Vérifie les champs puis enregistre la dépense.`,
+    'success'
+  );
+
+  $('expenseAmount')?.focus();
+}
+
+async function analyzeExpenseScan() {
+  if (!expenseScanFile) {
+    setExpenseScanStatus(
+      'Prends ou sélectionne d’abord une photo.',
+      'error'
+    );
+    return;
+  }
+
+  const button = $('expenseScanAnalyzeBtn');
+
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Analyse en cours…';
+    }
+
+    setExpenseScanStatus(
+      'Lecture du reçu ou de la facture…',
+      'loading'
+    );
+
+    const preparedFile = await prepareExpenseScanImage(expenseScanFile);
+    const formData = new FormData();
+    formData.append('image', preparedFile);
+
+    const token = localStorage.getItem('whatzabi_token');
+
+    const response = await fetch('/pwa/expenses/scan', {
+      method: 'POST',
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+      body: formData,
+    });
+
+    let payload = null;
+
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        payload?.detail ||
+        'Impossible d’analyser le justificatif.'
+      );
+    }
+
+    applyExpenseScanResult(payload?.result || {});
+  } catch (error) {
+    setExpenseScanStatus(
+      error.message || 'Analyse du justificatif impossible.',
+      'error'
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = '✨ Analyser le justificatif';
+    }
+  }
+}
+
 function openExpenseForm() {
   if (!canCreateExpense()) {
     toast("Vous n'avez pas l'autorisation d'enregistrer une dépense.");
@@ -2474,6 +2774,8 @@ function openExpenseForm() {
 }
 
 function closeExpenseForm() {
+  clearExpenseScan();
+
   if ($('expenseFormCard')) {
     $('expenseFormCard').hidden = true;
   }
@@ -2492,7 +2794,7 @@ async function submitExpense(event) {
   const amount = Number($('expenseAmount')?.value || 0);
   const label = String($('expenseLabel')?.value || '').trim();
   const category = String($('expenseCategory')?.value || 'autre');
-  const channel = String($('expenseChannel')?.value || 'cash');
+  const channel = String($('expenseChannel')?.value || '');
   const note = String($('expenseNote')?.value || '').trim();
 
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -2502,6 +2804,11 @@ async function submitExpense(event) {
 
   if (!label) {
     if (error) error.textContent = 'Le libellé est obligatoire.';
+    return;
+  }
+
+  if (!channel) {
+    if (error) error.textContent = 'Choisis le mode de paiement.';
     return;
   }
 
@@ -2526,6 +2833,7 @@ async function submitExpense(event) {
     });
 
     $('expenseForm')?.reset();
+    clearExpenseScan();
     closeExpenseForm();
 
     await Promise.all([
@@ -2553,6 +2861,17 @@ async function submitExpense(event) {
     }
   }
 }
+
+$('expenseScanCameraInput')?.addEventListener('change', (event) => {
+  selectExpenseScanFile(event.target.files?.[0] || null);
+});
+
+$('expenseScanGalleryInput')?.addEventListener('change', (event) => {
+  selectExpenseScanFile(event.target.files?.[0] || null);
+});
+
+$('expenseScanAnalyzeBtn')?.addEventListener('click', analyzeExpenseScan);
+$('expenseScanClearBtn')?.addEventListener('click', clearExpenseScan);
 
 $('quickAddExpense')?.addEventListener('click', openExpenseForm);
 $('expenseAddBtn')?.addEventListener('click', openExpenseForm);
