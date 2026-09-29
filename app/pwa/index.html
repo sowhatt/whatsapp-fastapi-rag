@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=16">
+  <link rel="stylesheet" href="/auth/styles.css?v=17">
   <link rel="stylesheet" href="/auth/express-sale.css?v=2">
 </head>
 <body>
@@ -289,6 +289,135 @@
             </span>
             <span>›</span>
           </button>
+        </article>
+      </section>
+
+      <section id="settings" class="panel settings-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Configuration</span>
+            <h2>Paramètres</h2>
+            <small id="settingsShopName" class="muted">Boutique active</small>
+          </div>
+        </div>
+
+        <article class="card settings-card">
+          <div class="settings-card-heading">
+            <span class="settings-card-icon">🏪</span>
+            <div>
+              <h3>Mon commerce</h3>
+              <small>Identité et profil de ton activité</small>
+            </div>
+          </div>
+
+          <form id="commerceSettingsForm" class="settings-form">
+            <label>
+              <span>Nom du commerce</span>
+              <input
+                id="settingsBusinessName"
+                type="text"
+                maxlength="150"
+                autocomplete="organization"
+                required
+              >
+            </label>
+
+            <label>
+              <span>Secteur d'activité</span>
+              <select id="settingsBusinessType" required>
+                <option value="general_retail">Commerce général</option>
+                <option value="grocery">Alimentation / Supérette</option>
+                <option value="pharmacy">Pharmacie / Parapharmacie</option>
+                <option value="restaurant_bar">Restaurant / Bar</option>
+                <option value="fashion">Mode / Vêtements</option>
+                <option value="beauty">Beauté / Cosmétique</option>
+                <option value="hardware">Quincaillerie</option>
+                <option value="electronics">Électronique / Téléphonie</option>
+                <option value="other">Autre</option>
+              </select>
+              <small class="muted">
+                Whatzabi adaptera progressivement ses outils à ton activité.
+              </small>
+            </label>
+
+            <label>
+              <span>Pays</span>
+              <select id="settingsCountry" required>
+                <option value="">Choisir un pays</option>
+                <option value="BJ">Bénin</option>
+                <option value="CI">Côte d’Ivoire</option>
+                <option value="TG">Togo</option>
+                <option value="SN">Sénégal</option>
+                <option value="BF">Burkina Faso</option>
+                <option value="ML">Mali</option>
+                <option value="NE">Niger</option>
+                <option value="FR">France</option>
+                <option value="OTHER">Autre</option>
+              </select>
+            </label>
+
+            <div class="settings-readonly-grid">
+              <div class="settings-info">
+                <span>Boutique active</span>
+                <strong id="settingsActiveShop">—</strong>
+              </div>
+
+              <div class="settings-info">
+                <span>Devise</span>
+                <strong id="settingsCurrency">—</strong>
+              </div>
+            </div>
+
+            <label>
+              <span>WhatsApp</span>
+              <input
+                id="settingsWhatsapp"
+                type="text"
+                readonly
+              >
+            </label>
+
+            <label>
+              <span>Adresse de la boutique</span>
+              <input
+                id="settingsAddress"
+                type="text"
+                maxlength="255"
+                autocomplete="street-address"
+                placeholder="Ex. Cotonou, quartier..."
+              >
+            </label>
+
+            <p id="settingsStatus" class="muted" hidden></p>
+
+            <button
+              id="settingsSaveBtn"
+              class="primary settings-save"
+              type="submit"
+            >
+              Enregistrer les modifications
+            </button>
+          </form>
+        </article>
+
+        <article class="card settings-coming">
+          <h3>À venir</h3>
+          <div class="settings-coming-row">
+            <span>👥 Utilisateurs & rôles</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>📦 Préférences stock</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>🔔 Alertes</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>✨ Whatzabi IA</span>
+            <span>›</span>
+          </div>
         </article>
       </section>
 
@@ -1032,7 +1161,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=24" defer></script>
+  <script src="/auth/app.js?v=25" defer></script>
   <script src="/auth/smart-catalog.js?v=45" defer></script>
   <script src="/auth/express-sale.js?v=6" defer></script>
   <script src="/auth/purchases.js?v=5" defer></script>

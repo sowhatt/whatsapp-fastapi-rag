@@ -10,6 +10,7 @@ from app.routers.pwa_voice import router as pwa_voice_router
 from app.routers.pwa_smart_catalog import router as pwa_smart_catalog_router
 from app.routers.pwa_currency import router as pwa_currency_router
 from app.routers.pwa_finance import router as pwa_finance_router
+from app.routers.pwa_settings import router as pwa_settings_router
 from app.routers.pwa_expenses import router as pwa_expenses_router
 from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
@@ -86,6 +87,16 @@ def ensure_catalog_schema() -> None:
             shop_name VARCHAR(150) NULL,
             created_at TIMESTAMP DEFAULT NOW()
         )
+        """,
+        """
+        ALTER TABLE merchants
+        ADD COLUMN IF NOT EXISTS
+        business_type VARCHAR(40) NOT NULL DEFAULT 'general_retail'
+        """,
+        """
+        ALTER TABLE merchants
+        ADD COLUMN IF NOT EXISTS
+        country_code VARCHAR(2) NULL
         """,
         """
         ALTER TABLE merchants
@@ -402,6 +413,8 @@ def ensure_catalog_schema() -> None:
         ON sales (merchant_id, sale_number)
         """,
         "ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date DATE NULL",
+        "ALTER TABLE merchants ALTER COLUMN country_code DROP DEFAULT",
+        "ALTER TABLE merchants ALTER COLUMN country_code DROP NOT NULL",
         "ALTER TABLE shops ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) NOT NULL DEFAULT 'XOF'",
         """
         INSERT INTO currencies (code, name, symbol, decimals, is_active)
@@ -450,6 +463,7 @@ for pwa_router in (
     pwa_currency_router,
     pwa_finance_router,
     pwa_expenses_router,
+    pwa_settings_router,
     suppliers_router,
     purchases_router,
     supplier_payments_router,

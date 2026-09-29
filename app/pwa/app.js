@@ -1794,9 +1794,127 @@ $('moreCalculator').addEventListener('click', () => {
   toast('Calculatrice Whatzabi : à brancher');
 });
 
-$('moreSettings').addEventListener('click', () => {
-  toast('Paramètres : à brancher');
+function setSettingsStatus(message = '', isError = false) {
+  const element = $('settingsStatus');
+  if (!element) return;
+
+  element.hidden = !message;
+  element.textContent = message;
+  element.classList.toggle('settings-error', Boolean(isError));
+}
+
+async function loadCommerceSettings() {
+  setSettingsStatus('Chargement…');
+
+  try {
+    const data = await api('/pwa/settings/commerce');
+
+    $('settingsBusinessName').value = data.shop_name || '';
+    $('settingsBusinessType').value =
+      data.business_type || 'general_retail';
+
+    const country = data.country_code || '';
+    const countrySelect = $('settingsCountry');
+
+    if (
+      [...countrySelect.options].some(
+        (option) => option.value === country
+      )
+    ) {
+      countrySelect.value = country;
+    } else {
+      countrySelect.value = 'OTHER';
+    }
+
+    $('settingsActiveShop').textContent =
+      data.active_shop_name || '—';
+
+    $('settingsShopName').textContent =
+      data.active_shop_name || 'Boutique active';
+
+    $('settingsCurrency').textContent =
+      data.currency_code || '—';
+
+    $('settingsWhatsapp').value =
+      data.whatsapp_number || '';
+
+    $('settingsAddress').value =
+      data.active_shop_address || '';
+
+    const editable =
+      ['OWNER', 'MANAGER'].includes(
+        String(data.role || '').toUpperCase()
+      );
+
+    $('settingsBusinessName').disabled = !editable;
+    $('settingsBusinessType').disabled = !editable;
+    $('settingsCountry').disabled = !editable;
+    $('settingsAddress').disabled = !editable;
+    $('settingsSaveBtn').hidden = !editable;
+
+    setSettingsStatus(
+      editable
+        ? ''
+        : 'Consultation uniquement : modification réservée au propriétaire ou au manager.'
+    );
+  } catch (error) {
+    setSettingsStatus(
+      error.message || 'Impossible de charger les paramètres.',
+      true
+    );
+  }
+}
+
+$('moreSettings').addEventListener('click', async () => {
+  showTab('settings');
+  await loadCommerceSettings();
 });
+
+$('commerceSettingsForm')?.addEventListener(
+  'submit',
+  async (event) => {
+    event.preventDefault();
+
+    const button = $('settingsSaveBtn');
+    button.disabled = true;
+    setSettingsStatus('Enregistrement…');
+
+    try {
+      const data = await api(
+        '/pwa/settings/commerce',
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            shop_name:
+              $('settingsBusinessName').value.trim(),
+            business_type:
+              $('settingsBusinessType').value,
+            country_code:
+              $('settingsCountry').value,
+            active_shop_address:
+              $('settingsAddress').value.trim() || null,
+          }),
+        }
+      );
+
+      if (state.merchant) {
+        state.merchant.shop_name = data.shop_name;
+      }
+
+      setSettingsStatus('✓ Paramètres enregistrés.');
+      toast('Paramètres enregistrés');
+
+      await loadCommerceSettings();
+    } catch (error) {
+      setSettingsStatus(
+        error.message || "Échec de l'enregistrement.",
+        true
+      );
+    } finally {
+      button.disabled = false;
+    }
+  }
+);
 
 let voiceRecorder = null;
 let voiceStream = null;
