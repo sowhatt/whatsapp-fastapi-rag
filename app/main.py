@@ -22,9 +22,17 @@ from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
 from app.security import require_admin_token
+from app.shared.tenancy.rls import install_foundation_rls
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
+
+
+@app.on_event("startup")
+def ensure_s0_foundation_schema() -> None:
+    """Install additive S0 tables and RLS without altering legacy Shop tables."""
+    with engine.begin() as connection:
+        install_foundation_rls(connection)
 
 
 @app.on_event("startup")
