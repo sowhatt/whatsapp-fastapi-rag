@@ -18,7 +18,7 @@ hors isolation, comportement historique conservé.
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
@@ -194,14 +194,10 @@ def _apply_postgresql_rls_context(session, transaction, connection):
     if merchant_id is None:
         return
     connection.execute(
-        __import__("sqlalchemy").text(
-            "SELECT set_config('app.current_merchant_id', :value, true)"
-        ),
+        text("SELECT set_config('app.current_merchant_id', :value, true)"),
         {"value": str(merchant_id)},
     )
     connection.execute(
-        __import__("sqlalchemy").text(
-            "SELECT set_config('app.rls_bypass', :value, true)"
-        ),
+        text("SELECT set_config('app.rls_bypass', :value, true)"),
         {"value": "true" if session.info.get(_BYPASS_KEY, False) else "false"},
     )
