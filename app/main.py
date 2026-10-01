@@ -23,16 +23,10 @@ from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
 from app.security import require_admin_token
 from app.shared.tenancy.rls import install_foundation_rls
+from app.shared.outbox.schema import install_outbox_schema
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
-
-
-@app.on_event("startup")
-def ensure_s0_foundation_schema() -> None:
-    """Install additive S0 tables and RLS without altering legacy Shop tables."""
-    with engine.begin() as connection:
-        install_foundation_rls(connection)
 
 
 @app.on_event("startup")
@@ -397,6 +391,12 @@ def ensure_catalog_schema() -> None:
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+
+        # S0 tables are installed only after legacy foundations such as
+        # merchants exist. The rollout remains additive and does not alter
+        # Whatzabi Shop tables.
+        install_foundation_rls(connection)
+        install_outbox_schema(connection)
 
 
 app.add_middleware(
