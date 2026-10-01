@@ -30,6 +30,7 @@ from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
 from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
+from app.routers.admin_pilots import router as admin_pilots_router
 from app.security import require_admin_token
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
@@ -492,6 +493,7 @@ _internal_routers = (
     whatsapp_send_router,
     debug_env_router,
     admin_router,
+    admin_pilots_router,
 )
 
 for internal_router in _internal_routers:

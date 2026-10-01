@@ -16,6 +16,7 @@ from app.models.merchant_user import MerchantUser
 from app.models.shop import Shop
 from app.models.user_phone import UserPhone
 from app.models.user_shop_membership import UserShopMembership
+from app.services.subscription_access_service import evaluate_subscription_access
 
 
 _bearer = HTTPBearer(auto_error=False)
@@ -142,6 +143,16 @@ def require_pwa_merchant(
     merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
     if merchant is None:
         raise HTTPException(status_code=401, detail="Commerçant introuvable")
+
+    access = evaluate_subscription_access(merchant)
+    if not access.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": access.reason,
+                "subscription_status": access.status,
+            },
+        )
 
     user_id = payload.get("user_id")
     shop_id = payload.get("shop_id")

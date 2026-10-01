@@ -18,6 +18,7 @@ from app.models.shop import Shop
 from app.models.user_phone import UserPhone
 from app.models.user_shop_membership import UserShopMembership
 from app.services.merchant_service import _find_user_phone, phone_lookup_candidates
+from app.services.subscription_access_service import evaluate_subscription_access
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
@@ -256,6 +257,16 @@ def login(payload: LoginPayload, db: Session = Depends(get_db)):
 
     if merchant is None or not valid_password:
         raise HTTPException(status_code=401, detail="Identifiants invalides")
+
+    access = evaluate_subscription_access(merchant)
+    if not access.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": access.reason,
+                "subscription_status": access.status,
+            },
+        )
 
     user_id = user.id if user is not None else None
 

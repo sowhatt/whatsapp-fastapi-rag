@@ -313,3 +313,77 @@ def test_auth_rejects_expired_token(
     assert response.json() == {
         "detail": "Jeton invalide",
     }
+
+
+def test_login_rejects_suspended_subscription(
+    auth_client,
+):
+    from app.db.session import get_db
+
+    override = app.dependency_overrides[get_db]
+    db = next(override())
+
+    try:
+        merchant = (
+            db.query(Merchant)
+            .filter(Merchant.whatsapp_number == TEST_PHONE)
+            .first()
+        )
+        merchant.subscription_status = "suspended"
+        db.commit()
+    finally:
+        db.close()
+
+    response = auth_client.post(
+        "/auth/login",
+        json={
+            "whatsapp_number": TEST_PHONE,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "subscription_inactive"
+    assert response.json()["detail"]["subscription_status"] == "suspended"
+
+
+def test_existing_token_is_rejected_after_subscription_suspension(
+    auth_client,
+):
+    from app.db.session import get_db
+
+    login = auth_client.post(
+        "/auth/login",
+        json={
+            "whatsapp_number": TEST_PHONE,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+
+    override = app.dependency_overrides[get_db]
+    db = next(override())
+
+    try:
+        merchant = (
+            db.query(Merchant)
+            .filter(Merchant.whatsapp_number == TEST_PHONE)
+            .first()
+        )
+        merchant.subscription_status = "suspended"
+        db.commit()
+    finally:
+        db.close()
+
+    response = auth_client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "subscription_inactive"
+    assert response.json()["detail"]["subscription_status"] == "suspended"
