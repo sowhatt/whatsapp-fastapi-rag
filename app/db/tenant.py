@@ -35,6 +35,7 @@ from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
 from app.models.transaction_event import TransactionEvent
 from app.shared.tenancy.rls import apply_rls_bypass, apply_rls_context
+from app.shared.outbox.model import OutboxEvent
 
 TENANT_SCOPED_MODELS = (
     Customer,
@@ -51,6 +52,7 @@ TENANT_SCOPED_MODELS = (
     OpenTab,
     OpenTabItem,
     BusinessTransaction,
+    OutboxEvent,
 )
 
 _MERCHANT_KEY = "merchant_id"
