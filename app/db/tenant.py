@@ -34,6 +34,7 @@ from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
 from app.models.transaction_event import TransactionEvent
+from app.shared.tenancy.rls import apply_rls_bypass, apply_rls_context
 
 TENANT_SCOPED_MODELS = (
     Customer,
@@ -86,6 +87,11 @@ def set_tenant_context(
         db.info.pop(_ACTOR_KEY, None)
     else:
         db.info[_ACTOR_KEY] = context.actor_id
+
+    # If a SQL transaction is already open, synchronize PostgreSQL RLS
+    # immediately. Otherwise the after_begin listener below will do it.
+    if db.in_transaction():
+        apply_rls_context(db, merchant_id=context.merchant_id, bypass=False)
     return context
 
 
@@ -129,10 +135,14 @@ def without_tenant_scope(db: Session):
     """
     previous = db.info.get(_BYPASS_KEY, False)
     db.info[_BYPASS_KEY] = True
+    if db.in_transaction():
+        apply_rls_bypass(db, enabled=True)
     try:
         yield db
     finally:
         db.info[_BYPASS_KEY] = previous
+        if db.in_transaction():
+            apply_rls_bypass(db, enabled=previous)
 
 
 @event.listens_for(Session, "do_orm_execute")
@@ -169,3 +179,29 @@ def _stamp_merchant_on_new_rows(session, flush_context, instances):
     for obj in list(session.new):
         if isinstance(obj, TENANT_SCOPED_MODELS) and getattr(obj, "merchant_id", None) is None:
             obj.merchant_id = merchant_id
+
+
+@event.listens_for(Session, "after_begin")
+def _apply_postgresql_rls_context(session, transaction, connection):
+    """Apply tenant variables at the start of every PostgreSQL transaction.
+
+    This prevents pooled connections from carrying tenant state across
+    requests because PostgreSQL set_config(..., true) is transaction-local.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    merchant_id = session.info.get(_MERCHANT_KEY)
+    if merchant_id is None:
+        return
+    connection.execute(
+        __import__("sqlalchemy").text(
+            "SELECT set_config('app.current_merchant_id', :value, true)"
+        ),
+        {"value": str(merchant_id)},
+    )
+    connection.execute(
+        __import__("sqlalchemy").text(
+            "SELECT set_config('app.rls_bypass', :value, true)"
+        ),
+        {"value": "true" if session.info.get(_BYPASS_KEY, False) else "false"},
+    )
