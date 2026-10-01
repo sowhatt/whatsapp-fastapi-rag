@@ -4,26 +4,24 @@ Isolation multi-tenant.
 Chaque commerçant ne voit désormais que ses propres données : chaque
 lecture (SELECT) sur une table "propriété d'un commerçant" est
 automatiquement restreinte au commerçant courant de la session, et
-chaque nouvelle ligne créée reçoit automatiquement son merchant_id —
-dans n'importe quel service, sans avoir eu besoin de toucher
-individuellement aux ~20 fichiers concernés.
+chaque nouvelle ligne créée reçoit automatiquement son merchant_id.
 
-Le commerçant "courant" est résolu une seule fois, au tout début du
-traitement d'un message WhatsApp (voir message_orchestrator.py), puis
-attaché à la session via `set_current_merchant`.
+S0.3 étend ce contexte historique sans casser Whatzabi Shop :
+merchant_id reste la clé d'isolation active, tandis que shop_id et
+actor_id sont transportés dans le contexte pour les nouveaux domaines
+Online/Delivery. Le filtrage shop-level sera activé uniquement sur les
+modèles explicitement conçus pour ce scope.
 
-Les routes REST directes (admin/debug, ex. curl) restent HORS
-isolation : aucun merchant_id n'y est jamais défini, donc aucun filtre
-ne s'applique — accès global inchangé, cohérent avec leur usage.
-
-Les tests existants ne définissent jamais de commerçant courant : ce
-mécanisme est donc invisible pour eux, aucune régression.
+Les routes REST directes (admin/debug) sans contexte marchand restent
+hors isolation, comportement historique conservé.
 """
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from sqlalchemy import event
 from sqlalchemy.orm import Session, with_loader_criteria
 
+from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
@@ -51,31 +49,83 @@ TENANT_SCOPED_MODELS = (
     TransactionEvent,
     OpenTab,
     OpenTabItem,
+    BusinessTransaction,
 )
 
 _MERCHANT_KEY = "merchant_id"
+_SHOP_KEY = "shop_id"
+_ACTOR_KEY = "actor_id"
 _BYPASS_KEY = "tenant_bypass"
 
 
+@dataclass(frozen=True, slots=True)
+class TenantContext:
+    merchant_id: int
+    shop_id: int | None = None
+    actor_id: int | None = None
+
+
+def set_tenant_context(
+    db: Session,
+    *,
+    merchant_id: int,
+    shop_id: int | None = None,
+    actor_id: int | None = None,
+) -> TenantContext:
+    context = TenantContext(
+        merchant_id=merchant_id,
+        shop_id=shop_id,
+        actor_id=actor_id,
+    )
+    db.info[_MERCHANT_KEY] = context.merchant_id
+    if context.shop_id is None:
+        db.info.pop(_SHOP_KEY, None)
+    else:
+        db.info[_SHOP_KEY] = context.shop_id
+    if context.actor_id is None:
+        db.info.pop(_ACTOR_KEY, None)
+    else:
+        db.info[_ACTOR_KEY] = context.actor_id
+    return context
+
+
+def get_tenant_context(db: Session) -> TenantContext | None:
+    merchant_id = db.info.get(_MERCHANT_KEY)
+    if merchant_id is None:
+        return None
+    return TenantContext(
+        merchant_id=merchant_id,
+        shop_id=db.info.get(_SHOP_KEY),
+        actor_id=db.info.get(_ACTOR_KEY),
+    )
+
+
+def clear_tenant_context(db: Session) -> None:
+    db.info.pop(_MERCHANT_KEY, None)
+    db.info.pop(_SHOP_KEY, None)
+    db.info.pop(_ACTOR_KEY, None)
+
+
+# Backward-compatible API used throughout Whatzabi Shop.
 def set_current_merchant(db: Session, merchant_id: int) -> None:
-    db.info[_MERCHANT_KEY] = merchant_id
+    set_tenant_context(db, merchant_id=merchant_id)
 
 
 def get_current_merchant(db: Session) -> int | None:
-    return db.info.get(_MERCHANT_KEY)
+    context = get_tenant_context(db)
+    return context.merchant_id if context is not None else None
 
 
 def clear_current_merchant(db: Session) -> None:
-    db.info.pop(_MERCHANT_KEY, None)
+    clear_tenant_context(db)
 
 
 @contextmanager
 def without_tenant_scope(db: Session):
     """
     Désactive temporairement le filtrage automatique. Utile pour la
-    résolution du commerçant lui-même (qui ne peut par définition pas
-    dépendre d'un merchant_id déjà connu) ou pour des tâches
-    d'administration explicites qui doivent voir toutes les données.
+    résolution du commerçant lui-même ou pour des tâches d'administration
+    explicites qui doivent voir toutes les données.
     """
     previous = db.info.get(_BYPASS_KEY, False)
     db.info[_BYPASS_KEY] = True
@@ -94,15 +144,10 @@ def _filter_by_current_merchant(execute_state):
         return
     if session.info.get(_MERCHANT_KEY) is None:
         return
-    # Important : on passe une expression SQL DIRECTE (model.merchant_id
-    # == merchant_id), jamais une fonction lambda. SQLAlchemy met en
-    # cache les critères de with_loader_criteria par le CODE de la
-    # lambda (fn.__code__), pas par sa valeur runtime — deux appels
-    # utilisant la même expression textuelle mais un merchant_id
-    # différent se retrouvaient donc à réutiliser la première valeur
-    # mise en cache lors d'un test précédent : un vrai risque de fuite
-    # de données entre commerçants, détecté et corrigé avant toute
-    # mise en production.
+
+    # Merchant isolation remains the active compatibility boundary.
+    # shop_id is carried by TenantContext but is not applied globally:
+    # many legacy Shop models do not have a shop_id column yet.
     merchant_id = session.info.get(_MERCHANT_KEY)
     for model in TENANT_SCOPED_MODELS:
         execute_state.statement = execute_state.statement.options(
