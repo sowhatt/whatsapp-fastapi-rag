@@ -374,3 +374,135 @@ def test_complete_pilot_access_lifecycle(
 
     assert me_again.status_code == 200
     assert me_again.json()["id"] == merchant_id
+
+
+def test_admin_can_reset_pilot_owner_password(
+    admin_client,
+):
+    created = admin_client.post(
+        "/admin/pilots",
+        headers=admin_headers(),
+        json=pilot_payload(),
+    )
+
+    assert created.status_code == 201
+
+    created_data = created.json()
+    merchant_id = created_data["merchant_id"]
+    owner_id = created_data["owner"]["id"]
+    shop_id = created_data["shop"]["id"]
+
+    old_login = admin_client.post(
+        "/auth/login",
+        json={
+            "whatsapp_number": PHONE,
+            "password": PASSWORD,
+        },
+    )
+
+    assert old_login.status_code == 200
+
+    new_password = "NewPilotPassword456!"
+
+    reset = admin_client.post(
+        f"/admin/pilots/{merchant_id}/reset-password",
+        headers=admin_headers(),
+        json={
+            "password": new_password,
+        },
+    )
+
+    assert reset.status_code == 200
+    assert reset.json() == {
+        "merchant_id": merchant_id,
+        "owner_id": owner_id,
+        "password_reset": True,
+    }
+
+    old_login_after_reset = admin_client.post(
+        "/auth/login",
+        json={
+            "whatsapp_number": PHONE,
+            "password": PASSWORD,
+        },
+    )
+
+    assert old_login_after_reset.status_code == 401
+
+    new_login = admin_client.post(
+        "/auth/login",
+        json={
+            "whatsapp_number": PHONE,
+            "password": new_password,
+        },
+    )
+
+    assert new_login.status_code == 200
+
+    merchant = new_login.json()["merchant"]
+
+    assert merchant["id"] == merchant_id
+    assert merchant["user_id"] == owner_id
+    assert merchant["shop_id"] == shop_id
+    assert merchant["role"] == "OWNER"
+
+
+def test_reset_pilot_password_requires_admin_token(
+    admin_client,
+):
+    created = admin_client.post(
+        "/admin/pilots",
+        headers=admin_headers(),
+        json=pilot_payload(),
+    )
+
+    assert created.status_code == 201
+
+    merchant_id = created.json()["merchant_id"]
+
+    response = admin_client.post(
+        f"/admin/pilots/{merchant_id}/reset-password",
+        json={
+            "password": "NewPilotPassword456!",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_reset_pilot_password_rejects_short_password(
+    admin_client,
+):
+    created = admin_client.post(
+        "/admin/pilots",
+        headers=admin_headers(),
+        json=pilot_payload(),
+    )
+
+    assert created.status_code == 201
+
+    merchant_id = created.json()["merchant_id"]
+
+    response = admin_client.post(
+        f"/admin/pilots/{merchant_id}/reset-password",
+        headers=admin_headers(),
+        json={
+            "password": "short",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_reset_unknown_pilot_returns_404(
+    admin_client,
+):
+    response = admin_client.post(
+        "/admin/pilots/999999/reset-password",
+        headers=admin_headers(),
+        json={
+            "password": "NewPilotPassword456!",
+        },
+    )
+
+    assert response.status_code == 404

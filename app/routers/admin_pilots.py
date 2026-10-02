@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth import hash_password
 from app.db.session import get_db
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
@@ -34,6 +35,10 @@ class PilotCreatePayload(BaseModel):
 
 class PilotExtendPayload(BaseModel):
     days: int = Field(ge=1, le=365)
+
+
+class PilotResetPasswordPayload(BaseModel):
+    password: str = Field(min_length=8, max_length=200)
 
 
 def _pilot_or_404(
@@ -269,3 +274,48 @@ def extend_pilot(
         db,
         merchant,
     )
+
+@router.post("/{merchant_id}/reset-password")
+def reset_pilot_password(
+    merchant_id: int,
+    payload: PilotResetPasswordPayload,
+    db: Session = Depends(get_db),
+):
+    merchant = _pilot_or_404(
+        db,
+        merchant_id,
+    )
+
+    owner = (
+        db.query(MerchantUser)
+        .filter(
+            MerchantUser.merchant_id == merchant.id,
+            MerchantUser.role == "OWNER",
+        )
+        .first()
+    )
+
+    if owner is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "owner_not_found",
+                "message": "Propriétaire du pilote introuvable",
+            },
+        )
+
+    password_hash = hash_password(payload.password)
+
+    owner.password_hash = password_hash
+    merchant.password_hash = password_hash
+
+    db.commit()
+    db.refresh(merchant)
+    db.refresh(owner)
+
+    return {
+        "merchant_id": merchant.id,
+        "owner_id": owner.id,
+        "password_reset": True,
+    }
+
