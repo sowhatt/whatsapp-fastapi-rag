@@ -10,6 +10,7 @@ def test_create_base_schema_bootstraps_an_empty_database():
 
     table_names = set(inspect(engine).get_table_names())
     assert {
+        "activation_invitations",
         "merchants",
         "categories",
         "products",

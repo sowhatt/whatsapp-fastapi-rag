@@ -2,6 +2,7 @@ from sqlalchemy.engine import Engine
 
 from app.db.base import Base
 from app.models import (  # noqa: F401 - register every table in Base.metadata
+    activation_invitation,
     category,
     currency,
     customer,

@@ -14,6 +14,12 @@ from app.models.shop import Shop
 from app.services.pilot_provisioning_service import (
     PilotProvisioningError,
     create_pilot,
+    create_pending_pilot,
+)
+from app.services.activation_invitation_service import (
+    INVITATION_PURPOSE_PILOT_OWNER,
+    ActivationInvitationError,
+    create_activation_invitation,
 )
 
 
@@ -31,6 +37,16 @@ class PilotCreatePayload(BaseModel):
     country_code: str = Field(default="BJ", min_length=2, max_length=2)
     currency_code: str = Field(default="XOF", min_length=3, max_length=3)
     duration_days: int = Field(default=30, ge=1, le=365)
+
+
+class PilotInvitePayload(BaseModel):
+    whatsapp_number: str = Field(min_length=5, max_length=30)
+    merchant_name: str = Field(min_length=1, max_length=150)
+    owner_name: str = Field(min_length=1, max_length=150)
+    country_code: str = Field(default="BJ", min_length=2, max_length=2)
+    currency_code: str = Field(default="XOF", min_length=3, max_length=3)
+    duration_days: int = Field(default=30, ge=1, le=365)
+    invitation_hours: int = Field(default=48, ge=1, le=168)
 
 
 class PilotExtendPayload(BaseModel):
@@ -143,6 +159,80 @@ def create_pilot_endpoint(
 
         raise HTTPException(
             status_code=status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+            },
+        )
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/invite", status_code=201)
+def invite_pilot(
+    payload: PilotInvitePayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = create_pending_pilot(
+            db,
+            whatsapp_number=payload.whatsapp_number,
+            merchant_name=payload.merchant_name,
+            owner_name=payload.owner_name,
+            country_code=payload.country_code,
+            currency_code=payload.currency_code,
+            duration_days=payload.duration_days,
+        )
+
+        invitation = create_activation_invitation(
+            db,
+            merchant=result.merchant,
+            user=result.user,
+            phone_number=result.phone.phone_number,
+            purpose=INVITATION_PURPOSE_PILOT_OWNER,
+            expires_in_hours=payload.invitation_hours,
+        )
+
+        db.commit()
+
+        db.refresh(result.merchant)
+        db.refresh(result.user)
+        db.refresh(result.shop)
+        db.refresh(invitation.invitation)
+
+        return {
+            "pilot": _pilot_response(db, result.merchant),
+            "activation": {
+                "status": "pending_activation",
+                "expires_at": invitation.invitation.expires_at,
+                "token": invitation.token,
+            },
+        }
+
+    except PilotProvisioningError as exc:
+        db.rollback()
+
+        status_code = (
+            409
+            if exc.code == "phone_already_registered"
+            else 400
+        )
+
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+            },
+        )
+
+    except ActivationInvitationError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
             detail={
                 "code": exc.code,
                 "message": exc.message,

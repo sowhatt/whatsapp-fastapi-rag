@@ -19,6 +19,10 @@ from app.models.user_phone import UserPhone
 from app.models.user_shop_membership import UserShopMembership
 from app.services.merchant_service import _find_user_phone, phone_lookup_candidates
 from app.services.subscription_access_service import evaluate_subscription_access
+from app.services.activation_invitation_service import (
+    ActivationInvitationError,
+    activate_invitation,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
@@ -26,6 +30,11 @@ PWA_DIR = Path(__file__).resolve().parent.parent / "pwa"
 
 class LoginPayload(BaseModel):
     whatsapp_number: str = Field(min_length=5, max_length=30)
+    password: str = Field(min_length=8, max_length=200)
+
+
+class ActivationPayload(BaseModel):
+    token: str = Field(min_length=20, max_length=500)
     password: str = Field(min_length=8, max_length=200)
 
 
@@ -217,6 +226,48 @@ def _accessible_shops(db: Session, merchant_id: int, user: MerchantUser) -> list
         )
         for shop in sorted(shops.values(), key=lambda item: (item.name.lower(), item.id))
     ]
+
+
+@router.post("/activate")
+def activate_account(
+    payload: ActivationPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = activate_invitation(
+            db,
+            token=payload.token,
+            password=payload.password,
+        )
+
+        db.commit()
+
+        return {
+            "activated": True,
+            "merchant_id": result.merchant.id,
+            "user_id": result.user.id,
+        }
+
+    except ActivationInvitationError as exc:
+        db.rollback()
+
+        status_code = 410 if exc.code in {
+            "invitation_expired",
+            "invitation_used",
+            "invitation_revoked",
+        } else 400
+
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+            },
+        )
+
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/login", response_model=LoginResponse)
