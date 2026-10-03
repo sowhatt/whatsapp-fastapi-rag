@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import hash_password
 from app.db.session import get_db
+from app.models.activation_invitation import ActivationInvitation
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
 from app.models.shop import Shop
@@ -98,9 +99,72 @@ def _pilot_response(
         .first()
     )
 
+    from app.services.pilot_provisioning_service import _utc_now_naive
+
+    now = _utc_now_naive()
+
+    user_count = (
+        db.query(MerchantUser)
+        .filter(MerchantUser.merchant_id == merchant.id)
+        .count()
+    )
+
+    invitation = (
+        db.query(ActivationInvitation)
+        .filter(
+            ActivationInvitation.merchant_id == merchant.id,
+            ActivationInvitation.purpose == INVITATION_PURPOSE_PILOT_OWNER,
+        )
+        .order_by(ActivationInvitation.id.desc())
+        .first()
+    )
+
+    if invitation is None:
+        activation = {
+            "status": "not_invited",
+            "invited_at": None,
+            "expires_at": None,
+            "activated_at": None,
+        }
+    else:
+        if invitation.used_at is not None:
+            activation_status = "activated"
+        elif invitation.revoked_at is not None:
+            activation_status = "revoked"
+        elif invitation.expires_at < now:
+            activation_status = "expired"
+        else:
+            activation_status = "pending"
+
+        activation = {
+            "status": activation_status,
+            "invited_at": invitation.created_at,
+            "expires_at": invitation.expires_at,
+            "activated_at": invitation.used_at,
+        }
+
+    if merchant.subscription_status == "suspended":
+        onboarding_status = "suspended"
+    elif (
+        merchant.subscription_status in {"expired", "cancelled"}
+        or (
+            merchant.subscription_ends_at is not None
+            and merchant.subscription_ends_at < now
+        )
+    ):
+        onboarding_status = "expired"
+    elif owner is None or not owner.is_active:
+        onboarding_status = "pending_activation"
+    else:
+        onboarding_status = "active"
+
     return {
         "merchant_id": merchant.id,
         "merchant_name": merchant.shop_name,
+        "onboarding_status": onboarding_status,
+        "created_at": merchant.created_at,
+        "user_count": user_count,
+        "activation": activation,
         "whatsapp_number": merchant.whatsapp_number,
         "country_code": merchant.country_code,
         "subscription_status": merchant.subscription_status,
@@ -271,6 +335,80 @@ def list_pilots(
         _pilot_response(db, merchant)
         for merchant in merchants
     ]
+
+
+@router.get("/summary")
+def pilots_summary(
+    db: Session = Depends(get_db),
+):
+    from app.services.pilot_provisioning_service import _utc_now_naive
+
+    now = _utc_now_naive()
+    expiring_limit = now + timedelta(days=7)
+
+    merchants = (
+        db.query(Merchant)
+        .filter(
+            Merchant.subscription_status.in_(
+                (
+                    "pilot",
+                    "trialing",
+                    "active",
+                    "grace",
+                    "suspended",
+                    "expired",
+                    "cancelled",
+                )
+            )
+        )
+        .all()
+    )
+
+    summary = {
+        "total": len(merchants),
+        "active": 0,
+        "pending_activation": 0,
+        "suspended": 0,
+        "expired": 0,
+        "expiring_soon": 0,
+    }
+
+    for merchant in merchants:
+        owner = (
+            db.query(MerchantUser)
+            .filter(
+                MerchantUser.merchant_id == merchant.id,
+                MerchantUser.role == "OWNER",
+            )
+            .first()
+        )
+
+        ends_at = merchant.subscription_ends_at
+
+        if merchant.subscription_status == "suspended":
+            summary["suspended"] += 1
+            continue
+
+        if (
+            merchant.subscription_status in {"expired", "cancelled"}
+            or (ends_at is not None and ends_at < now)
+        ):
+            summary["expired"] += 1
+            continue
+
+        if owner is None or not owner.is_active:
+            summary["pending_activation"] += 1
+            continue
+
+        summary["active"] += 1
+
+        if (
+            ends_at is not None
+            and now <= ends_at <= expiring_limit
+        ):
+            summary["expiring_soon"] += 1
+
+    return summary
 
 
 @router.get("/{merchant_id}")

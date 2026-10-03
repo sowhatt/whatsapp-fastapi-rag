@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.session import get_db
 from app.main import app
+from app.models.activation_invitation import ActivationInvitation
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
 from app.models.shop import Shop
@@ -42,6 +43,7 @@ def admin_client(monkeypatch):
     Merchant.__table__.create(engine)
     MerchantUser.__table__.create(engine)
     Shop.__table__.create(engine)
+    ActivationInvitation.__table__.create(engine)
     UserPhone.__table__.create(engine)
     UserShopMembership.__table__.create(engine)
 
@@ -126,6 +128,15 @@ def test_admin_can_create_pilot(
     assert data["merchant_name"] == "Boutique Pilote 01"
     assert data["subscription_status"] == "pilot"
     assert data["country_code"] == "BJ"
+
+    assert data["onboarding_status"] == "active"
+    assert data["created_at"] is not None
+    assert data["user_count"] == 1
+
+    assert data["activation"]["status"] == "not_invited"
+    assert data["activation"]["invited_at"] is None
+    assert data["activation"]["expires_at"] is None
+    assert data["activation"]["activated_at"] is None
 
     assert data["owner"]["name"] == "Pilote 01"
     assert data["owner"]["active"] is True

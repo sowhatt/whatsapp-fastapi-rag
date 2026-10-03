@@ -105,6 +105,25 @@ def test_complete_invitation_activation_login_flow(invitation_client):
     assert data["pilot"]["owner"]["active"] is False
 
     token = data["activation"]["token"]
+    merchant_id = data["pilot"]["merchant_id"]
+
+    # L'Admin voit immédiatement le pilote en attente d'activation.
+    pending_pilot = invitation_client.get(
+        f"/admin/pilots/{merchant_id}",
+        headers=admin_headers(),
+    )
+
+    assert pending_pilot.status_code == 200, pending_pilot.text
+
+    pending_data = pending_pilot.json()
+
+    assert pending_data["onboarding_status"] == "pending_activation"
+    assert pending_data["user_count"] == 1
+    assert pending_data["activation"]["status"] == "pending"
+    assert pending_data["activation"]["invited_at"] is not None
+    assert pending_data["activation"]["expires_at"] is not None
+    assert pending_data["activation"]["activated_at"] is None
+    assert "token_hash" not in pending_data["activation"]
 
     # Le compte existe mais ne peut pas encore se connecter.
     before = invitation_client.post(
@@ -138,6 +157,23 @@ def test_complete_invitation_activation_login_flow(invitation_client):
         activation_data["user_id"]
         == data["pilot"]["owner"]["id"]
     )
+
+    # Après activation, l'Admin voit le pilote comme actif.
+    active_pilot = invitation_client.get(
+        f"/admin/pilots/{merchant_id}",
+        headers=admin_headers(),
+    )
+
+    assert active_pilot.status_code == 200, active_pilot.text
+
+    active_data = active_pilot.json()
+
+    assert active_data["onboarding_status"] == "active"
+    assert active_data["user_count"] == 1
+    assert active_data["owner"]["active"] is True
+    assert active_data["activation"]["status"] == "activated"
+    assert active_data["activation"]["activated_at"] is not None
+    assert "token_hash" not in active_data["activation"]
 
     login = invitation_client.post(
         "/auth/login",
