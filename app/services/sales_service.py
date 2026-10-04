@@ -8,6 +8,7 @@ from app.models.customer import Customer
 from app.models.product import Product
 from app.schemas.sale import SaleCreate, SaleItemCreate
 from app.services.due_date_service import resolve_due_date
+from app.domains.core.public.stock import available_stock
 
 
 class SaleServiceError(Exception):
@@ -180,10 +181,11 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
                     f"Quantité invalide pour {entry['product']}."
                 )
             entry_product = find_product_by_name(str(entry["product"]), db)
-            if entry_product.stock < entry_quantity:
+            entry_available = available_stock(product=entry_product, db=db)
+            if entry_available < entry_quantity:
                 raise SaleServiceError(
-                    f"Stock insuffisant pour {entry_product.name} : "
-                    f"stock {entry_product.stock}, demandé {entry_quantity}"
+                    f"Stock disponible insuffisant pour {entry_product.name} : "
+                    f"disponible {entry_available}, demandé {entry_quantity}"
                 )
             entry_amount = entry.get("amount")
             resolved_products.append(
@@ -236,9 +238,11 @@ def resolve_sale_intent(intent: dict[str, Any], db: Session) -> ResolvedSale:
 
     product = find_product_by_name(str(intent["product"]), db)
 
-    if product.stock < quantity:
+    current_available = available_stock(product=product, db=db)
+    if current_available < quantity:
         raise SaleServiceError(
-            f"Stock insuffisant pour {product.name} : stock {product.stock}, demandé {quantity}"
+            f"Stock disponible insuffisant pour {product.name} : "
+            f"disponible {current_available}, demandé {quantity}"
         )
 
     paid_amount = max(0, total_amount - remaining_amount)
@@ -326,5 +330,6 @@ def preview_sale_from_intent(intent: dict[str, Any], db: Session) -> dict[str, A
         "remaining_amount": resolved.remaining_amount,
         "payment_channel": resolved.payment_channel,
         "stock_before": resolved.product.stock,
+        "stock_available_before": available_stock(product=resolved.product, db=db),
         "stock_after": resolved.product.stock - resolved.quantity,
     }
