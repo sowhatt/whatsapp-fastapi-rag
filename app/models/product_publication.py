@@ -14,6 +14,11 @@ class ProductPublication(Base):
             "product_id",
             name="uq_product_publication_merchant_product",
         ),
+        UniqueConstraint(
+            "merchant_id",
+            "seo_slug",
+            name="uq_product_publication_merchant_seo_slug",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
