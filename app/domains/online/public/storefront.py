@@ -8,6 +8,7 @@ from app.domains.online.internal.store_service import get_public_store
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.product_publication import ProductPublication
+from app.domains.core.public.stock import available_stock
 from app.services.customer_catalog_service import (
     list_customer_catalog,
     search_customer_catalog,
@@ -26,6 +27,14 @@ def _store_payload(store) -> dict[str, Any]:
         "template": store.template,
         "currency": store.currency,
         "country_code": store.country_code,
+        "seo_title": store.seo_title or store.display_name,
+        "seo_description": store.seo_description or store.description,
+        "canonical_domain": store.canonical_domain,
+        "address": store.address,
+        "city": store.city,
+        "postal_code": store.postal_code,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
     }
 
 
@@ -118,9 +127,47 @@ def read_public_product(
         "name": product.name,
         "unit": product.unit,
         "price": product.price if publication.show_price else None,
-        "available": product.stock > 0,
-        "stock": product.stock if publication.show_stock else None,
+        "available": available_stock(product=product, db=db) > 0,
+        "stock": (
+            available_stock(product=product, db=db)
+            if publication.show_stock
+            else None
+        ),
         "description": publication.description,
         "image_url": image.image_url if image else None,
         "currency": store.currency,
+        "seo_slug": publication.seo_slug,
+        "seo_title": publication.seo_title or product.name,
+        "seo_description": publication.seo_description or publication.description,
     }
+
+
+
+def read_public_product_by_slug(
+    *,
+    slug: str,
+    product_slug: str,
+    db: Session,
+) -> dict[str, Any] | None:
+    store = get_public_store(slug=slug, db=db)
+    if store is None:
+        return None
+
+    publication = (
+        db.query(ProductPublication)
+        .filter(
+            ProductPublication.merchant_id == store.merchant_id,
+            ProductPublication.seo_slug == product_slug,
+            ProductPublication.is_published.is_(True),
+            ProductPublication.is_active.is_(True),
+        )
+        .first()
+    )
+    if publication is None:
+        return None
+
+    return read_public_product(
+        slug=slug,
+        product_id=publication.product_id,
+        db=db,
+    )
