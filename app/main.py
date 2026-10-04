@@ -32,6 +32,7 @@ from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
 from app.routers.admin_pilots import router as admin_pilots_router
+from app.routers.admin_auth import router as admin_auth_router
 from app.security import require_admin_token
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
@@ -451,6 +452,10 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
 app.include_router(auth_router)
+
+# Authentification du Web Admin.
+# /admin/auth/login est public ; /admin/auth/me se protège par JWT Admin.
+app.include_router(admin_auth_router)
 
 # Routes PWA : authentification JWT + isolation automatique
 # par merchant_id sur la session SQLAlchemy.
