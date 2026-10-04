@@ -1,0 +1,29 @@
+STOREFRONT_CSS = r'''
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fafafa}
+*{box-sizing:border-box}body{margin:0}.store-header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.96);border-bottom:1px solid #ececec;backdrop-filter:blur(10px)}
+.header-inner{max-width:1200px;margin:auto;padding:18px 24px;display:flex;align-items:center;gap:16px}.header-inner h1{font-size:1.35rem;margin:0}.header-inner p{margin:3px 0 0;color:#666}
+.store-logo{width:52px;height:52px;border-radius:14px;object-fit:cover}.cart-button{margin-left:auto;border:0;border-radius:999px;padding:11px 16px;background:#171717;color:white;font-weight:700;cursor:pointer}
+.store-main{max-width:1200px;margin:auto;padding:28px 24px}.catalog-toolbar{margin-bottom:24px}.catalog-toolbar form{display:flex;gap:10px;max-width:620px}.catalog-toolbar input{flex:1;border:1px solid #ddd;border-radius:12px;padding:13px 15px;font-size:1rem}.catalog-toolbar button{border:0;border-radius:12px;padding:13px 18px;background:#171717;color:#fff}
+.catalog-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}.product-card{background:white;border:1px solid #eee;border-radius:18px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.04)}
+.product-image{display:block;aspect-ratio:1/1;background:#f1f1f1}.product-image img{width:100%;height:100%;object-fit:cover}.product-placeholder,.detail-placeholder{height:100%;display:grid;place-items:center;color:#888;padding:20px;text-align:center}
+.product-body{padding:16px}.product-name{display:block;text-decoration:none;color:#171717;font-weight:750;min-height:42px}.product-meta{display:flex;justify-content:space-between;align-items:center;margin:12px 0;gap:8px}.product-price{font-weight:800}.availability{font-size:.8rem;color:#666}
+.add-to-cart,.primary-action{width:100%;border:0;border-radius:12px;padding:12px;background:#111;color:#fff;font-weight:750;cursor:pointer}.add-to-cart:disabled{opacity:.4;cursor:not-allowed}
+.product-detail{max-width:1100px;margin:40px auto;padding:0 24px;display:grid;grid-template-columns:1.1fr .9fr;gap:50px}.detail-media{aspect-ratio:1/1;background:white;border-radius:24px;overflow:hidden;border:1px solid #eee}.detail-image{width:100%;height:100%;object-fit:cover}.detail-content{align-self:center}.detail-content h1{font-size:2.2rem;line-height:1.08;margin:0 0 16px}.detail-price{font-size:1.7rem;font-weight:850;margin-bottom:10px}.detail-stock{color:#555;margin-bottom:24px}.detail-content p{line-height:1.6;color:#555}.back-link{text-decoration:none;color:#222;font-weight:700}.store-name{font-weight:800}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;padding:12px 18px;border-radius:999px;z-index:20}
+@media(max-width:900px){.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.product-detail{grid-template-columns:1fr;gap:24px}.detail-content h1{font-size:1.8rem}}
+@media(max-width:520px){.header-inner{padding:14px 16px}.store-main{padding:20px 16px}.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.product-body{padding:12px}.product-name{font-size:.92rem}.product-meta{align-items:flex-start;flex-direction:column}.product-detail{margin:20px auto;padding:0 16px}}
+'''
+
+STOREFRONT_JS = r'''
+(function () {
+  var slug = document.body.dataset.storeSlug;
+  var tokenKey = "whatzabi_cart_" + slug;
+  var toast = document.getElementById("toast");
+  var count = document.getElementById("cart-count");
+  function show(message){if(!toast)return;toast.textContent=message;toast.hidden=false;clearTimeout(window.__wzToast);window.__wzToast=setTimeout(function(){toast.hidden=true;},2200);}
+  async function ensureCart(){var token=localStorage.getItem(tokenKey);if(token)return token;var response=await fetch("/online/"+encodeURIComponent(slug)+"/cart",{method:"POST"});if(!response.ok)throw new Error("Impossible de créer le panier.");var cart=await response.json();token=cart.token;localStorage.setItem(tokenKey,token);return token;}
+  async function refreshCart(){var token=localStorage.getItem(tokenKey);if(!token){if(count)count.textContent="0";return;}var response=await fetch("/online/"+encodeURIComponent(slug)+"/cart/"+encodeURIComponent(token));if(!response.ok){localStorage.removeItem(tokenKey);if(count)count.textContent="0";return;}var cart=await response.json();if(count)count.textContent=String(cart.quantity_total||0);}
+  document.querySelectorAll(".add-to-cart").forEach(function(button){button.addEventListener("click",async function(){button.disabled=true;try{var token=await ensureCart();var productId=Number(button.dataset.productId);var currentResponse=await fetch("/online/"+encodeURIComponent(slug)+"/cart/"+encodeURIComponent(token));var current=currentResponse.ok?await currentResponse.json():{items:[]};var existing=(current.items||[]).find(function(x){return x.product_id===productId;});var quantity=(existing?existing.quantity:0)+1;var response=await fetch("/online/"+encodeURIComponent(slug)+"/cart/"+encodeURIComponent(token)+"/items",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:productId,quantity:quantity})});if(!response.ok){var problem=await response.json().catch(function(){return {};});throw new Error(problem.detail||"Impossible d'ajouter ce produit.");}var cart=await response.json();if(count)count.textContent=String(cart.quantity_total||0);show("Produit ajouté au panier");}catch(error){show(error.message||"Une erreur est survenue.");}finally{button.disabled=false;}});});
+  var cartButton=document.getElementById("cart-button");if(cartButton){cartButton.addEventListener("click",function(){show("Le tiroir panier arrive dans le prochain lot.");});}
+  refreshCart();
+})();
+'''
