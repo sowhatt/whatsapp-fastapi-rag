@@ -87,6 +87,14 @@ def update_store(
     template: str | None = None,
     country_code: str | None = None,
     currency: str | None = None,
+    seo_title: str | None = None,
+    seo_description: str | None = None,
+    canonical_domain: str | None = None,
+    address: str | None = None,
+    city: str | None = None,
+    postal_code: str | None = None,
+    latitude: str | None = None,
+    longitude: str | None = None,
     is_active: bool | None = None,
 ) -> OnlineStore:
     store = (
@@ -117,6 +125,22 @@ def update_store(
         store.country_code = country_code.upper()[:2]
     if currency is not None:
         store.currency = currency.upper()[:3]
+    if seo_title is not None:
+        store.seo_title = seo_title[:180]
+    if seo_description is not None:
+        store.seo_description = seo_description[:320]
+    if canonical_domain is not None:
+        store.canonical_domain = canonical_domain[:255]
+    if address is not None:
+        store.address = address[:300]
+    if city is not None:
+        store.city = city[:120]
+    if postal_code is not None:
+        store.postal_code = postal_code[:30]
+    if latitude is not None:
+        store.latitude = latitude[:40]
+    if longitude is not None:
+        store.longitude = longitude[:40]
     if is_active is not None:
         store.is_active = is_active
 
