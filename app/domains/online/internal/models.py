@@ -32,6 +32,16 @@ class OnlineStore(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XOF")
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, default="BJ")
 
+    seo_title: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    canonical_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    latitude: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    longitude: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
