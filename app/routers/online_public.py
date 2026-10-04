@@ -10,6 +10,8 @@ from app.domains.online.public import (
     create_cart,
     read_cart,
     set_cart_item,
+    checkout_cart,
+    read_public_order,
 )
 
 
@@ -111,3 +113,55 @@ def storefront_set_cart_item(
     if payload is None:
         raise HTTPException(status_code=404, detail="Panier introuvable ou expiré")
     return payload
+
+
+class CheckoutPayload(BaseModel):
+    customer_name: str = Field(min_length=1, max_length=150)
+    customer_phone: str = Field(min_length=3, max_length=40)
+    delivery_mode: str = Field(default="pickup")
+    delivery_address: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/{slug}/cart/{token}/checkout", status_code=201)
+def storefront_checkout(
+    slug: str,
+    token: str,
+    payload: CheckoutPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = checkout_cart(
+            slug=slug,
+            token=token,
+            customer_name=payload.customer_name,
+            customer_phone=payload.customer_phone,
+            delivery_mode=payload.delivery_mode,
+            delivery_address=payload.delivery_address,
+            notes=payload.notes,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Panier ou boutique introuvable")
+    return result
+
+
+@router.get("/{slug}/orders/{reference}")
+def storefront_order_status(
+    slug: str,
+    reference: str,
+    phone: str = Query(min_length=3, max_length=40),
+    db: Session = Depends(get_db),
+):
+    result = read_public_order(
+        slug=slug,
+        reference=reference,
+        phone=phone,
+        db=db,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+    return result
