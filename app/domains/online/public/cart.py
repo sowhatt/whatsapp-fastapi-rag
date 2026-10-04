@@ -9,6 +9,7 @@ from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.store_service import get_public_store
 from app.models.product import Product
 from app.models.product_publication import ProductPublication
+from app.domains.core.public.stock import available_stock
 
 
 def _load_active_cart(*, slug: str, token: str, db: Session) -> tuple[Any, OnlineCart] | None:
@@ -58,7 +59,7 @@ def _cart_payload(*, store, cart: OnlineCart, db: Session) -> dict[str, Any]:
                 "quantity": item.quantity,
                 "unit_price": item.unit_price_snapshot,
                 "line_total": line_total,
-                "available_stock": product.stock,
+                "available_stock": available_stock(product=product, db=db),
             }
         )
 
@@ -132,8 +133,11 @@ def set_cart_item(
     product, publication = product_row
     if not publication.show_price:
         raise ValueError("Ce produit ne peut pas être commandé en ligne sans prix public.")
-    if quantity > product.stock:
-        raise ValueError("Stock insuffisant pour la quantité demandée.")
+    current_available = available_stock(product=product, db=db)
+    if quantity > current_available:
+        raise ValueError(
+            f"Stock disponible insuffisant : {current_available} disponible(s)."
+        )
 
     item = (
         db.query(OnlineCartItem)
