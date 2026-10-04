@@ -41,6 +41,10 @@ class ProductPublication(Base):
         nullable=True,
     )
 
+    seo_slug: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    seo_title: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
+
     display_order: Mapped[int] = mapped_column(Integer, default=0)
 
     published_at: Mapped[datetime | None] = mapped_column(
