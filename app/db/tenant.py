@@ -22,12 +22,15 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
+from app.domains.online.internal.models import OnlineStore
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
 from app.models.open_tab import OpenTab, OpenTabItem
 from app.models.payment import Payment
 from app.models.product import Product
+from app.models.product_image import ProductImage
+from app.models.product_publication import ProductPublication
 from app.models.purchase import Purchase
 from app.models.sale import Sale
 from app.models.stock_movement import StockMovement
@@ -53,6 +56,9 @@ TENANT_SCOPED_MODELS = (
     OpenTabItem,
     BusinessTransaction,
     OutboxEvent,
+    OnlineStore,
+    ProductImage,
+    ProductPublication,
 )
 
 _MERCHANT_KEY = "merchant_id"
