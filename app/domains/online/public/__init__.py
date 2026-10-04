@@ -6,12 +6,14 @@ __all__ = ["OnlineDomainService", "OnlineStoreRef", "OnlineOrderRef"]
 from .storefront import (
     read_public_catalog,
     read_public_product,
+    read_public_product_by_slug,
     read_public_store,
 )
 
 __all__ += [
     "read_public_catalog",
     "read_public_product",
+    "read_public_product_by_slug",
     "read_public_store",
 ]
 
