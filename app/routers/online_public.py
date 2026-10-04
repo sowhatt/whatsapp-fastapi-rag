@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.domains.online.public import (
     read_public_catalog,
     read_public_product,
+    read_public_product_by_slug,
     read_public_store,
     create_cart,
     read_cart,
@@ -45,6 +46,22 @@ def storefront_catalog(
     )
     if payload is None:
         raise HTTPException(status_code=404, detail="Boutique introuvable")
+    return payload
+
+
+@router.get("/{slug}/p/{product_slug}")
+def storefront_product_by_slug(
+    slug: str,
+    product_slug: str,
+    db: Session = Depends(get_db),
+):
+    payload = read_public_product_by_slug(
+        slug=slug,
+        product_slug=product_slug,
+        db=db,
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Produit introuvable")
     return payload
 
 
