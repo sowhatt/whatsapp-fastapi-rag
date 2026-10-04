@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.online_public import router as online_public_router
+from app.routers.online_storefront_web import router as online_storefront_web_router
 from app.routers.online_admin import router as online_admin_router
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
@@ -421,6 +422,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
 app.include_router(online_public_router)
+app.include_router(online_storefront_web_router)
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (
