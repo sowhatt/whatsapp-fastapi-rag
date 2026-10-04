@@ -27,6 +27,7 @@ from app.shared.tenancy.rls import install_foundation_rls
 from app.shared.outbox.schema import install_outbox_schema
 from app.domains.online.internal.schema import install_online_schema
 from app.domains.online.internal.cart_schema import install_online_cart_schema
+from app.domains.online.internal.order_schema import install_online_order_schema
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
@@ -402,6 +403,7 @@ def ensure_catalog_schema() -> None:
         install_outbox_schema(connection)
         install_online_schema(connection)
         install_online_cart_schema(connection)
+        install_online_order_schema(connection)
 
 
 app.add_middleware(
