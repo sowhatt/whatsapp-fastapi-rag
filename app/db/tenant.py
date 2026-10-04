@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.models import OnlineStore
+from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
@@ -59,6 +60,8 @@ TENANT_SCOPED_MODELS = (
     OnlineStore,
     ProductImage,
     ProductPublication,
+    OnlineCart,
+    OnlineCartItem,
 )
 
 _MERCHANT_KEY = "merchant_id"
