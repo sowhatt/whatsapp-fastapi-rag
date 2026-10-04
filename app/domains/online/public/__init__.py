@@ -22,3 +22,10 @@ __all__ += [
     "read_cart",
     "set_cart_item",
 ]
+
+from .checkout import checkout_cart, read_public_order
+
+__all__ += [
+    "checkout_cart",
+    "read_public_order",
+]
