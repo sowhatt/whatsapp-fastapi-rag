@@ -9,17 +9,20 @@ from sqlalchemy.pool import StaticPool
 from app.db.session import get_db
 from app.main import app
 from app.models.activation_invitation import ActivationInvitation
+from app.models.admin_user import AdminUser
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
 from app.models.shop import Shop
+from app.auth import hash_password
+from app.services.admin_auth_service import create_admin_access_token
 
 
-ADMIN_TOKEN = "test-admin-token"
+ADMIN_JWT_SECRET = "test-admin-jwt-secret-for-summary-0123456789"
 
 
 @pytest.fixture()
 def admin_client(monkeypatch):
-    monkeypatch.setenv("ADMIN_TOKEN", ADMIN_TOKEN)
+    monkeypatch.setenv("ADMIN_JWT_SECRET", ADMIN_JWT_SECRET)
 
     engine = create_engine(
         "sqlite://",
@@ -27,6 +30,7 @@ def admin_client(monkeypatch):
         poolclass=StaticPool,
     )
 
+    AdminUser.__table__.create(engine)
     Merchant.__table__.create(engine)
     MerchantUser.__table__.create(engine)
     Shop.__table__.create(engine)
@@ -39,6 +43,21 @@ def admin_client(monkeypatch):
     )
 
     db = TestingSession()
+
+    admin = AdminUser(
+        email="superadmin@whatzabi.test",
+        full_name="Super Admin Test",
+        password_hash=hash_password("AdminPassword123!"),
+        role="SUPER_ADMIN",
+        is_active=True,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    admin_token = create_admin_access_token(admin)
+
+    global ADMIN_JWT
+    ADMIN_JWT = admin_token
 
     now = datetime.utcnow()
 
@@ -122,16 +141,16 @@ def admin_client(monkeypatch):
         engine.dispose()
 
 
-def test_admin_pilots_summary_requires_admin_token(admin_client):
+def test_admin_pilots_summary_requires_admin_jwt(admin_client):
     response = admin_client.get("/admin/pilots/summary")
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_admin_pilots_summary(admin_client):
     response = admin_client.get(
         "/admin/pilots/summary",
-        headers={"X-Admin-Token": ADMIN_TOKEN},
+        headers={"Authorization": f"Bearer {ADMIN_JWT}"},
     )
 
     assert response.status_code == 200

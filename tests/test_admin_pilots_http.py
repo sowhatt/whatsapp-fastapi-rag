@@ -9,14 +9,17 @@ from sqlalchemy.pool import StaticPool
 from app.db.session import get_db
 from app.main import app
 from app.models.activation_invitation import ActivationInvitation
+from app.models.admin_user import AdminUser
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
 from app.models.shop import Shop
 from app.models.user_phone import UserPhone
 from app.models.user_shop_membership import UserShopMembership
+from app.auth import hash_password
+from app.services.admin_auth_service import create_admin_access_token
 
 
-ADMIN_TOKEN = "test-admin-token"
+ADMIN_JWT_SECRET = "test-admin-jwt-secret-for-pilot-access-0123456789"
 PHONE = "+22997001001"
 PASSWORD = "PilotPassword123!"
 
@@ -24,8 +27,8 @@ PASSWORD = "PilotPassword123!"
 @pytest.fixture()
 def admin_client(monkeypatch):
     monkeypatch.setenv(
-        "ADMIN_TOKEN",
-        ADMIN_TOKEN,
+        "ADMIN_JWT_SECRET",
+        ADMIN_JWT_SECRET,
     )
     monkeypatch.setenv(
         "PWA_JWT_SECRET",
@@ -40,6 +43,7 @@ def admin_client(monkeypatch):
         poolclass=StaticPool,
     )
 
+    AdminUser.__table__.create(engine)
     Merchant.__table__.create(engine)
     MerchantUser.__table__.create(engine)
     Shop.__table__.create(engine)
@@ -52,6 +56,23 @@ def admin_client(monkeypatch):
         autoflush=False,
         bind=engine,
     )
+
+    db = TestingSession()
+    admin = AdminUser(
+        email="superadmin@whatzabi.test",
+        full_name="Super Admin Test",
+        password_hash=hash_password("AdminPassword123!"),
+        role="SUPER_ADMIN",
+        is_active=True,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    admin_token = create_admin_access_token(admin)
+    db.close()
+
+    global ADMIN_JWT
+    ADMIN_JWT = admin_token
 
     def override_get_db():
         db = TestingSession()
@@ -75,7 +96,7 @@ def admin_client(monkeypatch):
 
 def admin_headers():
     return {
-        "X-Admin-Token": ADMIN_TOKEN,
+        "Authorization": f"Bearer {ADMIN_JWT}",
     }
 
 
@@ -91,17 +112,17 @@ def pilot_payload():
     }
 
 
-def test_admin_pilots_requires_admin_token(
+def test_admin_pilots_requires_admin_jwt(
     admin_client,
 ):
     response = admin_client.get(
         "/admin/pilots",
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
-def test_create_pilot_requires_admin_token(
+def test_create_pilot_requires_admin_jwt(
     admin_client,
 ):
     response = admin_client.post(
@@ -109,7 +130,7 @@ def test_create_pilot_requires_admin_token(
         json=pilot_payload(),
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_admin_can_create_pilot(
@@ -458,7 +479,7 @@ def test_admin_can_reset_pilot_owner_password(
     assert merchant["role"] == "OWNER"
 
 
-def test_reset_pilot_password_requires_admin_token(
+def test_reset_pilot_password_requires_admin_jwt(
     admin_client,
 ):
     created = admin_client.post(
@@ -478,7 +499,7 @@ def test_reset_pilot_password_requires_admin_token(
         },
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_reset_pilot_password_rejects_short_password(
