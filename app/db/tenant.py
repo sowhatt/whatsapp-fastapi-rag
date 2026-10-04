@@ -22,6 +22,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
+from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
@@ -65,6 +66,7 @@ TENANT_SCOPED_MODELS = (
     OnlineCartItem,
     OnlineOrder,
     OnlineOrderItem,
+    StockReservation,
 )
 
 _MERCHANT_KEY = "merchant_id"
