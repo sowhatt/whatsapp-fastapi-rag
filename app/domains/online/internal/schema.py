@@ -16,11 +16,27 @@ ONLINE_SCHEMA_SQL = (
         template VARCHAR(30) NOT NULL DEFAULT 'essential',
         currency VARCHAR(3) NOT NULL DEFAULT 'XOF',
         country_code VARCHAR(2) NOT NULL DEFAULT 'BJ',
+        seo_title VARCHAR(180) NULL,
+        seo_description VARCHAR(320) NULL,
+        canonical_domain VARCHAR(255) NULL,
+        address VARCHAR(300) NULL,
+        city VARCHAR(120) NULL,
+        postal_code VARCHAR(30) NULL,
+        latitude VARCHAR(40) NULL,
+        longitude VARCHAR(40) NULL,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_title VARCHAR(180) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS canonical_domain VARCHAR(255) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS address VARCHAR(300) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS city VARCHAR(120) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS postal_code VARCHAR(30) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS latitude VARCHAR(40) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS longitude VARCHAR(40) NULL",
     "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_online_stores_slug ON online_stores (slug)",
     """
@@ -33,13 +49,24 @@ ONLINE_SCHEMA_SQL = (
         show_price BOOLEAN NOT NULL DEFAULT TRUE,
         show_stock BOOLEAN NOT NULL DEFAULT FALSE,
         description VARCHAR(500) NULL,
+        seo_slug VARCHAR(120) NULL,
+        seo_title VARCHAR(180) NULL,
+        seo_description VARCHAR(320) NULL,
         display_order INTEGER NOT NULL DEFAULT 0,
         published_at TIMESTAMP NULL,
         CONSTRAINT uq_product_publication_merchant_product UNIQUE (merchant_id, product_id)
     )
     """,
+    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_slug VARCHAR(120) NULL",
+    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_title VARCHAR(180) NULL",
+    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320) NULL",
     "CREATE INDEX IF NOT EXISTS ix_product_publications_merchant_id ON product_publications (merchant_id)",
     "CREATE INDEX IF NOT EXISTS ix_product_publications_product_id ON product_publications (product_id)",
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_publication_merchant_seo_slug
+    ON product_publications (merchant_id, seo_slug)
+    WHERE seo_slug IS NOT NULL
+    """,
     """
     CREATE TABLE IF NOT EXISTS product_images (
         id SERIAL PRIMARY KEY,
