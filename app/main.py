@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.online_public import router as online_public_router
+from app.routers.online_admin import router as online_admin_router
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
@@ -439,6 +440,7 @@ _internal_routers = (
     whatsapp_send_router,
     debug_env_router,
     admin_router,
+    online_admin_router,
 )
 
 for internal_router in _internal_routers:
