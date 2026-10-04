@@ -1,0 +1,239 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, HttpUrl
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.domains.online.internal.models import OnlineStore
+from app.domains.online.internal.store_service import get_or_create_store, update_store
+from app.models.product import Product
+from app.models.product_image import ProductImage
+from app.models.product_publication import ProductPublication
+from app.services.customer_catalog_service import (
+    add_product_image,
+    publish_product,
+    unpublish_product,
+)
+
+
+router = APIRouter(prefix="/online-admin", tags=["online-admin"])
+
+
+class StoreCreatePayload(BaseModel):
+    slug: str | None = Field(default=None, max_length=80)
+    display_name: str | None = Field(default=None, max_length=150)
+
+
+class StoreUpdatePayload(BaseModel):
+    display_name: str | None = Field(default=None, max_length=150)
+    description: str | None = Field(default=None, max_length=500)
+    logo_url: str | None = Field(default=None, max_length=1000)
+    banner_url: str | None = Field(default=None, max_length=1000)
+    primary_color: str | None = Field(default=None, max_length=20)
+    accent_color: str | None = Field(default=None, max_length=20)
+    template: str | None = Field(default=None, max_length=30)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    seo_title: str | None = Field(default=None, max_length=180)
+    seo_description: str | None = Field(default=None, max_length=320)
+    canonical_domain: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=300)
+    city: str | None = Field(default=None, max_length=120)
+    postal_code: str | None = Field(default=None, max_length=30)
+    latitude: str | None = Field(default=None, max_length=40)
+    longitude: str | None = Field(default=None, max_length=40)
+    is_active: bool | None = None
+
+
+class PublishProductPayload(BaseModel):
+    description: str | None = Field(default=None, max_length=500)
+    show_stock: bool = False
+    seo_slug: str | None = Field(default=None, max_length=120)
+    seo_title: str | None = Field(default=None, max_length=180)
+    seo_description: str | None = Field(default=None, max_length=320)
+
+
+class ProductImagePayload(BaseModel):
+    image_url: HttpUrl
+    storage_key: str | None = Field(default=None, max_length=500)
+    is_primary: bool = True
+
+
+def _store_payload(store: OnlineStore):
+    return {
+        "id": store.id,
+        "merchant_id": store.merchant_id,
+        "slug": store.slug,
+        "display_name": store.display_name,
+        "description": store.description,
+        "logo_url": store.logo_url,
+        "banner_url": store.banner_url,
+        "primary_color": store.primary_color,
+        "accent_color": store.accent_color,
+        "template": store.template,
+        "currency": store.currency,
+        "country_code": store.country_code,
+        "seo_title": store.seo_title,
+        "seo_description": store.seo_description,
+        "canonical_domain": store.canonical_domain,
+        "address": store.address,
+        "city": store.city,
+        "postal_code": store.postal_code,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
+        "is_active": store.is_active,
+    }
+
+
+@router.post("/merchants/{merchant_id}/store", status_code=201)
+def create_online_store(
+    merchant_id: int,
+    payload: StoreCreatePayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        store = get_or_create_store(
+            merchant_id=merchant_id,
+            db=db,
+            slug=payload.slug,
+            display_name=payload.display_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _store_payload(store)
+
+
+@router.get("/merchants/{merchant_id}/store")
+def read_online_store(merchant_id: int, db: Session = Depends(get_db)):
+    store = db.query(OnlineStore).filter(OnlineStore.merchant_id == merchant_id).first()
+    if store is None:
+        raise HTTPException(status_code=404, detail="Boutique Online introuvable")
+    return _store_payload(store)
+
+
+@router.patch("/merchants/{merchant_id}/store")
+def patch_online_store(
+    merchant_id: int,
+    payload: StoreUpdatePayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        store = update_store(
+            merchant_id=merchant_id,
+            db=db,
+            **payload.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _store_payload(store)
+
+
+@router.get("/merchants/{merchant_id}/catalog")
+def read_online_catalog_admin(merchant_id: int, db: Session = Depends(get_db)):
+    products = (
+        db.query(Product)
+        .filter(Product.merchant_id == merchant_id)
+        .order_by(Product.name)
+        .all()
+    )
+
+    result = []
+    for product in products:
+        publication = (
+            db.query(ProductPublication)
+            .filter(
+                ProductPublication.merchant_id == merchant_id,
+                ProductPublication.product_id == product.id,
+            )
+            .first()
+        )
+        image = (
+            db.query(ProductImage)
+            .filter(
+                ProductImage.merchant_id == merchant_id,
+                ProductImage.product_id == product.id,
+            )
+            .order_by(ProductImage.is_primary.desc(), ProductImage.position, ProductImage.id)
+            .first()
+        )
+        result.append(
+            {
+                "product_id": product.id,
+                "name": product.name,
+                "price": product.price,
+                "stock_physical": product.stock,
+                "is_published": bool(publication and publication.is_published),
+                "show_stock": bool(publication and publication.show_stock),
+                "seo_slug": publication.seo_slug if publication else None,
+                "seo_title": publication.seo_title if publication else None,
+                "description": publication.description if publication else None,
+                "image_url": image.image_url if image else None,
+            }
+        )
+    return result
+
+
+@router.put("/merchants/{merchant_id}/products/{product_id}/publication")
+def publish_online_product(
+    merchant_id: int,
+    product_id: int,
+    payload: PublishProductPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        publication = publish_product(
+            merchant_id=merchant_id,
+            product_id=product_id,
+            db=db,
+            **payload.model_dump(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "product_id": product_id,
+        "is_published": publication.is_published,
+        "seo_slug": publication.seo_slug,
+        "seo_title": publication.seo_title,
+        "seo_description": publication.seo_description,
+    }
+
+
+@router.delete("/merchants/{merchant_id}/products/{product_id}/publication")
+def unpublish_online_product(
+    merchant_id: int,
+    product_id: int,
+    db: Session = Depends(get_db),
+):
+    unpublish_product(
+        merchant_id=merchant_id,
+        product_id=product_id,
+        db=db,
+    )
+    return {"product_id": product_id, "is_published": False}
+
+
+@router.post("/merchants/{merchant_id}/products/{product_id}/images", status_code=201)
+def create_online_product_image(
+    merchant_id: int,
+    product_id: int,
+    payload: ProductImagePayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        image = add_product_image(
+            merchant_id=merchant_id,
+            product_id=product_id,
+            image_url=str(payload.image_url),
+            storage_key=payload.storage_key,
+            is_primary=payload.is_primary,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "id": image.id,
+        "product_id": image.product_id,
+        "image_url": image.image_url,
+        "is_primary": image.is_primary,
+    }
