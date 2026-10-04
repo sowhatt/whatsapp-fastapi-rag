@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.db.session import engine
 from app.routers.health import router as health_router
+from app.routers.online_public import router as online_public_router
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
@@ -24,6 +25,7 @@ from app.routers.admin import router as admin_router
 from app.security import require_admin_token
 from app.shared.tenancy.rls import install_foundation_rls
 from app.shared.outbox.schema import install_outbox_schema
+from app.domains.online.internal.schema import install_online_schema
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
@@ -397,6 +399,7 @@ def ensure_catalog_schema() -> None:
         # Whatzabi Shop tables.
         install_foundation_rls(connection)
         install_outbox_schema(connection)
+        install_online_schema(connection)
 
 
 app.add_middleware(
@@ -410,6 +413,7 @@ app.add_middleware(
 # Routes publiques indispensables.
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
+app.include_router(online_public_router)
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (
