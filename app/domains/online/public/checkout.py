@@ -13,6 +13,7 @@ from app.models.product import Product
 from app.models.product_publication import ProductPublication
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
+from app.domains.core.public.stock import available_stock, reserve_stock
 
 
 def checkout_cart(
@@ -87,8 +88,12 @@ def checkout_cart(
         product, publication = row
         if not publication.show_price:
             raise ValueError(f"{product.name} n'est plus commandable en ligne.")
-        if item.quantity > product.stock:
-            raise ValueError(f"Stock insuffisant pour {product.name}.")
+        current_available = available_stock(product=product, db=db)
+        if item.quantity > current_available:
+            raise ValueError(
+                f"Stock disponible insuffisant pour {product.name} : "
+                f"{current_available} disponible(s)."
+            )
 
         unit_price = product.price
         line_total = unit_price * item.quantity
@@ -147,6 +152,14 @@ def checkout_cart(
                 line_total=line_total,
             )
         )
+        reserve_stock(
+            merchant_id=store.merchant_id,
+            product_id=product.id,
+            quantity=quantity,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+        )
 
     cart.status = "converted"
 
@@ -182,6 +195,8 @@ def checkout_cart(
         "delivery_amount": order.delivery_amount,
         "total": order.total_amount,
         "delivery_mode": order.delivery_mode,
+        "stock_reserved": True,
+        "reservation_minutes": 10,
     }
 
 
