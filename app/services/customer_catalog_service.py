@@ -64,7 +64,10 @@ def publish_product(
     if description is not None:
         publication.description = description
 
-    candidate_slug = normalize_store_slug(seo_slug or product.name)
+    try:
+        candidate_slug = normalize_store_slug(seo_slug or product.name)
+    except ValueError:
+        candidate_slug = f"produit-{product_id}"
     collision = (
         db.query(ProductPublication)
         .filter(
