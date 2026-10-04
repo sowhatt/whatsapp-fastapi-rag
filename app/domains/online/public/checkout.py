@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.domains.core.internal.transaction_model import BusinessTransaction
+from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
+from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.store_service import get_public_store
+from app.models.product import Product
+from app.models.product_publication import ProductPublication
+from app.shared.events import CommerceEvents, DomainEvent
+from app.shared.outbox import enqueue_domain_event
+
+
+def checkout_cart(
+    *,
+    slug: str,
+    token: str,
+    customer_name: str,
+    customer_phone: str,
+    delivery_mode: str,
+    delivery_address: str | None,
+    notes: str | None,
+    db: Session,
+) -> dict[str, Any] | None:
+    store = get_public_store(slug=slug, db=db)
+    if store is None:
+        return None
+
+    if delivery_mode not in {"pickup", "delivery"}:
+        raise ValueError("Mode de remise invalide.")
+    if delivery_mode == "delivery" and not (delivery_address or "").strip():
+        raise ValueError("L'adresse de livraison est obligatoire.")
+
+    cart = (
+        db.query(OnlineCart)
+        .filter(
+            OnlineCart.token == token,
+            OnlineCart.store_id == store.id,
+            OnlineCart.merchant_id == store.merchant_id,
+            OnlineCart.status == "active",
+        )
+        .first()
+    )
+    if cart is None:
+        return None
+
+    cart_items = (
+        db.query(OnlineCartItem)
+        .filter(
+            OnlineCartItem.cart_id == cart.id,
+            OnlineCartItem.merchant_id == store.merchant_id,
+        )
+        .order_by(OnlineCartItem.id)
+        .all()
+    )
+    if not cart_items:
+        raise ValueError("Le panier est vide.")
+
+    resolved_items = []
+    subtotal = 0
+
+    for item in cart_items:
+        row = (
+            db.query(Product, ProductPublication)
+            .join(ProductPublication, ProductPublication.product_id == Product.id)
+            .filter(
+                Product.id == item.product_id,
+                Product.merchant_id == store.merchant_id,
+                ProductPublication.merchant_id == store.merchant_id,
+                ProductPublication.is_published.is_(True),
+                ProductPublication.is_active.is_(True),
+            )
+            .first()
+        )
+        if row is None:
+            raise ValueError("Un produit du panier n'est plus disponible.")
+
+        product, publication = row
+        if not publication.show_price:
+            raise ValueError(f"{product.name} n'est plus commandable en ligne.")
+        if item.quantity > product.stock:
+            raise ValueError(f"Stock insuffisant pour {product.name}.")
+
+        unit_price = product.price
+        line_total = unit_price * item.quantity
+        subtotal += line_total
+        resolved_items.append((product, item.quantity, unit_price, line_total))
+
+    delivery_amount = 0
+    total = subtotal + delivery_amount
+
+    transaction = BusinessTransaction(
+        merchant_id=store.merchant_id,
+        shop_id=None,
+        kind="commerce",
+        status="pending",
+        currency=store.currency,
+        subtotal_amount=subtotal,
+        tax_amount=0,
+        fee_amount=delivery_amount,
+        discount_amount=0,
+        total_amount=total,
+        payment_status="unpaid",
+    )
+    db.add(transaction)
+    db.flush()
+
+    order = OnlineOrder(
+        merchant_id=store.merchant_id,
+        store_id=store.id,
+        transaction_id=transaction.id,
+        cart_id=cart.id,
+        status="pending",
+        customer_name=customer_name.strip()[:150],
+        customer_phone=customer_phone.strip()[:40],
+        delivery_mode=delivery_mode,
+        delivery_address=(delivery_address.strip()[:500] if delivery_address else None),
+        notes=(notes.strip()[:500] if notes else None),
+        currency=store.currency,
+        subtotal_amount=subtotal,
+        delivery_amount=delivery_amount,
+        total_amount=total,
+        payment_status="unpaid",
+    )
+    db.add(order)
+    db.flush()
+
+    for product, quantity, unit_price, line_total in resolved_items:
+        db.add(
+            OnlineOrderItem(
+                merchant_id=store.merchant_id,
+                order_id=order.id,
+                product_id=product.id,
+                product_name_snapshot=product.name,
+                unit_snapshot=product.unit,
+                quantity=quantity,
+                unit_price_snapshot=unit_price,
+                line_total=line_total,
+            )
+        )
+
+    cart.status = "converted"
+
+    enqueue_domain_event(
+        db,
+        DomainEvent(
+            event_type=CommerceEvents.ORDER_CREATED,
+            merchant_id=store.merchant_id,
+            aggregate_type="online_order",
+            aggregate_id=str(order.id),
+            data={
+                "order_id": order.id,
+                "reference": order.reference,
+                "transaction_id": transaction.id,
+                "store_id": store.id,
+                "total_amount": total,
+                "currency": store.currency,
+                "delivery_mode": delivery_mode,
+            },
+        ),
+    )
+
+    db.commit()
+    db.refresh(order)
+
+    return {
+        "id": order.id,
+        "reference": order.reference,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "currency": order.currency,
+        "subtotal": order.subtotal_amount,
+        "delivery_amount": order.delivery_amount,
+        "total": order.total_amount,
+        "delivery_mode": order.delivery_mode,
+    }
+
+
+def read_public_order(
+    *,
+    slug: str,
+    reference: str,
+    phone: str,
+    db: Session,
+) -> dict[str, Any] | None:
+    store = get_public_store(slug=slug, db=db)
+    if store is None:
+        return None
+
+    order = (
+        db.query(OnlineOrder)
+        .filter(
+            OnlineOrder.store_id == store.id,
+            OnlineOrder.merchant_id == store.merchant_id,
+            OnlineOrder.reference == reference.upper(),
+            OnlineOrder.customer_phone == phone.strip()[:40],
+        )
+        .first()
+    )
+    if order is None:
+        return None
+
+    return {
+        "reference": order.reference,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "currency": order.currency,
+        "subtotal": order.subtotal_amount,
+        "delivery_amount": order.delivery_amount,
+        "total": order.total_amount,
+        "delivery_mode": order.delivery_mode,
+        "created_at": order.created_at.isoformat(),
+    }
