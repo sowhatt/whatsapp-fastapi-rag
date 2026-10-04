@@ -9,6 +9,8 @@ from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.product_publication import ProductPublication
 from app.services.sales_service import find_product_candidates
+from app.domains.core.public.stock import available_stock
+from app.domains.online.internal.store_service import normalize_store_slug
 
 
 def _format_currency(value: int) -> str:
@@ -22,6 +24,9 @@ def publish_product(
     db: Session,
     description: str | None = None,
     show_stock: bool = False,
+    seo_slug: str | None = None,
+    seo_title: str | None = None,
+    seo_description: str | None = None,
 ) -> ProductPublication:
     product = (
         db.query(Product)
@@ -58,6 +63,25 @@ def publish_product(
 
     if description is not None:
         publication.description = description
+
+    candidate_slug = normalize_store_slug(seo_slug or product.name)
+    collision = (
+        db.query(ProductPublication)
+        .filter(
+            ProductPublication.merchant_id == merchant_id,
+            ProductPublication.seo_slug == candidate_slug,
+            ProductPublication.product_id != product_id,
+        )
+        .first()
+    )
+    if collision is not None:
+        candidate_slug = normalize_store_slug(f"{candidate_slug}-{product_id}")
+
+    publication.seo_slug = candidate_slug
+    publication.seo_title = (seo_title or product.name)[:180]
+    publication.seo_description = (
+        seo_description or description or f"Achetez {product.name} en ligne."
+    )[:320]
 
     if publication.published_at is None:
         publication.published_at = datetime.now(UTC)
@@ -207,8 +231,13 @@ def list_customer_catalog(
                 "name": product.name,
                 "unit": product.unit,
                 "price": product.price if publication.show_price else None,
-                "available": product.stock > 0,
-                "stock": product.stock if publication.show_stock else None,
+                "available": available_stock(product=product, db=db) > 0,
+                "stock": (
+                    available_stock(product=product, db=db)
+                    if publication.show_stock
+                    else None
+                ),
+                "seo_slug": publication.seo_slug,
                 "description": publication.description,
                 "category": category.name if category else None,
                 "image_url": image.image_url if image else None,
@@ -280,8 +309,13 @@ def search_customer_catalog(
                 "name": product.name,
                 "unit": product.unit,
                 "price": product.price if publication.show_price else None,
-                "available": product.stock > 0,
-                "stock": product.stock if publication.show_stock else None,
+                "available": available_stock(product=product, db=db) > 0,
+                "stock": (
+                    available_stock(product=product, db=db)
+                    if publication.show_stock
+                    else None
+                ),
+                "seo_slug": publication.seo_slug,
                 "description": publication.description,
                 "image_url": image.image_url if image else None,
             }
