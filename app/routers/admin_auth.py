@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth import hash_password
 from app.db.session import get_db
 from app.models.admin_user import AdminUser
-from app.security import require_admin_user
+from app.security import require_admin_token, require_admin_user
 from app.services.admin_auth_service import (
     AdminAuthError,
     authenticate_admin,
@@ -13,6 +14,12 @@ from app.services.admin_auth_service import (
 
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
+
+
+class AdminBootstrapPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    full_name: str = Field(min_length=1, max_length=150)
+    password: str = Field(min_length=8, max_length=200)
 
 
 class AdminLoginPayload(BaseModel):
@@ -42,6 +49,47 @@ def _admin_read(admin: AdminUser) -> AdminRead:
         role=admin.role,
         is_active=admin.is_active,
     )
+
+
+@router.post(
+    "/bootstrap",
+    response_model=AdminRead,
+    status_code=201,
+    dependencies=[Depends(require_admin_token)],
+)
+def bootstrap_admin(
+    payload: AdminBootstrapPayload,
+    db: Session = Depends(get_db),
+):
+    """Crée le premier SUPER_ADMIN Whatzabi, une seule fois."""
+
+    if db.query(AdminUser).first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "admin_already_initialized",
+                "message": "Un administrateur Whatzabi existe déjà",
+            },
+        )
+
+    admin = AdminUser(
+        email=payload.email.strip().lower(),
+        full_name=payload.full_name.strip(),
+        password_hash=hash_password(payload.password),
+        role="SUPER_ADMIN",
+        is_active=True,
+    )
+
+    db.add(admin)
+
+    try:
+        db.commit()
+        db.refresh(admin)
+    except Exception:
+        db.rollback()
+        raise
+
+    return _admin_read(admin)
 
 
 @router.post("/login", response_model=AdminLoginResponse)

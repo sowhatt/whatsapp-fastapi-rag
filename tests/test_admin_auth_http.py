@@ -232,3 +232,128 @@ def test_pwa_token_cannot_be_used_as_admin_token(admin_auth_client, monkeypatch)
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "invalid_admin_token"
+
+
+@pytest.fixture()
+def admin_bootstrap_client(monkeypatch):
+    monkeypatch.setenv("ADMIN_JWT_SECRET", ADMIN_JWT_SECRET)
+    monkeypatch.setenv("ADMIN_JWT_TTL_SECONDS", "3600")
+    monkeypatch.setenv("ADMIN_TOKEN", "test-bootstrap-admin-token")
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    AdminUser.__table__.create(engine)
+
+    TestingSession = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
+    )
+
+    test_app = FastAPI()
+    test_app.include_router(admin_auth_router)
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    test_app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestClient(test_app) as client:
+            yield client, TestingSession
+    finally:
+        engine.dispose()
+
+
+def bootstrap_payload():
+    return {
+        "email": "  FIRST.ADMIN@WHATZABI.TEST  ",
+        "full_name": "Premier Super Admin",
+        "password": "BootstrapPassword123!",
+    }
+
+
+def test_admin_bootstrap_requires_admin_token(admin_bootstrap_client):
+    client, TestingSession = admin_bootstrap_client
+
+    response = client.post(
+        "/admin/auth/bootstrap",
+        json=bootstrap_payload(),
+    )
+
+    assert response.status_code == 403
+
+    db = TestingSession()
+    assert db.query(AdminUser).count() == 0
+    db.close()
+
+
+def test_admin_bootstrap_creates_first_super_admin(admin_bootstrap_client):
+    from app.auth import verify_password
+
+    client, TestingSession = admin_bootstrap_client
+
+    response = client.post(
+        "/admin/auth/bootstrap",
+        headers={"X-Admin-Token": "test-bootstrap-admin-token"},
+        json=bootstrap_payload(),
+    )
+
+    assert response.status_code == 201
+
+    data = response.json()
+
+    assert data["email"] == "first.admin@whatzabi.test"
+    assert data["full_name"] == "Premier Super Admin"
+    assert data["role"] == "SUPER_ADMIN"
+    assert data["is_active"] is True
+    assert "password_hash" not in data
+
+    db = TestingSession()
+    admin = db.query(AdminUser).one()
+
+    assert admin.email == "first.admin@whatzabi.test"
+    assert admin.password_hash != "BootstrapPassword123!"
+    assert verify_password("BootstrapPassword123!", admin.password_hash)
+
+    db.close()
+
+
+def test_admin_bootstrap_can_only_run_once(admin_bootstrap_client):
+    client, TestingSession = admin_bootstrap_client
+
+    first = client.post(
+        "/admin/auth/bootstrap",
+        headers={"X-Admin-Token": "test-bootstrap-admin-token"},
+        json=bootstrap_payload(),
+    )
+
+    assert first.status_code == 201
+
+    second = client.post(
+        "/admin/auth/bootstrap",
+        headers={"X-Admin-Token": "test-bootstrap-admin-token"},
+        json={
+            "email": "second.admin@whatzabi.test",
+            "full_name": "Second Admin",
+            "password": "SecondPassword123!",
+        },
+    )
+
+    assert second.status_code == 409
+    assert (
+        second.json()["detail"]["code"]
+        == "admin_already_initialized"
+    )
+
+    db = TestingSession()
+    assert db.query(AdminUser).count() == 1
+    db.close()
