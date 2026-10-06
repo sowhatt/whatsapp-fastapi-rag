@@ -28,6 +28,14 @@ def admin_login():
     )
 
 
+@router.get("/admin/pilots/new", include_in_schema=False)
+def admin_new_pilot():
+    return FileResponse(
+        ADMIN_WEB_DIR / "new-pilot.html",
+        media_type="text/html",
+    )
+
+
 @router.get("/admin/dashboard", include_in_schema=False)
 def admin_dashboard():
     return FileResponse(
@@ -48,6 +56,14 @@ def admin_styles():
 def admin_script():
     return FileResponse(
         ADMIN_WEB_DIR / "admin.js",
+        media_type="application/javascript",
+    )
+
+
+@router.get("/admin-web/new-pilot.js", include_in_schema=False)
+def admin_new_pilot_script():
+    return FileResponse(
+        ADMIN_WEB_DIR / "new-pilot.js",
         media_type="application/javascript",
     )
 
