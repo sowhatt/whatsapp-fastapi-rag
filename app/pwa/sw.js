@@ -1,6 +1,8 @@
-const CACHE = 'whatzabi-pwa-v35';
+const CACHE = 'whatzabi-pwa-v35-cart-price-1';
 
 const ASSETS = [
+  '/auth/express-sale.js?v=6-cart-price-1',
+  '/auth/express-sale.css?v=2-cart-price-1',
   '/auth/app',
   '/auth/styles.css?v=17',
   '/auth/app.js?v=25',
