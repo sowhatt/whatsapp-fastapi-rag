@@ -1,9 +1,11 @@
 (() => {
   const cart = new Map();
+  let editingPriceId = null;
   let query = '';
   let frequentProductIds = [];
   const money = (n) => fmt(Number(n || 0));
-  const total = () => [...cart.values()].reduce((sum, line) => sum + Number(line.product.price || 0) * line.quantity, 0);
+  const linePrice = (line) => Number(line.unitPrice ?? line.product.price ?? 0);
+  const total = () => [...cart.values()].reduce((sum, line) => sum + linePrice(line) * line.quantity, 0);
 
   function isCreditMode() {
     const channel = $('expressChannel')?.value;
@@ -98,7 +100,7 @@
     const current = cart.get(product.id);
     const nextQty = (current?.quantity || 0) + 1;
     if (nextQty > Number(product.stock || 0)) return toast('Stock insuffisant pour ' + product.name);
-    cart.set(product.id, { product, quantity: nextQty });
+    cart.set(product.id, { ...current, product, quantity: nextQty });
     renderExpressSale();
   }
 
@@ -137,7 +139,7 @@
       );
     }
 
-    cart.set(product.id, { product, quantity: nextQty });
+    cart.set(product.id, { ...current, product, quantity: nextQty });
   }
 
   window.whatzabiExpressAddVoiceLines = function(lines) {
@@ -224,7 +226,23 @@
     }).join('') : '<p class="muted express-empty">Aucun produit dans cette boutique.</p>';
 
     const lines = [...cart.values()];
-    cartBox.innerHTML = lines.length ? lines.map(({ product, quantity }) => `<div class="express-line"><div><strong>${esc(product.name)}</strong><small>${quantity} × ${money(product.price)}</small></div><div class="qty-controls"><button type="button" data-cart-minus="${product.id}">−</button><strong>${quantity}</strong><button type="button" data-cart-plus="${product.id}">+</button></div><strong>${money(Number(product.price || 0) * quantity)}</strong></div>`).join('') : '<p class="muted express-empty">Touchez un produit pour l’ajouter au panier.</p>';
+    cartBox.innerHTML = lines.length ? lines.map((line) => {
+      const { product, quantity } = line;
+      const price = linePrice(line);
+      const changed = price !== Number(product.price || 0);
+      const editor = editingPriceId === Number(product.id)
+        ? `<form class="express-price-editor" data-price-form="${product.id}">
+            <label for="expressPrice-${product.id}">Nouveau prix unitaire</label>
+            <input id="expressPrice-${product.id}" name="unitPrice" type="number" min="1" step="1" inputmode="numeric" required value="${price}">
+            <div><button type="submit">Appliquer</button><button type="button" data-price-cancel>Annuler</button></div>
+          </form>` : '';
+      return `<div class="express-line"><div><strong>${esc(product.name)}</strong>
+        <small>${quantity} × ${money(price)}</small>
+        ${changed ? `<small>Prix catalogue : ${money(product.price)}</small>` : ''}
+        <div class="express-price-actions"><button type="button" data-price-edit="${product.id}" aria-label="Modifier le prix de ${esc(product.name)}">Modifier le prix</button>
+        ${changed ? `<button type="button" data-price-reset="${product.id}">Prix catalogue</button>` : ''}</div>
+        ${editor}</div><div class="qty-controls"><button type="button" data-cart-minus="${product.id}">−</button><strong>${quantity}</strong><button type="button" data-cart-plus="${product.id}">+</button></div><strong>${money(price * quantity)}</strong></div>`;
+    }).join('') : '<p class="muted express-empty">Touchez un produit pour l’ajouter au panier.</p>';
     $('expressTotal').textContent = money(total());
     $('expressCheckout').disabled = lines.length === 0;
     $('expressCheckout').textContent = lines.length ? `Encaisser ${money(total())}` : 'Panier vide';
@@ -256,13 +274,17 @@
         method: 'POST',
         body: JSON.stringify({
           customer_id: customerId,
-          items: [...cart.values()].map(({ product, quantity }) => ({ product_id: product.id, quantity })),
+          items: [...cart.values()].map((line) => ({
+            product_id: line.product.id, quantity: line.quantity,
+            ...(line.unitPrice !== undefined ? { unit_price: line.unitPrice } : {})
+          })),
           paid_amount: paidAmount,
           payment_channel: channel === 'credit' || channel === 'partial' ? 'cash' : channel,
           due_date: channel === 'credit' || channel === 'partial' ? dueDate : null
         })
       });
       cart.clear();
+      editingPriceId = null;
       query = '';
       $('expressSearch').value = '';
       if ($('expressDueDate')) $('expressDueDate').value = '';
@@ -286,12 +308,47 @@
   }
 
   document.addEventListener('click', (event) => {
+    const edit = event.target.closest('[data-price-edit]');
+    if (edit) {
+      editingPriceId = Number(edit.dataset.priceEdit);
+      renderExpressSale();
+      const input = $('expressPrice-' + editingPriceId);
+      input?.focus();
+      input?.select();
+      return;
+    }
+    if (event.target.closest('[data-price-cancel]')) {
+      editingPriceId = null;
+      return renderExpressSale();
+    }
+    const reset = event.target.closest('[data-price-reset]');
+    if (reset) {
+      const line = cart.get(Number(reset.dataset.priceReset));
+      if (line) delete line.unitPrice;
+      editingPriceId = null;
+      return renderExpressSale();
+    }
     const addBtn = event.target.closest('[data-add-product]');
     if (addBtn) return add(addBtn.dataset.addProduct);
     const plus = event.target.closest('[data-cart-plus]');
     if (plus) return change(plus.dataset.cartPlus, 1);
     const minus = event.target.closest('[data-cart-minus]');
     if (minus) return change(minus.dataset.cartMinus, -1);
+  });
+  document.addEventListener('submit', (event) => {
+    const form = event.target.closest('[data-price-form]');
+    if (!form) return;
+    event.preventDefault();
+    const line = cart.get(Number(form.dataset.priceForm));
+    if (!line) return;
+    const raw = form.elements.unitPrice.value.trim();
+    const price = Number(raw);
+    if (!raw || !Number.isSafeInteger(price) || price <= 0) {
+      return toast('Saisissez un prix unitaire entier supérieur à zéro.');
+    }
+    line.unitPrice = price;
+    editingPriceId = null;
+    renderExpressSale();
   });
   $('expressSearch')?.addEventListener('input', (event) => { query = event.target.value; renderExpressSale(); });
   $('expressChannel')?.addEventListener('change', syncCreditFields);
