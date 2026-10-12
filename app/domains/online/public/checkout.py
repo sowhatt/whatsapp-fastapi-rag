@@ -41,6 +41,8 @@ def checkout_cart(
 
     if delivery_mode not in {"pickup", "delivery"}:
         raise ValueError("Mode de remise invalide.")
+    capabilities = get_store_capabilities(store)
+    require_capability(capabilities, delivery_mode)
     if delivery_mode == "delivery" and not (delivery_address or "").strip():
         raise ValueError("L'adresse de livraison est obligatoire.")
 
