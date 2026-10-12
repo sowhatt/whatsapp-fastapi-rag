@@ -4,12 +4,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domains.online.foundation import require_capability
+
 from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
-from app.domains.online.internal.store_service import get_public_store
+from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
 from app.models.product import Product
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
@@ -31,6 +33,7 @@ def checkout_cart(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_capability(get_store_capabilities(store), "checkout")
 
     # Online binds PostgreSQL RLS explicitly for its own transaction.
     # Whatzabi Shop session/tenant behavior remains untouched.
