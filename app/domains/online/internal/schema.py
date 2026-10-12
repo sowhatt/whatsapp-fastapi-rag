@@ -12,6 +12,8 @@ ONLINE_SCHEMA_SQL = (
         banner_url VARCHAR(1000) NULL,
         primary_color VARCHAR(20) NULL,
         accent_color VARCHAR(20) NULL,
+        business_type VARCHAR(30) NOT NULL DEFAULT 'commerce',
+        capabilities_json TEXT NULL,
         template VARCHAR(30) NOT NULL DEFAULT 'essential',
         currency VARCHAR(3) NOT NULL DEFAULT 'XOF',
         country_code VARCHAR(2) NOT NULL DEFAULT 'BJ',
@@ -63,6 +65,8 @@ ONLINE_SCHEMA_SQL = (
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS business_type VARCHAR(30) NOT NULL DEFAULT 'commerce'",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS capabilities_json TEXT NULL",
     "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_online_stores_slug ON online_stores (slug)",
     "CREATE INDEX IF NOT EXISTS ix_online_product_publications_merchant_id ON online_product_publications (merchant_id)",
