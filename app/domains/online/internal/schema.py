@@ -1,6 +1,5 @@
 from sqlalchemy import Connection, text
 
-
 ONLINE_SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS online_stores (
@@ -29,18 +28,8 @@ ONLINE_SCHEMA_SQL = (
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_title VARCHAR(180) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS canonical_domain VARCHAR(255) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS address VARCHAR(300) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS city VARCHAR(120) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS postal_code VARCHAR(30) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS latitude VARCHAR(40) NULL",
-    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS longitude VARCHAR(40) NULL",
-    "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS ix_online_stores_slug ON online_stores (slug)",
     """
-    CREATE TABLE IF NOT EXISTS product_publications (
+    CREATE TABLE IF NOT EXISTS online_product_publications (
         id SERIAL PRIMARY KEY,
         merchant_id INTEGER NOT NULL REFERENCES merchants(id),
         product_id INTEGER NOT NULL REFERENCES products(id),
@@ -54,21 +43,16 @@ ONLINE_SCHEMA_SQL = (
         seo_description VARCHAR(320) NULL,
         display_order INTEGER NOT NULL DEFAULT 0,
         published_at TIMESTAMP NULL,
-        CONSTRAINT uq_product_publication_merchant_product UNIQUE (merchant_id, product_id)
+        CONSTRAINT uq_online_product_publication_merchant_product UNIQUE (merchant_id, product_id)
     )
     """,
-    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_slug VARCHAR(120) NULL",
-    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_title VARCHAR(180) NULL",
-    "ALTER TABLE product_publications ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320) NULL",
-    "CREATE INDEX IF NOT EXISTS ix_product_publications_merchant_id ON product_publications (merchant_id)",
-    "CREATE INDEX IF NOT EXISTS ix_product_publications_product_id ON product_publications (product_id)",
     """
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_publication_merchant_seo_slug
-    ON product_publications (merchant_id, seo_slug)
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_online_product_publication_merchant_seo_slug
+    ON online_product_publications (merchant_id, seo_slug)
     WHERE seo_slug IS NOT NULL
     """,
     """
-    CREATE TABLE IF NOT EXISTS product_images (
+    CREATE TABLE IF NOT EXISTS online_product_images (
         id SERIAL PRIMARY KEY,
         merchant_id INTEGER NOT NULL REFERENCES merchants(id),
         product_id INTEGER NOT NULL REFERENCES products(id),
@@ -79,10 +63,13 @@ ONLINE_SCHEMA_SQL = (
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
-    "CREATE INDEX IF NOT EXISTS ix_product_images_merchant_id ON product_images (merchant_id)",
-    "CREATE INDEX IF NOT EXISTS ix_product_images_product_id ON product_images (product_id)",
+    "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_online_stores_slug ON online_stores (slug)",
+    "CREATE INDEX IF NOT EXISTS ix_online_product_publications_merchant_id ON online_product_publications (merchant_id)",
+    "CREATE INDEX IF NOT EXISTS ix_online_product_publications_product_id ON online_product_publications (product_id)",
+    "CREATE INDEX IF NOT EXISTS ix_online_product_images_merchant_id ON online_product_images (merchant_id)",
+    "CREATE INDEX IF NOT EXISTS ix_online_product_images_product_id ON online_product_images (product_id)",
 )
-
 
 def install_online_schema(connection: Connection) -> None:
     for statement in ONLINE_SCHEMA_SQL:
