@@ -695,7 +695,7 @@ function render() {
             </div>
             <div>
               <div class="money">${fmt(product.price)}</div>
-              ${can('product.update') ? `<button type="button" class="ghost" data-edit-product="${product.id}">Modifier</button>` : ''}
+              ${can('product.update') ? `<button type="button" class="ghost" data-edit-product="${product.id}">Modifier</button><button type="button" class="ghost" data-internal-barcode="${product.id}">Code-barres / étiquettes</button>` : ''}
             </div>
           </article>`,
         )
@@ -3011,3 +3011,4 @@ document.querySelectorAll('[data-expense-period]').forEach((button) => {
     renderExpenses();
   });
 });
+

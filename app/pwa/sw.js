@@ -1,12 +1,13 @@
-const CACHE = 'whatzabi-pwa-v35-cart-price-1';
+const CACHE = 'whatzabi-pwa-v36-internal-barcode';
 
 const ASSETS = [
+  '/auth/internal-barcode.js?v=1',
   '/auth/express-sale.js?v=6-cart-price-1',
   '/auth/express-sale.css?v=2-cart-price-1',
   '/auth/app',
   '/auth/styles.css?v=17',
-  '/auth/app.js?v=25',
-  '/auth/smart-catalog.js?v=45',
+  '/auth/app.js?v=26-internal-barcode',
+  '/auth/smart-catalog.js?v=46-internal-barcode',
   '/auth/purchases.js?v=5',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
@@ -86,3 +87,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
