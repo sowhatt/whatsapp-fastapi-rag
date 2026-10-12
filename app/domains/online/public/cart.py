@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineOnlineProductPublication
+from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.store_service import get_public_store
