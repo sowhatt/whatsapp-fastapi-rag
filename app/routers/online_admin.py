@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
-from app.domains.online.internal.catalog_models import OnlineOnlineProductImage, OnlineOnlineProductPublication
+from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
 from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
