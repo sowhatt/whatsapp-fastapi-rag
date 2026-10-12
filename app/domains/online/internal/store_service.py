@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 
 from sqlalchemy.orm import Session
 
+from app.domains.online.foundation.business import default_capabilities, normalize_capabilities, parse_business_type
 from app.domains.online.internal.models import OnlineStore
 from app.models.merchant import Merchant
 
@@ -39,6 +41,8 @@ def get_or_create_store(
     db: Session,
     slug: str | None = None,
     display_name: str | None = None,
+    business_type: str = "commerce",
+    capabilities: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> OnlineStore:
     merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
     if merchant is None:
@@ -59,10 +63,15 @@ def get_or_create_store(
     if collision is not None:
         candidate = normalize_store_slug(f"{candidate}-{merchant_id}")
 
+    kind = parse_business_type(business_type)
+    resolved_capabilities = normalize_capabilities(capabilities, business_type=kind)
+
     store = OnlineStore(
         merchant_id=merchant_id,
         slug=candidate,
         display_name=(display_name or merchant.shop_name or "Ma boutique")[:150],
+        business_type=kind.value,
+        capabilities_json=json.dumps(list(resolved_capabilities)),
         currency="XOF",
         country_code="BJ",
         template="essential",
@@ -80,6 +89,8 @@ def update_store(
     db: Session,
     display_name: str | None = None,
     description: str | None = None,
+    business_type: str | None = None,
+    capabilities: list[str] | tuple[str, ...] | set[str] | None = None,
     logo_url: str | None = None,
     banner_url: str | None = None,
     primary_color: str | None = None,
@@ -107,6 +118,14 @@ def update_store(
 
     if display_name is not None:
         store.display_name = display_name[:150]
+    if business_type is not None:
+        kind = parse_business_type(business_type)
+        store.business_type = kind.value
+        if capabilities is None:
+            store.capabilities_json = json.dumps(list(default_capabilities(kind)))
+    if capabilities is not None:
+        resolved = normalize_capabilities(capabilities, business_type=store.business_type)
+        store.capabilities_json = json.dumps(list(resolved))
     if description is not None:
         store.description = description[:500]
     if logo_url is not None:
@@ -147,3 +166,13 @@ def update_store(
     db.commit()
     db.refresh(store)
     return store
+
+
+def get_store_capabilities(store: OnlineStore) -> tuple[str, ...]:
+    if not store.capabilities_json:
+        return default_capabilities(store.business_type)
+    try:
+        raw = json.loads(store.capabilities_json)
+    except (TypeError, ValueError):
+        return default_capabilities(store.business_type)
+    return normalize_capabilities(raw, business_type=store.business_type)
