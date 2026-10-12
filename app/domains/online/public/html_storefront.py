@@ -37,7 +37,7 @@ def render_store_page(*, store: dict[str, Any], products: list[dict[str, Any]], 
     description = store.get("seo_description") or store.get("description") or f"Découvrez les produits de {title}."
     json_ld = {
         "@context": "https://schema.org",
-        "@type": "Store",
+        "@type": store.get("schema_type") or "Store",
         "name": store.get("display_name"),
         "url": canonical,
         "description": description,
