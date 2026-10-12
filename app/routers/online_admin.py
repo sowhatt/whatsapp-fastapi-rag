@@ -2,17 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
+from app.domains.online.internal.catalog_models import OnlineOnlineProductImage, OnlineOnlineProductPublication
+
 from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, update_store
 from app.models.product import Product
-from app.models.product_image import ProductImage
-from app.models.product_publication import ProductPublication
-from app.services.customer_catalog_service import (
-    add_product_image,
-    publish_product,
-    unpublish_product,
-)
+from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -52,7 +48,7 @@ class PublishProductPayload(BaseModel):
     seo_description: str | None = Field(default=None, max_length=320)
 
 
-class ProductImagePayload(BaseModel):
+class OnlineProductImagePayload(BaseModel):
     image_url: HttpUrl
     storage_key: str | None = Field(default=None, max_length=500)
     is_primary: bool = True
@@ -139,20 +135,20 @@ def read_online_catalog_admin(merchant_id: int, db: Session = Depends(get_db)):
     result = []
     for product in products:
         publication = (
-            db.query(ProductPublication)
+            db.query(OnlineProductPublication)
             .filter(
-                ProductPublication.merchant_id == merchant_id,
-                ProductPublication.product_id == product.id,
+                OnlineProductPublication.merchant_id == merchant_id,
+                OnlineProductPublication.product_id == product.id,
             )
             .first()
         )
         image = (
-            db.query(ProductImage)
+            db.query(OnlineProductImage)
             .filter(
-                ProductImage.merchant_id == merchant_id,
-                ProductImage.product_id == product.id,
+                OnlineProductImage.merchant_id == merchant_id,
+                OnlineProductImage.product_id == product.id,
             )
-            .order_by(ProductImage.is_primary.desc(), ProductImage.position, ProductImage.id)
+            .order_by(OnlineProductImage.is_primary.desc(), OnlineProductImage.position, OnlineProductImage.id)
             .first()
         )
         result.append(
@@ -216,7 +212,7 @@ def unpublish_online_product(
 def create_online_product_image(
     merchant_id: int,
     product_id: int,
-    payload: ProductImagePayload,
+    payload: OnlineProductImagePayload,
     db: Session = Depends(get_db),
 ):
     try:
