@@ -37,7 +37,11 @@ def test_seed_currencies(db):
         for item in db.query(Currency).all()
     }
 
-    assert {"XOF", "NGN", "EUR", "USD"} <= codes
+    assert {"XOF", "NGN", "EUR", "USD", "CNY"} <= codes
+    seed_currencies(db)
+    yuan = db.query(Currency).filter(Currency.code == "CNY").one()
+    assert yuan.decimals == 2
+    assert yuan.symbol == "¥"
 
 
 def test_same_currency_rate_is_one(db):
@@ -212,3 +216,4 @@ def test_provider_failure_without_cache_is_raised(db, monkeypatch):
             db=db,
             max_age_minutes=1,
         )
+

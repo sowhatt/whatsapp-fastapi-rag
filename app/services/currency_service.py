@@ -17,6 +17,7 @@ class CurrencyServiceError(ValueError):
 
 
 DEFAULT_CURRENCIES = [
+    {"code": "CNY", "name": "Yuan chinois (renminbi)", "symbol": "¥", "decimals": 2},
     {
         "code": "XOF",
         "name": "Franc CFA BCEAO",
@@ -270,6 +271,12 @@ def format_conversion(
 
 
 CURRENCY_ALIASES = {
+    "cny": "CNY",
+    "rmb": "CNY",
+    "yuan": "CNY",
+    "yuans": "CNY",
+    "renminbi": "CNY",
+    "yuan chinois": "CNY",
     "xof": "XOF",
     "cfa": "XOF",
     "fcfa": "XOF",
@@ -408,3 +415,4 @@ def convert_currency_message(
         to_code=to_code,
         rate=rate,
     )
+

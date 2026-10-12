@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field
+from decimal import Decimal
 
 
 class ExpenseScanResult(BaseModel):
     merchant_name: str | None = None
     document_date: str | None = None
-    amount: int | None = Field(default=None, ge=0)
+    amount: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     currency: str | None = None
     category: str | None = None
     payment_channel: str | None = None
@@ -16,3 +17,4 @@ class ExpenseScanResult(BaseModel):
 class ExpenseScanResponse(BaseModel):
     result: ExpenseScanResult
     requires_confirmation: bool = True
+

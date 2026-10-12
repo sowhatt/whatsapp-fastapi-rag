@@ -2,6 +2,7 @@ import base64
 import json
 import os
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from openai import OpenAI
 
@@ -77,16 +78,17 @@ def _normalize_date(value) -> str | None:
         return None
 
 
-def _normalize_amount(value) -> int | None:
+def _normalize_amount(value) -> Decimal | None:
     if value in (None, ""):
         return None
 
     try:
-        amount = int(round(float(value)))
-    except (TypeError, ValueError):
+        text = "".join(str(value).split()).replace(",", ".")
+        amount = Decimal(text)
+    except (TypeError, ValueError, InvalidOperation):
         return None
 
-    return amount if amount > 0 else None
+    return amount if amount.is_finite() and amount > 0 else None
 
 
 def analyze_expense_image(
@@ -122,8 +124,11 @@ ticket, facture ou justificatif photographié.
 Tu dois extraire :
 - merchant_name : nom du fournisseur ou commerçant visible ;
 - document_date : date du document au format YYYY-MM-DD ;
-- amount : montant TOTAL réellement payé ou à payer, sous forme d'entier ;
-- currency : code ISO 4217, par exemple XOF, EUR, USD, NGN, GHS ;
+- amount : montant TOTAL dans la devise du justificatif, avec ses décimales ;
+  par exemple 31,70 euros doit produire 31.70, jamais 3170 ni 32 ;
+  ne convertis pas le montant et ne le transforme pas en centimes ;
+- currency : code ISO 4217, par exemple XOF, EUR, USD, NGN, GHS, CNY ;
+  pour yuan, renminbi ou RMB, utilise CNY ; le symbole ¥ seul est ambigu ;
 - category : une seule valeur parmi
   transport, loyer, electricite, salaire, carburant,
   livraison, fournitures, taxes, autre ;
@@ -239,3 +244,4 @@ Retourne uniquement un objet JSON de cette forme :
         note=_clean_text(payload.get("note"), 255),
         confidence=confidence,
     )
+

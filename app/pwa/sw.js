@@ -1,4 +1,4 @@
-const CACHE = 'whatzabi-pwa-v36-internal-barcode';
+const CACHE = 'whatzabi-pwa-v37-expense-currency';
 
 const ASSETS = [
   '/auth/internal-barcode.js?v=1',
@@ -6,7 +6,7 @@ const ASSETS = [
   '/auth/express-sale.css?v=2-cart-price-1',
   '/auth/app',
   '/auth/styles.css?v=17',
-  '/auth/app.js?v=26-internal-barcode',
+  '/auth/app.js?v=27-expense-currency',
   '/auth/smart-catalog.js?v=46-internal-barcode',
   '/auth/purchases.js?v=5',
   '/auth/manifest.webmanifest',
@@ -87,4 +87,5 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
 
