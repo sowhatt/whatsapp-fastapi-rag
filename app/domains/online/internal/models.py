@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -28,6 +28,8 @@ class OnlineStore(Base):
     primary_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     accent_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    business_type: Mapped[str] = mapped_column(String(30), nullable=False, default="commerce")
+    capabilities_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     template: Mapped[str] = mapped_column(String(30), nullable=False, default="essential")
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XOF")
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, default="BJ")
