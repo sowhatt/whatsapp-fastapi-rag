@@ -8,7 +8,7 @@ from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public import read_public_catalog, read_public_product_by_slug
 from app.models.merchant import Merchant
 from app.models.product import Product
-from app.services.customer_catalog_service import publish_product
+from app.domains.online.internal.catalog_service import publish_product
 
 
 @pytest.fixture()
