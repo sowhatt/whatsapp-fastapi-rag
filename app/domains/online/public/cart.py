@@ -5,10 +5,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineOnlineProductPublication
+
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.store_service import get_public_store
 from app.models.product import Product
-from app.models.product_publication import ProductPublication
 from app.domains.core.public.stock import available_stock
 
 
@@ -116,14 +117,14 @@ def set_cart_item(
     store, cart = loaded
 
     product_row = (
-        db.query(Product, ProductPublication)
-        .join(ProductPublication, ProductPublication.product_id == Product.id)
+        db.query(Product, OnlineProductPublication)
+        .join(OnlineProductPublication, OnlineProductPublication.product_id == Product.id)
         .filter(
             Product.id == product_id,
             Product.merchant_id == store.merchant_id,
-            ProductPublication.merchant_id == store.merchant_id,
-            ProductPublication.is_published.is_(True),
-            ProductPublication.is_active.is_(True),
+            OnlineProductPublication.merchant_id == store.merchant_id,
+            OnlineProductPublication.is_published.is_(True),
+            OnlineProductPublication.is_active.is_(True),
         )
         .first()
     )
