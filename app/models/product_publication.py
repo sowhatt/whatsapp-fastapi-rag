@@ -14,11 +14,6 @@ class ProductPublication(Base):
             "product_id",
             name="uq_product_publication_merchant_product",
         ),
-        UniqueConstraint(
-            "merchant_id",
-            "seo_slug",
-            name="uq_product_publication_merchant_seo_slug",
-        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -45,10 +40,6 @@ class ProductPublication(Base):
         String(500),
         nullable=True,
     )
-
-    seo_slug: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
-    seo_title: Mapped[str | None] = mapped_column(String(180), nullable=True)
-    seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
     display_order: Mapped[int] = mapped_column(Integer, default=0)
 
