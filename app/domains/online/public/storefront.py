@@ -6,13 +6,22 @@ from sqlalchemy.orm import Session
 
 from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
-from app.domains.online.internal.store_service import get_public_store
+from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
 from app.domains.online.internal.catalog_service import list_online_catalog, search_online_catalog
+from app.domains.online.foundation.seo import SeoProfile
 from app.models.product import Product
 from app.domains.core.public.stock import available_stock
 
 
 def _store_payload(store) -> dict[str, Any]:
+    seo = SeoProfile.for_store(
+        business_type=store.business_type,
+        display_name=store.display_name,
+        description=store.description,
+        seo_title=store.seo_title,
+        seo_description=store.seo_description,
+        canonical_domain=store.canonical_domain,
+    )
     return {
         "slug": store.slug,
         "display_name": store.display_name,
@@ -21,12 +30,15 @@ def _store_payload(store) -> dict[str, Any]:
         "banner_url": store.banner_url,
         "primary_color": store.primary_color,
         "accent_color": store.accent_color,
+        "business_type": store.business_type,
+        "capabilities": list(get_store_capabilities(store)),
         "template": store.template,
         "currency": store.currency,
         "country_code": store.country_code,
-        "seo_title": store.seo_title or store.display_name,
-        "seo_description": store.seo_description or store.description,
-        "canonical_domain": store.canonical_domain,
+        "seo_title": seo.title,
+        "seo_description": seo.description,
+        "canonical_domain": seo.canonical_domain,
+        "schema_type": seo.schema_type,
         "address": store.address,
         "city": store.city,
         "postal_code": store.postal_code,
