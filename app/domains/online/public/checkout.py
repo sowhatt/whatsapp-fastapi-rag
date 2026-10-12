@@ -8,11 +8,11 @@ from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
 from app.domains.online.internal.store_service import get_public_store
-from app.db.tenant import set_tenant_context
 from app.models.product import Product
 from app.models.product_publication import ProductPublication
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
+from app.shared.tenancy.rls import apply_rls_context
 from app.domains.core.public.stock import available_stock, reserve_stock
 
 
@@ -31,10 +31,9 @@ def checkout_cart(
     if store is None:
         return None
 
-    # Public checkout becomes tenant-bound immediately after resolving the
-    # storefront. This activates both SQLAlchemy isolation and PostgreSQL RLS
-    # for BusinessTransaction and Outbox writes.
-    set_tenant_context(db, merchant_id=store.merchant_id)
+    # Online binds PostgreSQL RLS explicitly for its own transaction.
+    # Whatzabi Shop session/tenant behavior remains untouched.
+    apply_rls_context(db, merchant_id=store.merchant_id, bypass=False)
 
     if delivery_mode not in {"pickup", "delivery"}:
         raise ValueError("Mode de remise invalide.")
