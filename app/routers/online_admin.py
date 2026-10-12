@@ -6,7 +6,7 @@ from app.domains.online.internal.catalog_models import OnlineProductImage, Onlin
 
 from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
-from app.domains.online.internal.store_service import get_or_create_store, update_store
+from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 
@@ -17,10 +17,14 @@ router = APIRouter(prefix="/online-admin", tags=["online-admin"])
 class StoreCreatePayload(BaseModel):
     slug: str | None = Field(default=None, max_length=80)
     display_name: str | None = Field(default=None, max_length=150)
+    business_type: str = Field(default="commerce", max_length=30)
+    capabilities: list[str] | None = None
 
 
 class StoreUpdatePayload(BaseModel):
     display_name: str | None = Field(default=None, max_length=150)
+    business_type: str | None = Field(default=None, max_length=30)
+    capabilities: list[str] | None = None
     description: str | None = Field(default=None, max_length=500)
     logo_url: str | None = Field(default=None, max_length=1000)
     banner_url: str | None = Field(default=None, max_length=1000)
@@ -65,6 +69,8 @@ def _store_payload(store: OnlineStore):
         "banner_url": store.banner_url,
         "primary_color": store.primary_color,
         "accent_color": store.accent_color,
+        "business_type": store.business_type,
+        "capabilities": list(get_store_capabilities(store)),
         "template": store.template,
         "currency": store.currency,
         "country_code": store.country_code,
@@ -92,6 +98,8 @@ def create_online_store(
             db=db,
             slug=payload.slug,
             display_name=payload.display_name,
+            business_type=payload.business_type,
+            capabilities=payload.capabilities,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
