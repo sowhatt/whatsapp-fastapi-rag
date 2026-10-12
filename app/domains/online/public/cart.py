@@ -82,6 +82,7 @@ def create_cart(*, slug: str, db: Session) -> dict[str, Any] | None:
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_capability(get_store_capabilities(store), "cart")
 
     cart = OnlineCart(
         merchant_id=store.merchant_id,
