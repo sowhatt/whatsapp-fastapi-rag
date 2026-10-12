@@ -87,3 +87,20 @@ def normalize_capabilities(
     normalized.add(StoreCapability.SEO.value)
     normalized.add(StoreCapability.MEDIA.value)
     return tuple(sorted(normalized))
+
+
+def has_capability(
+    capabilities: tuple[str, ...] | list[str] | set[str],
+    capability: str | StoreCapability,
+) -> bool:
+    target = capability.value if isinstance(capability, StoreCapability) else str(capability).strip().lower()
+    return target in set(capabilities)
+
+
+def require_capability(
+    capabilities: tuple[str, ...] | list[str] | set[str],
+    capability: str | StoreCapability,
+) -> None:
+    if not has_capability(capabilities, capability):
+        target = capability.value if isinstance(capability, StoreCapability) else str(capability).strip().lower()
+        raise ValueError(f"Capacité Online non activée : {target}")
