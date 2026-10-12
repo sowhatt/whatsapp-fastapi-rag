@@ -4,15 +4,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domains.online.internal.catalog_models import OnlineOnlineProductImage, OnlineOnlineProductPublication
+
 from app.domains.online.internal.store_service import get_public_store
+from app.domains.online.internal.catalog_service import list_online_catalog, search_online_catalog
 from app.models.product import Product
-from app.models.product_image import ProductImage
-from app.models.product_publication import ProductPublication
 from app.domains.core.public.stock import available_stock
-from app.services.customer_catalog_service import (
-    list_customer_catalog,
-    search_customer_catalog,
-)
 
 
 def _store_payload(store) -> dict[str, Any]:
@@ -59,14 +56,14 @@ def read_public_catalog(
         return None
 
     if query:
-        products = search_customer_catalog(
+        products = search_online_catalog(
             merchant_id=store.merchant_id,
             query=query,
             db=db,
             limit=min(limit, 50),
         )
     else:
-        products = list_customer_catalog(
+        products = list_online_catalog(
             merchant_id=store.merchant_id,
             db=db,
             category_id=category_id,
