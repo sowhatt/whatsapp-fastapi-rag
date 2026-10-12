@@ -4,9 +4,6 @@ from sqlalchemy import text
 
 from app.db.session import engine
 from app.routers.health import router as health_router
-from app.routers.online_public import router as online_public_router
-from app.routers.online_storefront_web import router as online_storefront_web_router
-from app.routers.online_admin import router as online_admin_router
 from app.routers.products import router as products_router
 from app.routers.categories import router as categories_router
 from app.routers.customers import router as customers_router
@@ -25,12 +22,6 @@ from app.routers.whatsapp_send import router as whatsapp_send_router
 from app.routers.debug_env import router as debug_env_router
 from app.routers.admin import router as admin_router
 from app.security import require_admin_token
-from app.shared.tenancy.rls import install_foundation_rls
-from app.shared.outbox.schema import install_outbox_schema
-from app.domains.online.internal.schema import install_online_schema
-from app.domains.online.internal.cart_schema import install_online_cart_schema
-from app.domains.online.internal.order_schema import install_online_order_schema
-from app.domains.core.internal.stock_schema import install_stock_reservation_schema
 from app.models import merchant as _merchant_model  # noqa: F401 - garantit l'enregistrement de la table "merchants" avant toute résolution de clé étrangère
 
 app = FastAPI(title="WhatsApp FastAPI Railway")
@@ -399,16 +390,6 @@ def ensure_catalog_schema() -> None:
         for statement in statements:
             connection.execute(text(statement))
 
-        # S0 tables are installed only after legacy foundations such as
-        # merchants exist. The rollout remains additive and does not alter
-        # Whatzabi Shop tables.
-        install_foundation_rls(connection)
-        install_outbox_schema(connection)
-        install_online_schema(connection)
-        install_online_cart_schema(connection)
-        install_online_order_schema(connection)
-        install_stock_reservation_schema(connection)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -421,8 +402,6 @@ app.add_middleware(
 # Routes publiques indispensables.
 app.include_router(health_router)
 app.include_router(whatsapp_webhook_router)
-app.include_router(online_public_router)
-app.include_router(online_storefront_web_router)
 
 # Routes internes : accessibles uniquement avec X-Admin-Token.
 _internal_routers = (
@@ -442,7 +421,6 @@ _internal_routers = (
     whatsapp_send_router,
     debug_env_router,
     admin_router,
-    online_admin_router,
 )
 
 for internal_router in _internal_routers:
