@@ -552,14 +552,20 @@
               <input
                 id="expenseAmount"
                 name="amount"
-                type="number"
-                min="1"
-                step="1"
-                inputmode="numeric"
+                type="text"
+                inputmode="decimal"
                 placeholder="5 000"
                 required
               >
             </label>
+
+            <label>
+              Devise du montant
+              <select id="expenseCurrency" name="source_currency" required>
+                <option value="XOF">XOF — Franc CFA</option>
+              </select>
+            </label>
+            <p id="expenseConversionPreview" class="muted small" role="status" aria-live="polite" hidden></p>
 
             <label>
               Catégorie
@@ -1161,7 +1167,7 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=26-internal-barcode" defer></script>
+  <script src="/auth/app.js?v=27-expense-currency" defer></script>
   <script src="/auth/smart-catalog.js?v=46-internal-barcode" defer></script>
   <script src="/auth/express-sale.js?v=6-cart-price-1" defer></script>
   <script src="/auth/internal-barcode.js?v=1" defer></script>
@@ -1386,4 +1392,5 @@
       </div>
 </body>
 </html>
+
 

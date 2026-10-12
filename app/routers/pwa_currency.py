@@ -11,11 +11,12 @@ from app.models.currency import Currency
 from app.models.exchange_rate import ExchangeRate
 from app.models.shop import Shop
 from app.services.shop_context_service import get_current_shop_id
+from app.services.currency_service import seed_currencies
 
 router = APIRouter(tags=["pwa currencies"])
 
 FRANKFURTER_BASE = "https://api.frankfurter.dev/v2"
-DEFAULT_CODES = ("EUR", "XOF", "USD", "NGN", "GHS", "GBP")
+DEFAULT_CODES = ("EUR", "XOF", "USD", "NGN", "GHS", "GBP", "CNY")
 
 
 class ShopCurrencyUpdate(BaseModel):
@@ -121,6 +122,7 @@ def _convert_amount(amount: Decimal, rate: Decimal, decimals: int) -> Decimal:
 @router.get("/currencies/context")
 def currency_context(db: Session = Depends(get_db)):
     shop = _current_shop(db)
+    seed_currencies(db)
     currencies = (
         db.query(Currency)
         .filter(Currency.is_active.is_(True))
@@ -297,3 +299,4 @@ def convert_currency_batch(
         "items": converted_items,
         "rates": rate_rows,
     }
+

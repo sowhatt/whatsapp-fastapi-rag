@@ -490,6 +490,13 @@ function renderCurrencyPanel() {
   }
 
   const meta = currencyMeta(context.shop_currency);
+  const expenseSelect = $('expenseCurrency');
+  if (expenseSelect) {
+    expenseSelect.innerHTML = (context.currencies || []).map((item) =>
+      `<option value="${esc(item.code)}" ${item.code === context.shop_currency ? 'selected' : ''}>${esc(item.code)} — ${esc(item.name)}</option>`
+    ).join('');
+    resetExpenseConversion();
+  }
   if ($('currencyShopStatus')) {
     $('currencyShopStatus').textContent =
       'Devise active : ' + context.shop_currency +
@@ -2574,6 +2581,20 @@ async function loadHomeExpenseMetric() {
 
 
 let expenseScanFile = null;
+let expenseConversion = null;
+
+function resetExpenseConversion() {
+  expenseConversion = null;
+  const preview = $('expenseConversionPreview');
+  if (preview) { preview.hidden = true; preview.textContent = ''; }
+  const button = $('expenseSubmitBtn');
+  if (button) button.textContent = 'Enregistrer la dépense';
+}
+
+function expenseAmountText(value) {
+  const text = String(value || '').replace(/\s/g, '');
+  return /^\d+(?:[.,]\d+)?$/.test(text) ? text.replace(',', '.') : '';
+}
 let expenseScanPreviewUrl = null;
 
 const EXPENSE_SCAN_ALLOWED_CATEGORIES = new Set([
@@ -2733,6 +2754,18 @@ async function prepareExpenseScanImage(file) {
 
 function applyExpenseScanResult(result) {
   if (!result) return;
+  resetExpenseConversion();
+
+  const currencySelect = $('expenseCurrency');
+  if (currencySelect && result.currency) {
+    const code = String(result.currency).toUpperCase();
+    if (![...currencySelect.options].some((item) => item.value === code)) {
+      currencySelect.add(new Option(`${code} — devise à vérifier`, code));
+    }
+    currencySelect.value = code;
+  } else if (currencySelect) {
+    currencySelect.value = '';
+  }
 
   if (result.amount != null && Number(result.amount) > 0) {
     $('expenseAmount').value = String(result.amount);
@@ -2909,7 +2942,11 @@ async function submitExpense(event) {
   const error = $('expenseFormError');
   if (error) error.textContent = '';
 
-  const amount = Number($('expenseAmount')?.value || 0);
+  const amountText = expenseAmountText($('expenseAmount')?.value);
+  const amount = Number(amountText);
+  const sourceCurrency = $('expenseCurrency')?.value || '';
+  const shopCurrency = state.currencyContext?.shop_currency || 'XOF';
+  const conversionKey = `${amountText}|${sourceCurrency}|${shopCurrency}`;
   const label = String($('expenseLabel')?.value || '').trim();
   const category = String($('expenseCategory')?.value || 'autre');
   const channel = String($('expenseChannel')?.value || '');
@@ -2922,6 +2959,11 @@ async function submitExpense(event) {
 
   if (!label) {
     if (error) error.textContent = 'Le libellé est obligatoire.';
+    return;
+  }
+
+  if (!sourceCurrency) {
+    if (error) error.textContent = 'Choisis la devise du montant.';
     return;
   }
 
@@ -2938,11 +2980,27 @@ async function submitExpense(event) {
       button.textContent = 'Enregistrement…';
     }
 
+    if (sourceCurrency !== shopCurrency && expenseConversion?.key !== conversionKey) {
+      const conversion = await api('/pwa/currencies/convert', {
+        method: 'POST',
+        body: JSON.stringify({ amount: amountText, from_currency: sourceCurrency, to_currency: shopCurrency }),
+      });
+      expenseConversion = { ...conversion, key: conversionKey };
+      const preview = $('expenseConversionPreview');
+      if (preview) {
+        preview.textContent = `${amountText} ${sourceCurrency} → ${conversion.converted_amount} ${shopCurrency} · Taux : ${conversion.rate} (${conversion.rate_date}). Vérifie puis confirme.`;
+        preview.hidden = false;
+      }
+      return;
+    }
+
     await api('/pwa/expenses', {
       method: 'POST',
       body: JSON.stringify({
         entry_type: 'expense',
-        amount: Math.round(amount),
+        amount: amountText,
+        source_currency: sourceCurrency,
+        expected_amount: sourceCurrency !== shopCurrency ? expenseConversion.converted_amount : null,
         channel,
         label,
         category,
@@ -2951,6 +3009,7 @@ async function submitExpense(event) {
     });
 
     $('expenseForm')?.reset();
+    resetExpenseConversion();
     clearExpenseScan();
     closeExpenseForm();
 
@@ -2969,13 +3028,14 @@ async function submitExpense(event) {
 
     toast('Dépense enregistrée');
   } catch (err) {
+    resetExpenseConversion();
     if (error) {
       error.textContent = err.message || "Impossible d'enregistrer la dépense.";
     }
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = 'Enregistrer la dépense';
+      button.textContent = expenseConversion ? 'Confirmer la dépense convertie' : 'Enregistrer la dépense';
     }
   }
 }
@@ -2995,6 +3055,8 @@ $('quickAddExpense')?.addEventListener('click', openExpenseForm);
 $('expenseAddBtn')?.addEventListener('click', openExpenseForm);
 $('expenseFormCloseBtn')?.addEventListener('click', closeExpenseForm);
 $('expenseForm')?.addEventListener('submit', submitExpense);
+$('expenseAmount')?.addEventListener('input', resetExpenseConversion);
+$('expenseCurrency')?.addEventListener('change', resetExpenseConversion);
 
 $('expensesRefreshBtn')?.addEventListener('click', async () => {
   try {
@@ -3011,4 +3073,5 @@ document.querySelectorAll('[data-expense-period]').forEach((button) => {
     renderExpenses();
   });
 });
+
 

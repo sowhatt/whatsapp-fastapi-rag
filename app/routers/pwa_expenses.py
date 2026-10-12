@@ -11,6 +11,52 @@ from app.services.shop_context_service import get_current_shop_id
 from app.services.analytics_service import refresh_shop_analytics
 from app.schemas.expense_scan import ExpenseScanResponse
 from app.services.expense_scan_service import ExpenseScanError, analyze_expense_image
+from decimal import Decimal
+from pydantic import BaseModel, Field, field_validator
+from app.routers.pwa_currency import _current_shop, _currency, _frankfurter_rate, _convert_amount, _save_rate
+from app.services.expense_amount_service import parse_expense_amount
+
+
+class ExpenseCreateRequest(BaseModel):
+    entry_type: str
+    amount: Decimal = Field(gt=0, allow_inf_nan=False)
+    source_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    expected_amount: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
+    channel: str = "cash"
+    label: str
+    category: str | None = None
+    note: str | None = None
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def normalize_amount(cls, value):
+        return parse_expense_amount(value)
+
+
+def _expense_payload(payload: ExpenseCreateRequest, db: Session) -> FinancialEntryCreate:
+    shop = _current_shop(db)
+    quote = _currency(db, shop.currency_code)
+    base = _currency(db, payload.source_currency or shop.currency_code)
+    if base.code != quote.code and payload.expected_amount is None:
+        raise HTTPException(status_code=422, detail="Vérifie et confirme le montant converti avant l'enregistrement.")
+    rate, valid_date = _frankfurter_rate(base.code, quote.code)
+    converted = _convert_amount(payload.amount, rate, quote.decimals)
+    if converted <= 0:
+        raise HTTPException(status_code=422, detail="Montant converti trop faible.")
+    # Le grand livre existant stocke des unités entières, jamais des centimes.
+    if converted != converted.to_integral_value():
+        raise HTTPException(status_code=422, detail="Le grand livre accepte actuellement les montants entiers dans la devise de la boutique.")
+    if payload.expected_amount is not None and converted != payload.expected_amount:
+        raise HTTPException(status_code=409, detail="Le taux a changé. Vérifie à nouveau la conversion.")
+    note = payload.note or ""
+    if base.code != quote.code:
+        conversion = f"{payload.amount} {base.code} -> {converted} {quote.code}; taux={rate}; date={valid_date}"
+        note = (conversion + (" · " + note if note else ""))[:255]
+        _save_rate(db, base=base, quote=quote, rate=rate, valid_date=valid_date)
+    return FinancialEntryCreate(
+        entry_type=payload.entry_type, amount=int(converted), channel=payload.channel,
+        label=payload.label, category=payload.category, note=note or None,
+    )
 
 router = APIRouter(prefix="/expenses", tags=["PWA dépenses"])
 
@@ -148,7 +194,7 @@ def list_expenses(
 
 @router.post("")
 def create_expense(
-    payload: FinancialEntryCreate,
+    payload: ExpenseCreateRequest,
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("report.read")),
 ):
@@ -160,7 +206,7 @@ def create_expense(
             detail="Cette route accepte uniquement les dépenses.",
         )
 
-    entry = create_financial_entry(payload, db)
+    entry = create_financial_entry(_expense_payload(payload, db), db)
 
     # La création est déjà commitée par create_financial_entry().
     # On rafraîchit ensuite les vues BI02 afin que le cockpit
@@ -179,3 +225,4 @@ def create_expense(
         if entry.created_at
         else None,
     }
+
