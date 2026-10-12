@@ -4,12 +4,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineOnlineProductPublication
+
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
 from app.domains.online.internal.store_service import get_public_store
 from app.models.product import Product
-from app.models.product_publication import ProductPublication
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
 from app.shared.tenancy.rls import apply_rls_context
@@ -70,14 +71,14 @@ def checkout_cart(
 
     for item in cart_items:
         row = (
-            db.query(Product, ProductPublication)
-            .join(ProductPublication, ProductPublication.product_id == Product.id)
+            db.query(Product, OnlineProductPublication)
+            .join(OnlineProductPublication, OnlineProductPublication.product_id == Product.id)
             .filter(
                 Product.id == item.product_id,
                 Product.merchant_id == store.merchant_id,
-                ProductPublication.merchant_id == store.merchant_id,
-                ProductPublication.is_published.is_(True),
-                ProductPublication.is_active.is_(True),
+                OnlineProductPublication.merchant_id == store.merchant_id,
+                OnlineProductPublication.is_published.is_(True),
+                OnlineProductPublication.is_active.is_(True),
             )
             .first()
         )
