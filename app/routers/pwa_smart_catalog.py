@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from typing import Literal
+
+from app.rbac import require_permission
+from app.services.internal_barcode_service import (normalize_barcode, ensure_internal_barcode, internal_code, barcode_svg, label_pdf)
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -45,10 +50,7 @@ def _catalog_response(source: str, candidates, db: Session) -> SmartCatalogAnaly
 
 
 def _normalize_barcode(barcode: str) -> str:
-    code = "".join(ch for ch in str(barcode) if ch.isdigit())
-    if len(code) < 8 or len(code) > 14:
-        raise HTTPException(status_code=422, detail="Code-barres invalide")
-    return code
+    return normalize_barcode(barcode)
 
 
 def _current_shop(db: Session) -> Shop:
@@ -111,6 +113,9 @@ def lookup_catalog_barcode(barcode: str, db: Session = Depends(get_db)):
             requires_confirmation=False,
         )
 
+    if code.startswith("WZ"):
+        raise HTTPException(status_code=404, detail="Code interne inconnu pour ce commerçant.")
+
     # 2) Whatzabi shared product repository learned from merchant-validated products.
     reference = db.query(ProductReference).filter(ProductReference.barcode == code).first()
     if reference is not None:
@@ -136,6 +141,9 @@ def associate_catalog_barcode(
     """Persist a barcode only after the merchant has validated the target product."""
     shop = _current_shop(db)
     code = _normalize_barcode(barcode)
+
+    if code.startswith("WZ"):
+        raise HTTPException(status_code=422, detail="Un code interne se génère depuis la fiche produit.")
 
     product = (
         db.query(Product)
@@ -227,3 +235,43 @@ async def analyze_catalog(
         ) from exc
 
     return _catalog_response(source, candidates, db)
+
+
+
+@router.post("/catalog/products/{product_id}/internal-barcode")
+def generate_internal_barcode(
+    product_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.update")),
+):
+    shop = _current_shop(db)
+    code = ensure_internal_barcode(db, shop.merchant_id, product_id)
+    product = db.query(Product).filter(Product.id == product_id, Product.merchant_id == shop.merchant_id).one()
+    result = {"product_id": product.id, "name": product.name, "barcode": code,
+              "format": "code_128", "svg": barcode_svg(code)}
+    db.commit()
+    return result
+
+
+@router.get("/catalog/products/{product_id}/internal-barcode/labels.pdf")
+def download_internal_labels(
+    product_id: int,
+    copies: int = Query(default=1, ge=1, le=200),
+    layout: Literal["a4", "thermal"] = "a4",
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.read")),
+):
+    shop = _current_shop(db)
+    product = db.query(Product).filter(Product.id == product_id, Product.merchant_id == shop.merchant_id).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Produit introuvable.")
+    code = internal_code(product.id)
+    existing = db.query(ProductBarcode).filter(
+        ProductBarcode.merchant_id == shop.merchant_id,
+        ProductBarcode.product_id == product.id, ProductBarcode.barcode == code,
+    ).first()
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Génère d’abord le code-barres du produit.")
+    return Response(label_pdf(code, product.name, copies, layout), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="whatzabi-etiquettes-{product.id}.pdf"',
+                             "Cache-Control": "no-store"})

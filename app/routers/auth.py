@@ -90,6 +90,11 @@ def pwa_script():
 
 
 
+@router.get("/internal-barcode.js", include_in_schema=False)
+def pwa_internal_barcode_script():
+    return FileResponse(PWA_DIR / "internal-barcode.js", media_type="application/javascript")
+
+
 @router.get("/smart-catalog.js", include_in_schema=False)
 def pwa_smart_catalog_script():
     return FileResponse(
@@ -414,3 +419,4 @@ def select_shop(
             role=role,
         ),
     )
+

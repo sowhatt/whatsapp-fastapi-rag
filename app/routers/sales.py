@@ -12,6 +12,7 @@ from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
 from app.models.product_barcode import ProductBarcode
+from app.services.internal_barcode_service import normalize_barcode
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.shop_inventory import ShopInventory
@@ -186,9 +187,7 @@ def lookup_sale_barcode(
     if shop_id is None:
         raise HTTPException(status_code=409, detail="Sélectionne d'abord une boutique.")
 
-    code = "".join(ch for ch in str(barcode or "") if ch.isdigit())
-    if len(code) < 8 or len(code) > 14:
-        raise HTTPException(status_code=422, detail="Code-barres invalide.")
+    code = normalize_barcode(barcode)
 
     row = (
         db.query(Product, ShopInventory)
@@ -534,3 +533,4 @@ def cancel_sale(
     db.commit()
     db.refresh(sale)
     return sale
+
