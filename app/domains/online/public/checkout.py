@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineOnlineProductPublication
+from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
