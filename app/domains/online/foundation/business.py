@@ -34,6 +34,7 @@ _DEFAULTS = {
         StoreCapability.CART,
         StoreCapability.CHECKOUT,
         StoreCapability.PICKUP,
+        StoreCapability.DELIVERY,
     },
     BusinessType.RESTAURANT: _COMMON | {
         StoreCapability.CATALOG,
