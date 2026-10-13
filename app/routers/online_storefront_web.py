@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.domains.online.public import read_public_catalog, read_public_product_by_slug, read_public_store
+from app.domains.online.public.seo_discovery import list_indexable_paths
 from app.domains.online.public.html_storefront import render_product_page, render_store_page
 from app.domains.online.public.storefront_assets import STOREFRONT_CSS, STOREFRONT_JS
 
@@ -40,3 +41,40 @@ def online_storefront_css():
 @router.get("/shop/assets/storefront.js")
 def online_storefront_js():
     return Response(content=STOREFRONT_JS, media_type="application/javascript", headers={"Cache-Control":"public, max-age=3600"})
+
+
+@router.get("/sitemap.xml")
+def online_sitemap(request: Request, db: Session = Depends(get_db)):
+    base_url = _base_url(request)
+    urls = [
+        f"<url><loc>{base_url}{path}</loc></url>"
+        for path in list_indexable_paths(db=db)
+    ]
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(urls)
+        + "</urlset>"
+    )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+@router.get("/robots.txt")
+def online_robots(request: Request):
+    base_url = _base_url(request)
+    content = (
+        "User-agent: *\n"
+        "Allow: /shop/\n"
+        "Disallow: /online-admin/\n"
+        "Disallow: /online/\n"
+        f"Sitemap: {base_url}/sitemap.xml\n"
+    )
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Cache-Control": "public, max-age=900"},
+    )
