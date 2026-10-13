@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.session import engine
 from app.domains.core.internal.stock_schema import install_stock_reservation_schema
-from app.domains.core.internal.transaction_schema import install_business_transaction_schema
 from app.domains.online.internal.cart_schema import install_online_cart_schema
 from app.domains.online.internal.order_schema import install_online_order_schema
 from app.domains.online.internal.schema import install_online_schema
@@ -27,7 +26,6 @@ def ensure_online_schema() -> None:
         install_outbox_schema(connection)
         install_online_schema(connection)
         install_online_cart_schema(connection)
-        install_business_transaction_schema(connection)
         install_online_order_schema(connection)
         install_stock_reservation_schema(connection)
 
