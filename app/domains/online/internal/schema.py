@@ -65,6 +65,14 @@ ONLINE_SCHEMA_SQL = (
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_title VARCHAR(180) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS canonical_domain VARCHAR(255) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS address VARCHAR(300) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS city VARCHAR(120) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS postal_code VARCHAR(30) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS latitude VARCHAR(40) NULL",
+    "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS longitude VARCHAR(40) NULL",
     "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS business_type VARCHAR(30) NOT NULL DEFAULT 'commerce'",
     "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS capabilities_json TEXT NULL",
     "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
