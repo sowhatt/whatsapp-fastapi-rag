@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
+from app.domains.core.public.stock import stock_position
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.payment_service import update_payment_status
@@ -169,12 +170,13 @@ def read_online_catalog_admin(merchant_id: int, db: Session = Depends(get_db)):
             .order_by(OnlineProductImage.is_primary.desc(), OnlineProductImage.position, OnlineProductImage.id)
             .first()
         )
+        stock = stock_position(product=product, db=db)
         result.append(
             {
                 "product_id": product.id,
                 "name": product.name,
                 "price": product.price,
-                "stock_physical": product.stock,
+                **stock,
                 "is_published": bool(publication and publication.is_published),
                 "show_stock": bool(publication and publication.show_stock),
                 "seo_slug": publication.seo_slug if publication else None,
