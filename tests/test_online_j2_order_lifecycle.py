@@ -13,6 +13,7 @@ from app.domains.online.public.cart import create_cart, set_cart_item
 from app.domains.online.public.checkout import checkout_cart
 from app.models.merchant import Merchant
 from app.models.product import Product
+from app.shared.outbox.model import OutboxEvent
 from app.domains.online.internal.catalog_service import publish_product
 
 
@@ -192,3 +193,126 @@ def test_revalidation_rolls_back_when_stock_is_insufficient(db):
         .count()
     )
     assert active == 0
+
+
+
+def test_confirm_extends_reservation_and_emits_delivery_request(db):
+    merchant = Merchant(whatsapp_number="j2-delivery", shop_name="Chez Livraison")
+    db.add(merchant)
+    db.commit()
+    db.refresh(merchant)
+    store = get_or_create_store(merchant_id=merchant.id, db=db)
+
+    product = Product(
+        merchant_id=merchant.id,
+        name="Colis",
+        unit="Pièce",
+        price=5000,
+        purchase_price=4000,
+        stock=10,
+        initial_stock=10,
+        threshold=0,
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    publish_product(merchant_id=merchant.id, product_id=product.id, db=db)
+
+    cart = create_cart(slug=store.slug, db=db)
+    set_cart_item(
+        slug=store.slug,
+        token=cart["token"],
+        product_id=product.id,
+        quantity=1,
+        db=db,
+    )
+    result = checkout_cart(
+        slug=store.slug,
+        token=cart["token"],
+        customer_name="Client Livraison",
+        customer_phone="+229600",
+        delivery_mode="delivery",
+        delivery_address="Cotonou centre",
+        notes=None,
+        db=db,
+    )
+
+    reservation = db.query(StockReservation).one()
+    old_expiry = reservation.expires_at
+
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=result["id"],
+        status="confirmed",
+        db=db,
+    )
+
+    db.refresh(reservation)
+    assert reservation.expires_at > old_expiry
+
+    events = {
+        event.event_type
+        for event in db.query(OutboxEvent).all()
+    }
+    assert "commerce.order.confirmed" in events
+    assert "delivery.requested" in events
+
+
+def test_completed_consumes_reservation_and_emits_completed_event(db):
+    merchant, order = _order(db)
+
+    for status in ("confirmed", "preparing", "ready", "completed"):
+        payload = update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status=status,
+            db=db,
+        )
+
+    reservation = db.query(StockReservation).one()
+    assert payload["status"] == "completed"
+    assert payload["reservation_status"] == "consumed"
+    assert reservation.status == "consumed"
+
+    events = {
+        event.event_type
+        for event in db.query(OutboxEvent).all()
+    }
+    assert "commerce.order.completed" in events
+
+
+def test_expired_reservation_blocks_completion(db):
+    merchant, order = _order(db)
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="confirmed",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="preparing",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="ready",
+        db=db,
+    )
+
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    with pytest.raises(ValueError, match="Revalidez avant de terminer"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status="completed",
+            db=db,
+        )
+
+    db.refresh(order)
+    assert order.status == "ready"
