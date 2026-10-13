@@ -413,10 +413,39 @@ def order_summary(*, merchant_id: int, db: Session) -> dict:
         or 0
     )
 
+    pending_orders = (
+        db.query(OnlineOrder)
+        .filter(
+            OnlineOrder.merchant_id == merchant_id,
+            OnlineOrder.status == "pending",
+        )
+        .all()
+    )
+
+    needs_revalidation = 0
+    can_confirm = 0
+    for order in pending_orders:
+        reservation_status = _reservation_status(order, db=db)
+        actions = _order_actions(order, reservation_status=reservation_status)
+        if actions["needs_revalidation"]:
+            needs_revalidation += 1
+        if actions["can_confirm"]:
+            can_confirm += 1
+
+    attention = {
+        "can_confirm": can_confirm,
+        "needs_revalidation": needs_revalidation,
+        "to_prepare": by_status.get("confirmed", 0),
+        "to_mark_ready": by_status.get("preparing", 0),
+        "to_complete": by_status.get("ready", 0),
+    }
+    attention["total"] = sum(attention.values())
+
     return {
         "merchant_id": merchant_id,
         "orders_total": sum(by_status.values()),
         "by_status": by_status,
         "gross_order_amount": gross_total,
         "expired_reservations": expired_reservations,
+        "attention": attention,
     }
