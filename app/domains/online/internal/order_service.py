@@ -255,21 +255,6 @@ def revalidate_order_reservations(
             "La revalidation du stock est réservée aux commandes en attente."
         )
 
-    if active_reservation_count(
-        merchant_id=merchant_id,
-        source_type="online_order",
-        source_id=order.id,
-        db=db,
-    ) > 0:
-        return _order_payload(order, db=db)
-
-    expire_reservations(
-        merchant_id=merchant_id,
-        source_type="online_order",
-        source_id=order.id,
-        db=db,
-    )
-
     items = (
         db.query(OnlineOrderItem)
         .filter(
@@ -281,6 +266,31 @@ def revalidate_order_reservations(
     )
     if not items:
         raise ValueError("La commande ne contient aucun article.")
+
+    active_count = active_reservation_count(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
+    if active_count == len(items):
+        return _order_payload(order, db=db)
+
+    # Clean expired rows and release any partial active set before rebuilding
+    # the complete reservation set deterministically.
+    expire_reservations(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
+    if active_count:
+        release_reservations(
+            merchant_id=merchant_id,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+        )
 
     try:
         for item in items:
@@ -312,4 +322,12 @@ def revalidate_order_reservations(
         return _order_payload(order, db=db)
     except Exception:
         db.rollback()
+        # Persist expiry cleanup even when the new reservation set cannot be rebuilt.
+        expire_reservations(
+            merchant_id=merchant_id,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+        )
+        db.commit()
         raise
