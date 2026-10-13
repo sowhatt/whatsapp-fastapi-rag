@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -13,6 +11,7 @@ from app.domains.online.internal.catalog_models import OnlineProductImage, Onlin
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.reservation_policy import order_reservation_minutes
 from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
 from app.models.product import Product
 from app.shared.events import CommerceEvents, DomainEvent
@@ -20,14 +19,6 @@ from app.shared.outbox import enqueue_domain_event
 from app.shared.tenancy.rls import apply_rls_context
 from app.domains.core.public.stock import available_stock, reserve_stock
 
-
-def _order_reservation_minutes() -> int:
-    raw = os.getenv("ONLINE_ORDER_RESERVATION_MINUTES", "240")
-    try:
-        value = int(raw)
-    except ValueError:
-        value = 240
-    return max(10, min(value, 1440))
 
 
 def _checkout_result(order: OnlineOrder, *, replay: bool = False) -> dict[str, Any]:
@@ -42,7 +33,7 @@ def _checkout_result(order: OnlineOrder, *, replay: bool = False) -> dict[str, A
         "total": order.total_amount,
         "delivery_mode": order.delivery_mode,
         "stock_reserved": order.status not in {"cancelled", "completed"},
-        "reservation_minutes": _order_reservation_minutes(),
+        "reservation_minutes": order_reservation_minutes(),
         "idempotent_replay": replay,
     }
 
@@ -212,7 +203,7 @@ def checkout_cart(
             source_type="online_order",
             source_id=order.id,
             db=db,
-            minutes=_order_reservation_minutes(),
+            minutes=order_reservation_minutes(),
         )
 
     cart.status = "converted"
