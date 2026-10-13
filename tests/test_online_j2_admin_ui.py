@@ -12,3 +12,15 @@ def test_online_admin_ui_exposes_order_actions():
     assert "Annuler" in html
     assert "/orders-summary" in html
     assert "X-Admin-Token" in html
+
+
+
+def test_online_admin_ui_exposes_priority_details_and_whatsapp():
+    response = online_admin_ui()
+    html = response.body.decode("utf-8")
+
+    assert "WhatsApp" in html
+    assert "wa.me" in html
+    assert "Note client" in html
+    assert "Adresse" in html
+    assert "créée il y a" in html
