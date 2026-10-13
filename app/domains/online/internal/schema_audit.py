@@ -253,10 +253,9 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = current_schema()
-              AND c.relname = ANY(:tables)
+              AND c.relname IN ('business_transactions', 'outbox_events')
             """
-        ),
-        {"tables": list(expected)},
+        )
     ).mappings().all()
 
     by_table = {row["table_name"]: row for row in rows}
@@ -274,10 +273,9 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             SELECT tablename, policyname
             FROM pg_policies
             WHERE schemaname = current_schema()
-              AND tablename = ANY(:tables)
+              AND tablename IN ('business_transactions', 'outbox_events')
             """
-        ),
-        {"tables": list(expected)},
+        )
     ).mappings().all()
     policies = {
         (row["tablename"], row["policyname"])
