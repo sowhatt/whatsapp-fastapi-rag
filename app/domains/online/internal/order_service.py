@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.domains.core.public.stock import release_reservations
+from app.domains.core.public.stock import active_reservation_count, expire_reservations, release_reservations
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
@@ -119,6 +119,22 @@ def update_order_status(
         raise ValueError(
             f"Transition de commande invalide : {order.status} -> {target}"
         )
+
+    expire_reservations(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
+
+    if target == "confirmed":
+        if active_reservation_count(
+            merchant_id=merchant_id,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+        ) == 0:
+            raise ValueError("La réservation de stock a expiré. Revalidez la commande avant confirmation.")
 
     order.status = target
 
