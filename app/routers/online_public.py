@@ -174,7 +174,11 @@ def storefront_checkout(
             db=db,
         )
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
 
     if result is None:
         raise HTTPException(status_code=404, detail="Panier ou boutique introuvable")
