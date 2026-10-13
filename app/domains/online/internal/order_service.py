@@ -393,9 +393,9 @@ def revalidate_order_reservations(
     )
     if order is None:
         raise ValueError("Commande Online introuvable.")
-    if order.status != "pending":
+    if order.status in {"completed", "cancelled"}:
         raise ValueError(
-            "La revalidation du stock est réservée aux commandes en attente."
+            "La revalidation du stock n'est plus autorisée pour cette commande."
         )
 
     items = (
