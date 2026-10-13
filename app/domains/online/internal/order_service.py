@@ -487,6 +487,27 @@ def order_summary(*, merchant_id: int, db: Session) -> dict:
     }
     attention["total"] = sum(attention.values())
 
+    payment_rows = (
+        db.query(OnlineOrder.payment_status, func.count(OnlineOrder.id))
+        .filter(OnlineOrder.merchant_id == merchant_id)
+        .group_by(OnlineOrder.payment_status)
+        .all()
+    )
+    payment_by_status = {
+        status: int(count)
+        for status, count in payment_rows
+    }
+    paid_amount = int(
+        db.query(func.coalesce(func.sum(OnlineOrder.total_amount), 0))
+        .filter(
+            OnlineOrder.merchant_id == merchant_id,
+            OnlineOrder.payment_status == "paid",
+            OnlineOrder.status != "cancelled",
+        )
+        .scalar()
+        or 0
+    )
+
     return {
         "merchant_id": merchant_id,
         "orders_total": sum(by_status.values()),
@@ -494,4 +515,6 @@ def order_summary(*, merchant_id: int, db: Session) -> dict:
         "gross_order_amount": gross_total,
         "expired_reservations": expired_reservations,
         "attention": attention,
+        "payment_by_status": payment_by_status,
+        "paid_amount": paid_amount,
     }
