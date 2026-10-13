@@ -20,11 +20,13 @@ ONLINE_ORDER_SCHEMA_SQL = (
         subtotal_amount INTEGER NOT NULL DEFAULT 0,
         delivery_amount INTEGER NOT NULL DEFAULT 0,
         total_amount INTEGER NOT NULL DEFAULT 0,
-        payment_status VARCHAR(30) NOT NULL DEFAULT 'unpaid',
+        payment_method VARCHAR(30) NOT NULL DEFAULT 'cash_on_delivery',
+        payment_status VARCHAR(30) NOT NULL DEFAULT 'cash_on_delivery',
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30) NOT NULL DEFAULT 'cash_on_delivery'",
     "CREATE INDEX IF NOT EXISTS ix_online_orders_merchant_id ON online_orders (merchant_id)",
     "CREATE INDEX IF NOT EXISTS ix_online_orders_store_id ON online_orders (store_id)",
     "CREATE INDEX IF NOT EXISTS ix_online_orders_reference ON online_orders (reference)",
