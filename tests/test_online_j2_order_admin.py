@@ -291,3 +291,53 @@ def test_order_summary_exposes_attention_counts(db):
     assert summary["attention"]["can_confirm"] == 1
     assert summary["attention"]["needs_revalidation"] == 1
     assert summary["attention"]["total"] == 2
+
+
+
+def test_order_priority_places_revalidation_before_confirmation(db):
+    merchant, first = _make_order(
+        db,
+        suffix="priority-a",
+        customer_name="Priority A",
+        customer_phone="+229448",
+    )
+
+    store = get_or_create_store(merchant_id=merchant.id, db=db)
+    product = db.query(Product).filter(Product.merchant_id == merchant.id).first()
+    cart = create_cart(slug=store.slug, db=db)
+    set_cart_item(
+        slug=store.slug,
+        token=cart["token"],
+        product_id=product.id,
+        quantity=1,
+        db=db,
+    )
+    second = checkout_cart(
+        slug=store.slug,
+        token=cart["token"],
+        customer_name="Priority B",
+        customer_phone="+229449",
+        delivery_mode="pickup",
+        delivery_address=None,
+        notes="Livrer côté portail",
+        db=db,
+    )
+
+    reservation = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.source_type == "online_order",
+            StockReservation.source_id == second["id"],
+        )
+        .one()
+    )
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    orders = list_orders(merchant_id=merchant.id, db=db)
+
+    assert orders[0]["id"] == second["id"]
+    assert orders[0]["priority"]["key"] == "stock_expired"
+    assert orders[0]["priority"]["rank"] == 0
+    assert orders[1]["id"] == first["id"]
+    assert orders[1]["priority"]["key"] == "confirm"
