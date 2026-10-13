@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.core.public.stock import active_reservation_count, expire_reservations, release_reservations
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
 from app.shared.events import CommerceEvents, DomainEvent
@@ -16,6 +17,36 @@ _ALLOWED_TRANSITIONS = {
     "completed": set(),
     "cancelled": set(),
 }
+
+
+def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
+    expire_reservations(
+        merchant_id=order.merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
+    rows = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.merchant_id == order.merchant_id,
+            StockReservation.source_type == "online_order",
+            StockReservation.source_id == order.id,
+        )
+        .all()
+    )
+    if not rows:
+        return "none"
+    statuses = {row.status for row in rows}
+    if "active" in statuses:
+        return "active"
+    if "expired" in statuses:
+        return "expired"
+    if "released" in statuses:
+        return "released"
+    if "consumed" in statuses:
+        return "consumed"
+    return sorted(statuses)[0]
 
 
 def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
@@ -46,6 +77,7 @@ def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
         "total": order.total_amount,
         "created_at": order.created_at.isoformat(),
         "updated_at": order.updated_at.isoformat(),
+        "reservation_status": _reservation_status(order, db=db),
         "items": [
             {
                 "product_id": item.product_id,
