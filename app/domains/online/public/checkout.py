@@ -11,6 +11,7 @@ from app.domains.online.internal.catalog_models import OnlineProductImage, Onlin
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.payment_policy import initial_payment_status, normalize_payment_method
 from app.domains.online.internal.reservation_policy import order_reservation_minutes
 from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
 from app.models.product import Product
@@ -26,6 +27,7 @@ def _checkout_result(order: OnlineOrder, *, replay: bool = False) -> dict[str, A
         "id": order.id,
         "reference": order.reference,
         "status": order.status,
+        "payment_method": order.payment_method,
         "payment_status": order.payment_status,
         "currency": order.currency,
         "subtotal": order.subtotal_amount,
@@ -47,6 +49,7 @@ def checkout_cart(
     delivery_mode: str,
     delivery_address: str | None,
     notes: str | None,
+    payment_method: str = "cash_on_delivery",
     db: Session,
 ) -> dict[str, Any] | None:
     store = get_public_store(slug=slug, db=db)
@@ -61,6 +64,8 @@ def checkout_cart(
 
     if delivery_mode not in {"pickup", "delivery"}:
         raise ValueError("Mode de remise invalide.")
+    resolved_payment_method = normalize_payment_method(payment_method)
+    resolved_payment_status = initial_payment_status(resolved_payment_method).value
     capabilities = get_store_capabilities(store)
     require_capability(capabilities, delivery_mode)
     if delivery_mode == "delivery" and not (delivery_address or "").strip():
@@ -158,7 +163,7 @@ def checkout_cart(
         fee_amount=delivery_amount,
         discount_amount=0,
         total_amount=total,
-        payment_status="unpaid",
+        payment_status=resolved_payment_status,
     )
     db.add(transaction)
     db.flush()
@@ -178,7 +183,8 @@ def checkout_cart(
         subtotal_amount=subtotal,
         delivery_amount=delivery_amount,
         total_amount=total,
-        payment_status="unpaid",
+        payment_method=resolved_payment_method.value,
+        payment_status=resolved_payment_status,
     )
     db.add(order)
     db.flush()
@@ -223,6 +229,8 @@ def checkout_cart(
                 "total_amount": total,
                 "currency": store.currency,
                 "delivery_mode": delivery_mode,
+                "payment_method": resolved_payment_method.value,
+                "payment_status": resolved_payment_status,
             },
         ),
     )
