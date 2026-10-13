@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.domains.core.internal.stock_reservation_model import StockReservation
-from app.domains.core.public.stock import available_stock
+from app.domains.core.public.stock import available_stock, stock_position
 from app.domains.online.internal.order_models import OnlineOrder
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
@@ -398,3 +398,55 @@ def test_cancelled_order_releases_quantity_back_to_online(db):
     assert product.stock == 10
     assert reservation.status == "released"
     assert available_stock(product=product, db=db) == 10
+
+
+
+def test_stock_position_distinguishes_reserved_consumed_and_available(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    product = db.query(Product).filter(Product.id == reservation.product_id).one()
+
+    before = stock_position(product=product, db=db)
+    assert before == {
+        "stock_physical": 10,
+        "stock_reserved_active": 2,
+        "stock_consumed_online": 0,
+        "stock_online_available": 8,
+    }
+
+    for status in ("confirmed", "preparing", "ready", "completed"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status=status,
+            db=db,
+        )
+
+    after = stock_position(product=product, db=db)
+    assert after == {
+        "stock_physical": 10,
+        "stock_reserved_active": 0,
+        "stock_consumed_online": 2,
+        "stock_online_available": 8,
+    }
+
+
+def test_stock_position_after_cancellation_restores_online_available(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    product = db.query(Product).filter(Product.id == reservation.product_id).one()
+
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="cancelled",
+        db=db,
+    )
+
+    position = stock_position(product=product, db=db)
+    assert position == {
+        "stock_physical": 10,
+        "stock_reserved_active": 0,
+        "stock_consumed_online": 0,
+        "stock_online_available": 10,
+    }
