@@ -19,6 +19,23 @@ from app.shared.tenancy.rls import apply_rls_context
 from app.domains.core.public.stock import available_stock, reserve_stock
 
 
+def _checkout_result(order: OnlineOrder, *, replay: bool = False) -> dict[str, Any]:
+    return {
+        "id": order.id,
+        "reference": order.reference,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "currency": order.currency,
+        "subtotal": order.subtotal_amount,
+        "delivery_amount": order.delivery_amount,
+        "total": order.total_amount,
+        "delivery_mode": order.delivery_mode,
+        "stock_reserved": order.status not in {"cancelled", "completed"},
+        "reservation_minutes": 10,
+        "idempotent_replay": replay,
+    }
+
+
 def checkout_cart(
     *,
     slug: str,
@@ -53,12 +70,28 @@ def checkout_cart(
             OnlineCart.token == token,
             OnlineCart.store_id == store.id,
             OnlineCart.merchant_id == store.merchant_id,
-            OnlineCart.status == "active",
         )
+        .with_for_update()
         .first()
     )
     if cart is None:
         return None
+
+    if cart.status == "converted":
+        existing = (
+            db.query(OnlineOrder)
+            .filter(
+                OnlineOrder.cart_id == cart.id,
+                OnlineOrder.merchant_id == store.merchant_id,
+            )
+            .first()
+        )
+        if existing is not None:
+            return _checkout_result(existing, replay=True)
+        raise ValueError("Panier converti sans commande associée.")
+
+    if cart.status != "active":
+        raise ValueError("Ce panier n'est plus actif.")
 
     cart_items = (
         db.query(OnlineCartItem)
@@ -191,19 +224,7 @@ def checkout_cart(
     db.commit()
     db.refresh(order)
 
-    return {
-        "id": order.id,
-        "reference": order.reference,
-        "status": order.status,
-        "payment_status": order.payment_status,
-        "currency": order.currency,
-        "subtotal": order.subtotal_amount,
-        "delivery_amount": order.delivery_amount,
-        "total": order.total_amount,
-        "delivery_mode": order.delivery_mode,
-        "stock_reserved": True,
-        "reservation_minutes": 10,
-    }
+    return _checkout_result(order)
 
 
 def read_public_order(
