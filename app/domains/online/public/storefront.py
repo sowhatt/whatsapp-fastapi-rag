@@ -8,6 +8,7 @@ from app.domains.online.internal.catalog_models import OnlineProductImage, Onlin
 
 from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
 from app.domains.online.internal.catalog_service import list_online_catalog, search_online_catalog
+from app.domains.online.foundation import require_business_type
 from app.domains.online.foundation.seo import SeoProfile
 from app.models.product import Product
 from app.domains.core.public.stock import available_stock
@@ -66,6 +67,7 @@ def read_public_catalog(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_business_type(store.business_type, "commerce")
 
     if query:
         products = search_online_catalog(
@@ -100,6 +102,7 @@ def read_public_product(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_business_type(store.business_type, "commerce")
 
     row = (
         db.query(Product, OnlineProductPublication)
@@ -161,6 +164,7 @@ def read_public_product_by_slug(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_business_type(store.business_type, "commerce")
 
     publication = (
         db.query(OnlineProductPublication)
