@@ -9,7 +9,7 @@ from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
-from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, revalidate_order_reservations, update_order_status
+from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -331,3 +331,15 @@ def revalidate_online_order_reservations(
         message = str(exc)
         status_code = 404 if "introuvable" in message.lower() else 409
         raise HTTPException(status_code=status_code, detail=message) from exc
+
+
+
+@router.get("/merchants/{merchant_id}/orders-summary")
+def read_online_orders_summary(
+    merchant_id: int,
+    db: Session = Depends(get_db),
+):
+    return order_summary(
+        merchant_id=merchant_id,
+        db=db,
+    )
