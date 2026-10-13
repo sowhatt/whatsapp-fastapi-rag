@@ -208,3 +208,33 @@ def active_reservation_count(
         .scalar()
         or 0
     )
+
+
+
+def extend_reservations(
+    *,
+    merchant_id: int,
+    source_type: str,
+    source_id: int,
+    db: Session,
+    minutes: int,
+) -> int:
+    if minutes <= 0:
+        raise ValueError("La durée de réservation doit être positive.")
+    now = datetime.utcnow()
+    rows = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.merchant_id == merchant_id,
+            StockReservation.source_type == source_type,
+            StockReservation.source_id == source_id,
+            StockReservation.status == "active",
+            StockReservation.expires_at > now,
+        )
+        .all()
+    )
+    new_expiry = now + timedelta(minutes=minutes)
+    for row in rows:
+        if row.expires_at < new_expiry:
+            row.expires_at = new_expiry
+    return len(rows)
