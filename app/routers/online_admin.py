@@ -13,6 +13,7 @@ from app.domains.online.internal.catalog_service import add_product_image, publi
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.payment_service import update_payment_status
 from app.domains.online.internal.pilot_readiness import pilot_readiness
+from app.domains.online.internal.schema_audit import audit_online_schema
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -395,3 +396,11 @@ def read_online_pilot_readiness(
         db=db,
         stale_minutes=max(5, min(stale_minutes, 1440)),
     )
+
+
+
+@router.get("/schema-audit")
+def read_online_schema_audit(
+    db: Session = Depends(get_db),
+):
+    return audit_online_schema(db=db)
