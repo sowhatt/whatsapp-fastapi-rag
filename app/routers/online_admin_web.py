@@ -102,6 +102,9 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     if(a.can_prepare)buttons.push('<button data-status="preparing">Préparer</button>');
     if(a.can_mark_ready)buttons.push('<button data-status="ready">Marquer prête</button>');
     if(a.can_complete)buttons.push('<button data-status="completed">Terminer</button>');
+    if(a.can_mark_paid)buttons.push('<button data-payment-status="paid">Marquer payé</button>');
+    if(a.can_mark_payment_failed)buttons.push('<button class="secondary" data-payment-status="failed">Paiement échoué</button>');
+    if(a.can_retry_mobile_money)buttons.push('<button class="secondary" data-payment-status="mobile_money_pending">Réessayer Mobile Money</button>');
     if(a.can_cancel)buttons.push('<button class="danger" data-status="cancelled">Annuler</button>');
     return buttons.join("");
   }
@@ -113,7 +116,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
       const address=o.delivery_address?'<div class="detail-box"><small>Adresse</small>'+esc(o.delivery_address)+'</div>':'';
       const notes=o.notes?'<div class="detail-box"><small>Note client</small>'+esc(o.notes)+'</div>':'';
       const details=(address||notes)?'<div class="detail-grid">'+address+notes+'</div>':'';
-      return '<article class="order" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+' · créée il y a '+esc(ageLabel(o.age_minutes))+'</div><div class="priority">'+esc(o.priority?.label||"")+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span></div></div>'+warning+details+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
+      return '<article class="order" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+' · créée il y a '+esc(ageLabel(o.age_minutes))+'</div><div class="priority">'+esc(o.priority?.label||"")+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span> <span class="badge">paiement: '+esc(o.payment_status)+'</span></div></div>'+warning+details+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
     }).join("");
   }
   function renderSummary(s){
@@ -152,6 +155,8 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
         await api("/online-admin/merchants/"+merchant+"/orders/"+orderId+"/reservations/revalidate",{method:"POST"});
       }else if(button.dataset.status){
         await api("/online-admin/merchants/"+merchant+"/orders/"+orderId+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:button.dataset.status})});
+      }else if(button.dataset.paymentStatus){
+        await api("/online-admin/merchants/"+merchant+"/orders/"+orderId+"/payment-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:button.dataset.paymentStatus})});
       }
       await load();
     }catch(err){alert(err.message);}finally{button.disabled=false;}
