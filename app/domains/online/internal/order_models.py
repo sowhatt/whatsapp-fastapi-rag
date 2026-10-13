@@ -41,7 +41,8 @@ class OnlineOrder(Base):
     subtotal_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     delivery_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    payment_status: Mapped[str] = mapped_column(String(30), nullable=False, default="unpaid")
+    payment_method: Mapped[str] = mapped_column(String(30), nullable=False, default="cash_on_delivery")
+    payment_status: Mapped[str] = mapped_column(String(30), nullable=False, default="cash_on_delivery")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
