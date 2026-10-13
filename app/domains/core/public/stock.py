@@ -245,3 +245,53 @@ def extend_reservations(
         if row.expires_at < new_expiry:
             row.expires_at = new_expiry
     return len(rows)
+
+
+
+def stock_position(
+    *,
+    product: Product,
+    db: Session,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    now = now or datetime.utcnow()
+    if product.merchant_id is None:
+        physical = int(product.stock or 0)
+        return {
+            "stock_physical": physical,
+            "stock_reserved_active": 0,
+            "stock_consumed_online": 0,
+            "stock_online_available": physical,
+        }
+
+    active_reserved = int(
+        db.query(func.coalesce(func.sum(StockReservation.quantity), 0))
+        .filter(
+            StockReservation.merchant_id == product.merchant_id,
+            StockReservation.product_id == product.id,
+            StockReservation.status == "active",
+            StockReservation.expires_at > now,
+        )
+        .scalar()
+        or 0
+    )
+    consumed_online = int(
+        db.query(func.coalesce(func.sum(StockReservation.quantity), 0))
+        .filter(
+            StockReservation.merchant_id == product.merchant_id,
+            StockReservation.product_id == product.id,
+            StockReservation.status == "consumed",
+            StockReservation.source_type == "online_order",
+        )
+        .scalar()
+        or 0
+    )
+    physical = int(product.stock or 0)
+    online_available = max(0, physical - active_reserved - consumed_online)
+
+    return {
+        "stock_physical": physical,
+        "stock_reserved_active": active_reserved,
+        "stock_consumed_online": consumed_online,
+        "stock_online_available": online_available,
+    }
