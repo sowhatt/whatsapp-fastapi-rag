@@ -128,7 +128,7 @@ STOREFRONT_JS = r'''
       var image=item.image_url?'<img class="cart-thumb" src="'+esc(item.image_url)+'" alt="">':'<div class="cart-thumb"></div>';
       return '<div class="cart-item">'+image+'<div><div class="cart-item-name">'+esc(item.name)+'</div><div class="cart-item-price">'+money(item.unit_price,currentCart.currency)+'</div><div class="qty-controls"><button data-cart-action="dec" data-product-id="'+item.product_id+'">−</button><strong>'+item.quantity+'</strong><button data-cart-action="inc" data-product-id="'+item.product_id+'">+</button></div></div><button class="remove-item" data-cart-action="remove" data-product-id="'+item.product_id+'">Suppr.</button></div>';
     }).join("");
-    footer.innerHTML='<div class="cart-total"><span>Total</span><span>'+money(currentCart.subtotal,currentCart.currency)+'</span></div><div class="checkout-panel"><h3>Finaliser la commande</h3><form id="checkout-form" class="checkout-grid"><input name="customer_name" placeholder="Nom et prénom" required maxlength="150"><input name="customer_phone" placeholder="Téléphone" required maxlength="40"><select id="delivery-mode" name="delivery_mode"><option value="pickup">Retrait</option><option value="delivery">Livraison</option></select><div id="delivery-address-wrap" hidden><input name="delivery_address" placeholder="Adresse de livraison" maxlength="500"></div><textarea name="notes" placeholder="Note pour le commerçant" maxlength="500"></textarea><button class="checkout-submit" type="submit">Commander</button></form></div>';
+    footer.innerHTML='<div class="cart-total"><span>Total</span><span>'+money(currentCart.subtotal,currentCart.currency)+'</span></div><div class="checkout-panel"><h3>Finaliser la commande</h3><form id="checkout-form" class="checkout-grid"><input name="customer_name" placeholder="Nom et prénom" required maxlength="150"><input name="customer_phone" placeholder="Téléphone" required maxlength="40"><select id="delivery-mode" name="delivery_mode"><option value="pickup">Retrait</option><option value="delivery">Livraison</option></select><select name="payment_method"><option value="cash_on_delivery">Paiement à la livraison / au retrait</option><option value="mobile_money">Mobile Money (à confirmer)</option></select><div id="delivery-address-wrap" hidden><input name="delivery_address" placeholder="Adresse de livraison" maxlength="500"></div><textarea name="notes" placeholder="Note pour le commerçant" maxlength="500"></textarea><button class="checkout-submit" type="submit">Commander</button></form></div>';
   }
   async function submitCheckout(event){
     if(event.target.id!=="checkout-form")return;
@@ -141,6 +141,7 @@ STOREFRONT_JS = r'''
       customer_name:data.get("customer_name"),
       customer_phone:data.get("customer_phone"),
       delivery_mode:data.get("delivery_mode"),
+      payment_method:data.get("payment_method")||"cash_on_delivery",
       delivery_address:data.get("delivery_address")||null,
       notes:data.get("notes")||null
     };
@@ -152,7 +153,7 @@ STOREFRONT_JS = r'''
       if(!response.ok)throw new Error(await problem(response,"Impossible de créer la commande."));
       var order=await response.json();
       localStorage.removeItem(tokenKey);currentCart=null;if(count)count.textContent="0";
-      document.getElementById("cart-body").innerHTML='<div class="order-success"><strong>Commande enregistrée</strong><div class="order-reference">'+esc(order.reference)+'</div><div>Total : '+money(order.total,order.currency)+'</div><div>Statut : '+esc(order.status)+'</div></div>';
+      document.getElementById("cart-body").innerHTML='<div class="order-success"><strong>Commande enregistrée</strong><div class="order-reference">'+esc(order.reference)+'</div><div>Total : '+money(order.total,order.currency)+'</div><div>Statut : '+esc(order.status)+'</div><div>Paiement : '+esc(order.payment_status)+'</div></div>';
       document.getElementById("cart-footer").innerHTML="";
     }catch(error){show(error.message);}finally{button.disabled=false;}
   }
