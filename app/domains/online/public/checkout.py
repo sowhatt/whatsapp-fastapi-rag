@@ -280,8 +280,11 @@ def read_public_order(
     return {
         "reference": order.reference,
         "status": order.status,
+        "status_label": order_status_label(order.status),
+        "next_step": order_next_step(order.status),
         "payment_method": order.payment_method,
         "payment_status": order.payment_status,
+        "payment_status_label": payment_status_label(order.payment_status),
         "currency": order.currency,
         "subtotal": order.subtotal_amount,
         "delivery_amount": order.delivery_amount,
