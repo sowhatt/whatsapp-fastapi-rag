@@ -151,6 +151,7 @@ class CheckoutPayload(BaseModel):
     customer_name: str = Field(min_length=1, max_length=150)
     customer_phone: str = Field(min_length=3, max_length=40)
     delivery_mode: str = Field(default="pickup")
+    payment_method: str = Field(default="cash_on_delivery", max_length=30)
     delivery_address: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=500)
 
@@ -171,6 +172,7 @@ def storefront_checkout(
             delivery_mode=payload.delivery_mode,
             delivery_address=payload.delivery_address,
             notes=payload.notes,
+            payment_method=payload.payment_method,
             db=db,
         )
     except ValueError as exc:
