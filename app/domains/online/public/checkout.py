@@ -216,6 +216,7 @@ def read_public_order(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_business_type(store.business_type, "commerce")
 
     order = (
         db.query(OnlineOrder)
