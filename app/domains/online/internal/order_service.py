@@ -56,6 +56,9 @@ def _order_actions(order: OnlineOrder, *, reservation_status: str) -> dict:
 
     actions = {
         "can_confirm": False,
+        "can_mark_paid": order.payment_status != "paid" and order.status != "cancelled",
+        "can_mark_payment_failed": order.payment_status in {"mobile_money_pending", "cash_on_delivery", "unpaid"} and order.status != "cancelled",
+        "can_retry_mobile_money": order.payment_status == "failed" and order.payment_method == "mobile_money" and order.status != "cancelled",
         "can_prepare": False,
         "can_mark_ready": False,
         "can_complete": False,
@@ -146,6 +149,7 @@ def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
         "merchant_id": order.merchant_id,
         "store_id": order.store_id,
         "status": order.status,
+        "payment_method": order.payment_method,
         "payment_status": order.payment_status,
         "customer_name": order.customer_name,
         "customer_phone": order.customer_phone,
