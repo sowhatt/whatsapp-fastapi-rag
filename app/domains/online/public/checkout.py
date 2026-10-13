@@ -150,6 +150,9 @@ def checkout_cart(
         subtotal += line_total
         resolved_items.append((product, item.quantity, unit_price, line_total))
 
+    # Acquire product locks in a deterministic order across concurrent checkouts.
+    resolved_items.sort(key=lambda row: row[0].id)
+
     delivery_amount = 0
     total = subtotal + delivery_amount
 
