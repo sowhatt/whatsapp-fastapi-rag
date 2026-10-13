@@ -316,3 +316,37 @@ def test_expired_reservation_blocks_completion(db):
 
     db.refresh(order)
     assert order.status == "ready"
+
+
+
+def test_ready_order_can_revalidate_then_complete(db):
+    merchant, order = _order(db)
+
+    for status in ("confirmed", "preparing", "ready"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status=status,
+            db=db,
+        )
+
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    refreshed = revalidate_order_reservations(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        db=db,
+    )
+    assert refreshed["status"] == "ready"
+    assert refreshed["reservation_status"] == "active"
+
+    completed = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="completed",
+        db=db,
+    )
+    assert completed["status"] == "completed"
+    assert completed["reservation_status"] == "consumed"
