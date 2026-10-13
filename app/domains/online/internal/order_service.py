@@ -258,14 +258,17 @@ def update_order_status(
             f"Transition de commande invalide : {order.status} -> {target}"
         )
 
-    if target == "confirmed":
+    if target in {"confirmed", "completed"}:
         if active_reservation_count(
             merchant_id=merchant_id,
             source_type="online_order",
             source_id=order.id,
             db=db,
         ) == 0:
-            raise ValueError("La réservation de stock a expiré. Revalidez la commande avant confirmation.")
+            action = "confirmer" if target == "confirmed" else "terminer"
+            raise ValueError(
+                f"La réservation de stock a expiré. Revalidez avant de {action} la commande."
+            )
 
     order.status = target
 
@@ -309,6 +312,45 @@ def update_order_status(
                     "order_id": order.id,
                     "reference": order.reference,
                     "status": target,
+                },
+            ),
+        )
+        if order.delivery_mode == "delivery":
+            enqueue_domain_event(
+                db,
+                DomainEvent(
+                    event_type=DeliveryEvents.REQUESTED,
+                    merchant_id=merchant_id,
+                    aggregate_type="online_order",
+                    aggregate_id=str(order.id),
+                    data={
+                        "order_id": order.id,
+                        "reference": order.reference,
+                        "delivery_address": order.delivery_address,
+                        "customer_phone": order.customer_phone,
+                        "currency": order.currency,
+                    },
+                ),
+            )
+    elif target == "completed":
+        consume_reservations(
+            merchant_id=merchant_id,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+        )
+        enqueue_domain_event(
+            db,
+            DomainEvent(
+                event_type=CommerceEvents.ORDER_COMPLETED,
+                merchant_id=merchant_id,
+                aggregate_type="online_order",
+                aggregate_id=str(order.id),
+                data={
+                    "order_id": order.id,
+                    "reference": order.reference,
+                    "payment_status": order.payment_status,
+                    "delivery_mode": order.delivery_mode,
                 },
             ),
         )
