@@ -51,7 +51,54 @@ def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
     return sorted(statuses)[0]
 
 
+def _order_actions(order: OnlineOrder, *, reservation_status: str) -> dict:
+    status = order.status
+
+    actions = {
+        "can_confirm": False,
+        "can_prepare": False,
+        "can_mark_ready": False,
+        "can_complete": False,
+        "can_cancel": False,
+        "can_revalidate_stock": False,
+        "needs_revalidation": False,
+        "next_status": None,
+        "recommended_action": None,
+    }
+
+    if status == "pending":
+        actions["can_cancel"] = True
+        if reservation_status == "active":
+            actions["can_confirm"] = True
+            actions["next_status"] = "confirmed"
+            actions["recommended_action"] = "confirm"
+        else:
+            actions["can_revalidate_stock"] = True
+            actions["needs_revalidation"] = True
+            actions["recommended_action"] = "revalidate_stock"
+    elif status == "confirmed":
+        actions["can_prepare"] = True
+        actions["can_cancel"] = True
+        actions["next_status"] = "preparing"
+        actions["recommended_action"] = "start_preparing"
+    elif status == "preparing":
+        actions["can_mark_ready"] = True
+        actions["can_cancel"] = True
+        actions["next_status"] = "ready"
+        actions["recommended_action"] = "mark_ready"
+    elif status == "ready":
+        actions["can_complete"] = True
+        actions["can_cancel"] = True
+        actions["next_status"] = "completed"
+        actions["recommended_action"] = "complete"
+
+    return actions
+
+
 def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
+    reservation_status = _reservation_status(order, db=db)
+    actions = _order_actions(order, reservation_status=reservation_status)
+
     items = (
         db.query(OnlineOrderItem)
         .filter(
@@ -79,7 +126,8 @@ def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
         "total": order.total_amount,
         "created_at": order.created_at.isoformat(),
         "updated_at": order.updated_at.isoformat(),
-        "reservation_status": _reservation_status(order, db=db),
+        "reservation_status": reservation_status,
+        "actions": actions,
         "items": [
             {
                 "product_id": item.product_id,
