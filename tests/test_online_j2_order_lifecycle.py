@@ -1,11 +1,13 @@
 import pytest
 from sqlalchemy import create_engine
+from datetime import datetime, timedelta
+
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.online.internal.order_models import OnlineOrder
-from app.domains.online.internal.order_service import update_order_status
+from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.cart import create_cart, set_cart_item
 from app.domains.online.public.checkout import checkout_cart
@@ -93,3 +95,42 @@ def test_invalid_order_transition_is_rejected(db):
             status="completed",
             db=db,
         )
+
+
+
+def test_expired_reservation_blocks_confirmation_and_is_visible(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    payload = get_order(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        db=db,
+    )
+    assert payload["reservation_status"] == "expired"
+
+    with pytest.raises(ValueError, match="réservation de stock a expiré"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status="confirmed",
+            db=db,
+        )
+
+
+def test_cleanup_marks_expired_reservations(db):
+    merchant, _ = _order(db)
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    cleaned = cleanup_expired_order_reservations(
+        merchant_id=merchant.id,
+        db=db,
+    )
+
+    db.refresh(reservation)
+    assert cleaned == 1
+    assert reservation.status == "expired"
