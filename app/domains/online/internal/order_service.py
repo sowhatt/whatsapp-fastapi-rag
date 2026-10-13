@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
@@ -20,12 +22,6 @@ _ALLOWED_TRANSITIONS = {
 
 
 def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
-    expire_reservations(
-        merchant_id=order.merchant_id,
-        source_type="online_order",
-        source_id=order.id,
-        db=db,
-    )
     rows = (
         db.query(StockReservation)
         .filter(
@@ -37,6 +33,9 @@ def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
     )
     if not rows:
         return "none"
+    now = datetime.utcnow()
+    if any(row.status == "active" and row.expires_at <= now for row in rows):
+        return "expired"
     statuses = {row.status for row in rows}
     if "active" in statuses:
         return "active"
@@ -152,13 +151,6 @@ def update_order_status(
             f"Transition de commande invalide : {order.status} -> {target}"
         )
 
-    expire_reservations(
-        merchant_id=merchant_id,
-        source_type="online_order",
-        source_id=order.id,
-        db=db,
-    )
-
     if target == "confirmed":
         if active_reservation_count(
             merchant_id=merchant_id,
@@ -210,3 +202,18 @@ def update_order_status(
     db.commit()
     db.refresh(order)
     return _order_payload(order, db=db)
+
+
+
+def cleanup_expired_order_reservations(
+    *,
+    merchant_id: int,
+    db: Session,
+) -> int:
+    count = expire_reservations(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        db=db,
+    )
+    db.commit()
+    return count
