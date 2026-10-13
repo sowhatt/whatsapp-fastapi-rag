@@ -10,4 +10,23 @@ __all__ = [
     "require_capability",
     "SeoProfile",
     "build_store_schema_type",
+    "PaymentGateway",
+    "PaymentRequest",
+    "PaymentResult",
+    "DeliveryGateway",
+    "DeliveryRequest",
+    "DeliveryResult",
+    "NotificationGateway",
+    "NotificationMessage",
 ]
+
+from .contracts import (
+    DeliveryGateway,
+    DeliveryRequest,
+    DeliveryResult,
+    NotificationGateway,
+    NotificationMessage,
+    PaymentGateway,
+    PaymentRequest,
+    PaymentResult,
+)
