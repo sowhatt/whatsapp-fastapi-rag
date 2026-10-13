@@ -8,6 +8,7 @@ from app.domains.online.internal.order_schema import install_online_order_schema
 from app.domains.online.internal.schema import install_online_schema
 from app.routers.health import router as health_router
 from app.routers.online_admin import router as online_admin_router
+from app.routers.online_admin_web import router as online_admin_web_router
 from app.routers.online_public import router as online_public_router
 from app.routers.online_storefront_web import router as online_storefront_web_router
 from app.security import require_admin_token
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(online_public_router)
 app.include_router(online_storefront_web_router)
+app.include_router(online_admin_web_router)
 app.include_router(
     online_admin_router,
     dependencies=[Depends(require_admin_token)],
