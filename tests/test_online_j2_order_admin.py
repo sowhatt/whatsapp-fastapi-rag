@@ -13,6 +13,7 @@ from app.domains.online.public.checkout import checkout_cart
 from app.domains.online.internal.catalog_service import publish_product
 from app.models.merchant import Merchant
 from app.models.product import Product
+from app.routers.online_admin import read_online_catalog_admin
 
 
 @pytest.fixture()
@@ -341,3 +342,53 @@ def test_order_priority_places_revalidation_before_confirmation(db):
     assert orders[0]["priority"]["rank"] == 0
     assert orders[1]["id"] == first["id"]
     assert orders[1]["priority"]["key"] == "confirm"
+
+
+
+def test_admin_catalog_exposes_online_stock_breakdown(db):
+    merchant, order = _make_order(
+        db,
+        suffix="stock-breakdown",
+        customer_name="Stock Client",
+        customer_phone="+229450",
+    )
+
+    rows = read_online_catalog_admin(merchant_id=merchant.id, db=db)
+    assert len(rows) == 1
+    row = rows[0]
+
+    assert row["stock_physical"] == 10
+    assert row["stock_reserved_active"] == 1
+    assert row["stock_consumed_online"] == 0
+    assert row["stock_online_available"] == 9
+
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="confirmed",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="preparing",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="ready",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="completed",
+        db=db,
+    )
+
+    row = read_online_catalog_admin(merchant_id=merchant.id, db=db)[0]
+    assert row["stock_physical"] == 10
+    assert row["stock_reserved_active"] == 0
+    assert row["stock_consumed_online"] == 1
+    assert row["stock_online_available"] == 9
