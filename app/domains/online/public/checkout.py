@@ -14,6 +14,7 @@ from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderIte
 from app.domains.online.internal.payment_policy import initial_payment_status, normalize_payment_method
 from app.domains.online.internal.reservation_policy import order_reservation_minutes
 from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
+from app.domains.online.public.order_tracking import order_next_step, order_status_label, payment_status_label
 from app.models.product import Product
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
@@ -27,8 +28,11 @@ def _checkout_result(order: OnlineOrder, *, replay: bool = False) -> dict[str, A
         "id": order.id,
         "reference": order.reference,
         "status": order.status,
+        "status_label": order_status_label(order.status),
+        "next_step": order_next_step(order.status),
         "payment_method": order.payment_method,
         "payment_status": order.payment_status,
+        "payment_status_label": payment_status_label(order.payment_status),
         "currency": order.currency,
         "subtotal": order.subtotal_amount,
         "delivery_amount": order.delivery_amount,
