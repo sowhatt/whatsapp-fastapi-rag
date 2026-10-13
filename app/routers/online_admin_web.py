@@ -23,7 +23,7 @@ def online_admin_ui():
 button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:white;font-weight:700;cursor:pointer}button.secondary{background:#eee;color:#181818}button.danger{background:#b42318}
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:18px 0}.card{background:white;border:1px solid #e8e8e8;border-radius:14px;padding:16px}.card strong{display:block;font-size:1.5rem;margin-top:6px}
 .order{background:white;border:1px solid #e8e8e8;border-radius:16px;padding:16px;margin:12px 0}.order-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ref{font-weight:850}.meta{color:#666;font-size:.92rem;margin-top:4px}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#f0f0f0;font-size:.8rem;font-weight:700}
-.items{margin:12px 0;padding-top:10px;border-top:1px solid #eee}.item{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.warning{background:#fff4e5;border:1px solid #ffd79a;padding:10px;border-radius:10px;margin-top:10px}.empty{padding:36px;text-align:center;color:#777}
+.items{margin:12px 0;padding-top:10px;border-top:1px solid #eee}.item{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.warning{background:#fff4e5;border:1px solid #ffd79a;padding:10px;border-radius:10px;margin-top:10px}.empty{padding:36px;text-align:center;color:#777}.priority{font-size:.82rem;font-weight:800;margin-top:8px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.detail-box{background:#fafafa;border-radius:10px;padding:10px}.detail-box small{display:block;color:#777;margin-bottom:4px}.whatsapp{background:#1f7a45}.muted{color:#777;font-size:.85rem}
 @media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}.order-head{flex-direction:column}}
 </style>
 </head>
@@ -79,8 +79,24 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     if(!res.ok){let d={};try{d=await res.json()}catch{};throw new Error(d.detail||("Erreur "+res.status));}
     return res.json();
   }
+  function whatsappHref(order){
+    const phone=String(order.customer_phone||"").replace(/[^0-9]/g,"");
+    if(!phone)return "";
+    const text="Bonjour "+(order.customer_name||"")+", concernant votre commande "+order.reference+" chez Whatzabi : statut "+order.status+".";
+    return "https://wa.me/"+phone+"?text="+encodeURIComponent(text);
+  }
+  function ageLabel(minutes){
+    minutes=Number(minutes||0);
+    if(minutes<60)return minutes+" min";
+    const hours=Math.floor(minutes/60), rest=minutes%60;
+    if(hours<24)return hours+" h"+(rest?" "+rest+" min":"");
+    const days=Math.floor(hours/24);
+    return days+" j "+(hours%24)+" h";
+  }
   function actionButtons(order){
     const a=order.actions||{}, buttons=[];
+    const wa=whatsappHref(order);
+    if(wa)buttons.push('<a class="whatsapp" href="'+esc(wa)+'" target="_blank" rel="noopener" style="text-decoration:none;border-radius:10px;padding:10px 14px;color:white;font-weight:700">WhatsApp</a>');
     if(a.can_revalidate_stock)buttons.push('<button data-action="revalidate">Revalider le stock</button>');
     if(a.can_confirm)buttons.push('<button data-status="confirmed">Confirmer</button>');
     if(a.can_prepare)buttons.push('<button data-status="preparing">Préparer</button>');
@@ -94,7 +110,10 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     ordersEl.innerHTML=orders.map(o=>{
       const warning=o.actions?.needs_revalidation?'<div class="warning">Réservation expirée : revalidez le stock avant confirmation.</div>':'';
       const items=(o.items||[]).map(i=>'<div class="item"><span>'+esc(i.quantity)+' × '+esc(i.name)+'</span><strong>'+money(i.line_total)+'</strong></div>').join("");
-      return '<article class="order" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+(o.delivery_address?' · '+esc(o.delivery_address):'')+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span></div></div>'+warning+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
+      const address=o.delivery_address?'<div class="detail-box"><small>Adresse</small>'+esc(o.delivery_address)+'</div>':'';
+      const notes=o.notes?'<div class="detail-box"><small>Note client</small>'+esc(o.notes)+'</div>':'';
+      const details=(address||notes)?'<div class="detail-grid">'+address+notes+'</div>':'';
+      return '<article class="order" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+' · créée il y a '+esc(ageLabel(o.age_minutes))+'</div><div class="priority">'+esc(o.priority?.label||"")+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span></div></div>'+warning+details+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
     }).join("");
   }
   function renderSummary(s){
