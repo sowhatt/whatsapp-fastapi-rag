@@ -102,14 +102,14 @@ def read_public_product(
         return None
 
     row = (
-        db.query(Product, ProductPublication)
-        .join(ProductPublication, ProductPublication.product_id == Product.id)
+        db.query(Product, OnlineProductPublication)
+        .join(OnlineProductPublication, OnlineProductPublication.product_id == Product.id)
         .filter(
             Product.id == product_id,
             Product.merchant_id == store.merchant_id,
-            ProductPublication.merchant_id == store.merchant_id,
-            ProductPublication.is_published.is_(True),
-            ProductPublication.is_active.is_(True),
+            OnlineProductPublication.merchant_id == store.merchant_id,
+            OnlineProductPublication.is_published.is_(True),
+            OnlineProductPublication.is_active.is_(True),
         )
         .first()
     )
@@ -118,15 +118,15 @@ def read_public_product(
 
     product, publication = row
     image = (
-        db.query(ProductImage)
+        db.query(OnlineProductImage)
         .filter(
-            ProductImage.merchant_id == store.merchant_id,
-            ProductImage.product_id == product.id,
+            OnlineProductImage.merchant_id == store.merchant_id,
+            OnlineProductImage.product_id == product.id,
         )
         .order_by(
-            ProductImage.is_primary.desc(),
-            ProductImage.position,
-            ProductImage.id,
+            OnlineProductImage.is_primary.desc(),
+            OnlineProductImage.position,
+            OnlineProductImage.id,
         )
         .first()
     )
@@ -163,12 +163,12 @@ def read_public_product_by_slug(
         return None
 
     publication = (
-        db.query(ProductPublication)
+        db.query(OnlineProductPublication)
         .filter(
-            ProductPublication.merchant_id == store.merchant_id,
-            ProductPublication.seo_slug == product_slug,
-            ProductPublication.is_published.is_(True),
-            ProductPublication.is_active.is_(True),
+            OnlineProductPublication.merchant_id == store.merchant_id,
+            OnlineProductPublication.seo_slug == product_slug,
+            OnlineProductPublication.is_published.is_(True),
+            OnlineProductPublication.is_active.is_(True),
         )
         .first()
     )
