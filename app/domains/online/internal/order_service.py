@@ -366,6 +366,11 @@ def update_order_status(
                 },
             ),
         )
+        enqueue_order_notifications(
+            order=order,
+            stage="completed",
+            db=db,
+        )
 
     db.commit()
     db.refresh(order)
