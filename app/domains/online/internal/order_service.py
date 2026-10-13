@@ -6,10 +6,12 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
-from app.domains.core.public.stock import active_reservation_count, expire_reservations, release_reservations
+from app.domains.core.public.stock import active_reservation_count, expire_reservations, release_reservations, reserve_stock
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.reservation_policy import order_reservation_minutes
 from app.shared.events import CommerceEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
+from app.models.product import Product
 
 
 _ALLOWED_TRANSITIONS = {
@@ -228,3 +230,86 @@ def cleanup_expired_order_reservations(
     )
     db.commit()
     return count
+
+
+
+def revalidate_order_reservations(
+    *,
+    merchant_id: int,
+    order_id: int,
+    db: Session,
+) -> dict:
+    order = (
+        db.query(OnlineOrder)
+        .filter(
+            OnlineOrder.id == order_id,
+            OnlineOrder.merchant_id == merchant_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if order is None:
+        raise ValueError("Commande Online introuvable.")
+    if order.status != "pending":
+        raise ValueError(
+            "La revalidation du stock est réservée aux commandes en attente."
+        )
+
+    if active_reservation_count(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    ) > 0:
+        return _order_payload(order, db=db)
+
+    expire_reservations(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
+
+    items = (
+        db.query(OnlineOrderItem)
+        .filter(
+            OnlineOrderItem.merchant_id == merchant_id,
+            OnlineOrderItem.order_id == order.id,
+        )
+        .order_by(OnlineOrderItem.product_id)
+        .all()
+    )
+    if not items:
+        raise ValueError("La commande ne contient aucun article.")
+
+    try:
+        for item in items:
+            product = (
+                db.query(Product)
+                .filter(
+                    Product.id == item.product_id,
+                    Product.merchant_id == merchant_id,
+                )
+                .first()
+            )
+            if product is None:
+                raise ValueError(
+                    f"Produit introuvable pour la commande : {item.product_name_snapshot}."
+                )
+
+            reserve_stock(
+                merchant_id=merchant_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                source_type="online_order",
+                source_id=order.id,
+                db=db,
+                minutes=order_reservation_minutes(),
+            )
+
+        db.commit()
+        db.refresh(order)
+        return _order_payload(order, db=db)
+    except Exception:
+        db.rollback()
+        raise
