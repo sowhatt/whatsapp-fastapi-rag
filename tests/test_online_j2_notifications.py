@@ -169,3 +169,69 @@ def test_checkout_replay_does_not_duplicate_created_notifications(db):
     assert replay["id"] == order.id
     assert replay["idempotent_replay"] is True
     assert len(_notification_events(db)) == first_count
+
+
+
+def test_customer_notification_contains_ready_to_send_message_and_tracking_path(db):
+    merchant, store, _, order = _create_order(db)
+
+    event = (
+        db.query(OutboxEvent)
+        .filter(
+            OutboxEvent.event_type == "notification.requested",
+        )
+        .order_by(OutboxEvent.id)
+        .first()
+    )
+    data = event.payload["data"]
+
+    assert data["recipient_role"] == "customer"
+    assert order.reference in data["message"]
+    assert store.display_name in data["message"]
+    assert data["tracking_path"].startswith(
+        f"/shop/{store.slug}/order/{order.reference}?phone="
+    )
+    assert data["tracking_path"] in data["message"]
+
+
+def test_ready_and_completed_customer_messages_are_specific(db):
+    merchant, _, _, order = _create_order(db)
+
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="confirmed",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="preparing",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="ready",
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="completed",
+        db=db,
+    )
+
+    customer_events = [
+        event.payload["data"]
+        for event in _notification_events(db)
+        if event.payload["data"]["recipient_role"] == "customer"
+    ]
+    by_stage = {
+        row["context"]["stage"]: row
+        for row in customer_events
+    }
+
+    assert "prête" in by_stage["ready"]["message"].lower()
+    assert "terminée" in by_stage["completed"]["message"].lower()
+    assert order.reference in by_stage["completed"]["message"]
