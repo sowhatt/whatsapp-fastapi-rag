@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 
@@ -206,10 +206,14 @@ def audit_online_schema(*, db: Session) -> dict:
         if missing:
             missing_indexes[table] = missing
 
+    rls = _postgres_rls_audit(db=db)
+
     ready = not (
         missing_tables
         or missing_columns
         or missing_indexes
+        or rls["missing_rls_tables"]
+        or rls["missing_policies"]
     )
 
     return {
@@ -218,5 +222,75 @@ def audit_online_schema(*, db: Session) -> dict:
         "missing_tables": missing_tables,
         "missing_columns": missing_columns,
         "missing_indexes": missing_indexes,
+        "rls": rls,
         "checked_tables": sorted(EXPECTED_TABLES),
+    }
+
+
+
+def _postgres_rls_audit(*, db: Session) -> dict:
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql":
+        return {
+            "checked": False,
+            "reason": "not_postgresql",
+            "missing_rls_tables": [],
+            "missing_policies": [],
+        }
+
+    expected = {
+        "business_transactions": "business_transactions_tenant_isolation",
+        "outbox_events": "outbox_events_tenant_isolation",
+    }
+
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                c.relname AS table_name,
+                c.relrowsecurity AS rls_enabled,
+                c.relforcerowsecurity AS rls_forced
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema()
+              AND c.relname = ANY(:tables)
+            """
+        ),
+        {"tables": list(expected)},
+    ).mappings().all()
+
+    by_table = {row["table_name"]: row for row in rows}
+    missing_rls_tables = sorted(
+        table
+        for table in expected
+        if table not in by_table
+        or not by_table[table]["rls_enabled"]
+        or not by_table[table]["rls_forced"]
+    )
+
+    policy_rows = db.execute(
+        text(
+            """
+            SELECT tablename, policyname
+            FROM pg_policies
+            WHERE schemaname = current_schema()
+              AND tablename = ANY(:tables)
+            """
+        ),
+        {"tables": list(expected)},
+    ).mappings().all()
+    policies = {
+        (row["tablename"], row["policyname"])
+        for row in policy_rows
+    }
+    missing_policies = sorted(
+        f"{table}.{policy}"
+        for table, policy in expected.items()
+        if (table, policy) not in policies
+    )
+
+    return {
+        "checked": True,
+        "missing_rls_tables": missing_rls_tables,
+        "missing_policies": missing_policies,
     }
