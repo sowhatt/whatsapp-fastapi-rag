@@ -9,6 +9,7 @@ from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
+from app.domains.online.internal.order_service import get_order, list_orders, update_order_status
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -50,6 +51,10 @@ class PublishProductPayload(BaseModel):
     seo_slug: str | None = Field(default=None, max_length=120)
     seo_title: str | None = Field(default=None, max_length=180)
     seo_description: str | None = Field(default=None, max_length=320)
+
+
+class OrderStatusPayload(BaseModel):
+    status: str = Field(min_length=3, max_length=30)
 
 
 class OnlineProductImagePayload(BaseModel):
@@ -241,3 +246,53 @@ def create_online_product_image(
         "image_url": image.image_url,
         "is_primary": image.is_primary,
     }
+
+
+
+@router.get("/merchants/{merchant_id}/orders")
+def read_online_orders(
+    merchant_id: int,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    return list_orders(
+        merchant_id=merchant_id,
+        status=status,
+        limit=max(1, min(limit, 100)),
+        offset=max(0, offset),
+        db=db,
+    )
+
+
+@router.get("/merchants/{merchant_id}/orders/{order_id}")
+def read_online_order(
+    merchant_id: int,
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = get_order(merchant_id=merchant_id, order_id=order_id, db=db)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Commande Online introuvable")
+    return order
+
+
+@router.patch("/merchants/{merchant_id}/orders/{order_id}/status")
+def patch_online_order_status(
+    merchant_id: int,
+    order_id: int,
+    payload: OrderStatusPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        return update_order_status(
+            merchant_id=merchant_id,
+            order_id=order_id,
+            status=payload.status,
+            db=db,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "introuvable" in message.lower() else 409
+        raise HTTPException(status_code=status_code, detail=message) from exc
