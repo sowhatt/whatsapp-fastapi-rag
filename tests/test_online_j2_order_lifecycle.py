@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.domains.core.internal.stock_reservation_model import StockReservation
+from app.domains.core.public.stock import available_stock
 from app.domains.online.internal.order_models import OnlineOrder
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
@@ -350,3 +351,50 @@ def test_ready_order_can_revalidate_then_complete(db):
     )
     assert completed["status"] == "completed"
     assert completed["reservation_status"] == "consumed"
+
+
+
+def test_completed_order_stays_unavailable_to_online_without_mutating_shop_stock(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    product = db.query(Product).filter(Product.id == reservation.product_id).one()
+
+    assert product.stock == 10
+    assert available_stock(product=product, db=db) == 8
+
+    for status in ("confirmed", "preparing", "ready", "completed"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status=status,
+            db=db,
+        )
+
+    db.refresh(product)
+    db.refresh(reservation)
+
+    assert product.stock == 10
+    assert reservation.status == "consumed"
+    assert available_stock(product=product, db=db) == 8
+
+
+def test_cancelled_order_releases_quantity_back_to_online(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    product = db.query(Product).filter(Product.id == reservation.product_id).one()
+
+    assert available_stock(product=product, db=db) == 8
+
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="cancelled",
+        db=db,
+    )
+
+    db.refresh(product)
+    db.refresh(reservation)
+
+    assert product.stock == 10
+    assert reservation.status == "released"
+    assert available_stock(product=product, db=db) == 10
