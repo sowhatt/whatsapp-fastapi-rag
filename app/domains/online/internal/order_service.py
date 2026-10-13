@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
@@ -96,14 +97,24 @@ def list_orders(
     merchant_id: int,
     db: Session,
     status: str | None = None,
+    query: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    query = db.query(OnlineOrder).filter(OnlineOrder.merchant_id == merchant_id)
+    orders_query = db.query(OnlineOrder).filter(OnlineOrder.merchant_id == merchant_id)
     if status:
-        query = query.filter(OnlineOrder.status == status)
+        orders_query = orders_query.filter(OnlineOrder.status == status)
+    if query:
+        search = f"%{query.strip()}%"
+        orders_query = orders_query.filter(
+            or_(
+                OnlineOrder.reference.ilike(search),
+                OnlineOrder.customer_name.ilike(search),
+                OnlineOrder.customer_phone.ilike(search),
+            )
+        )
     orders = (
-        query.order_by(OnlineOrder.created_at.desc(), OnlineOrder.id.desc())
+        orders_query.order_by(OnlineOrder.created_at.desc(), OnlineOrder.id.desc())
         .offset(offset)
         .limit(limit)
         .all()
