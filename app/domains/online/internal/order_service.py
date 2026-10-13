@@ -6,10 +6,10 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
-from app.domains.core.public.stock import active_reservation_count, expire_reservations, release_reservations, reserve_stock
+from app.domains.core.public.stock import active_reservation_count, consume_reservations, expire_reservations, extend_reservations, release_reservations, reserve_stock
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
-from app.domains.online.internal.reservation_policy import order_reservation_minutes
-from app.shared.events import CommerceEvents, DomainEvent
+from app.domains.online.internal.reservation_policy import confirmed_order_reservation_minutes, order_reservation_minutes
+from app.shared.events import CommerceEvents, DeliveryEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
 from app.models.product import Product
 
@@ -291,6 +291,13 @@ def update_order_status(
             ),
         )
     elif target == "confirmed":
+        extend_reservations(
+            merchant_id=merchant_id,
+            source_type="online_order",
+            source_id=order.id,
+            db=db,
+            minutes=confirmed_order_reservation_minutes(),
+        )
         enqueue_domain_event(
             db,
             DomainEvent(
