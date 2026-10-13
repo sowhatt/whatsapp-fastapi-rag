@@ -10,6 +10,7 @@ from app.domains.online.internal.store_service import get_or_create_store, get_s
 from app.models.product import Product
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
+from app.domains.online.internal.payment_service import update_payment_status
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -54,6 +55,10 @@ class PublishProductPayload(BaseModel):
 
 
 class OrderStatusPayload(BaseModel):
+    status: str = Field(min_length=3, max_length=30)
+
+
+class PaymentStatusPayload(BaseModel):
     status: str = Field(min_length=3, max_length=30)
 
 
@@ -343,3 +348,33 @@ def read_online_orders_summary(
         merchant_id=merchant_id,
         db=db,
     )
+
+
+
+@router.patch("/merchants/{merchant_id}/orders/{order_id}/payment-status")
+def patch_online_order_payment_status(
+    merchant_id: int,
+    order_id: int,
+    payload: PaymentStatusPayload,
+    db: Session = Depends(get_db),
+):
+    try:
+        update_payment_status(
+            merchant_id=merchant_id,
+            order_id=order_id,
+            status=payload.status,
+            db=db,
+        )
+        order = get_order(
+            merchant_id=merchant_id,
+            order_id=order_id,
+            db=db,
+        )
+        if order is None:
+            raise HTTPException(status_code=404, detail="Commande Online introuvable")
+        return order
+    except ValueError as exc:
+        db.rollback()
+        message = str(exc)
+        status_code = 404 if "introuvable" in message.lower() else 409
+        raise HTTPException(status_code=status_code, detail=message) from exc
