@@ -153,7 +153,8 @@ STOREFRONT_JS = r'''
       if(!response.ok)throw new Error(await problem(response,"Impossible de créer la commande."));
       var order=await response.json();
       localStorage.removeItem(tokenKey);currentCart=null;if(count)count.textContent="0";
-      document.getElementById("cart-body").innerHTML='<div class="order-success"><strong>Commande enregistrée</strong><div class="order-reference">'+esc(order.reference)+'</div><div>Total : '+money(order.total,order.currency)+'</div><div>Statut : '+esc(order.status)+'</div><div>Paiement : '+esc(order.payment_status)+'</div></div>';
+      var trackingUrl="/shop/"+encodeURIComponent(slug)+"/order/"+encodeURIComponent(order.reference)+"?phone="+encodeURIComponent(payload.customer_phone);
+      document.getElementById("cart-body").innerHTML='<div class="order-success"><strong>Commande enregistrée</strong><div class="order-reference">'+esc(order.reference)+'</div><div>Total : '+money(order.total,order.currency)+'</div><div>Statut : '+esc(order.status_label||order.status)+'</div><div>Paiement : '+esc(order.payment_status_label||order.payment_status)+'</div><p><a href="'+esc(trackingUrl)+'">Suivre ma commande</a></p></div>';
       document.getElementById("cart-footer").innerHTML="";
     }catch(error){show(error.message);}finally{button.disabled=false;}
   }
