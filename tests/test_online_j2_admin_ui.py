@@ -24,3 +24,15 @@ def test_online_admin_ui_exposes_priority_details_and_whatsapp():
     assert "Note client" in html
     assert "Adresse" in html
     assert "créée il y a" in html
+
+
+
+def test_online_admin_ui_exposes_payment_controls():
+    response = online_admin_ui()
+    html = response.body.decode("utf-8")
+
+    assert "Marquer payé" in html
+    assert "Paiement échoué" in html
+    assert "Réessayer Mobile Money" in html
+    assert "payment-status" in html
+    assert "paiement:" in html
