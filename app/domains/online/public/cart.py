@@ -56,10 +56,24 @@ def _cart_payload(*, store, cart: OnlineCart, db: Session) -> dict[str, Any]:
         line_total = item.unit_price_snapshot * item.quantity
         total += line_total
         quantity_total += item.quantity
+        image = (
+            db.query(OnlineProductImage)
+            .filter(
+                OnlineProductImage.merchant_id == store.merchant_id,
+                OnlineProductImage.product_id == product.id,
+            )
+            .order_by(
+                OnlineProductImage.is_primary.desc(),
+                OnlineProductImage.position,
+                OnlineProductImage.id,
+            )
+            .first()
+        )
         items.append(
             {
                 "product_id": product.id,
                 "name": product.name,
+                "image_url": image.image_url if image else None,
                 "unit": product.unit,
                 "quantity": item.quantity,
                 "unit_price": item.unit_price_snapshot,
