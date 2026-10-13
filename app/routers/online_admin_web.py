@@ -126,7 +126,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
       ["À revalider",a.needs_revalidation||0],
       ["À préparer",a.to_prepare||0],
       ["Prêtes",a.to_complete||0],
-      ["CA commandes",money(s.gross_order_amount)]
+      ["Payé",money(s.paid_amount)]
     ];
     summaryEl.innerHTML=cards.map(x=>'<div class="card">'+esc(x[0])+'<strong>'+esc(x[1])+'</strong></div>').join("");
   }
