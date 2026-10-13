@@ -21,3 +21,8 @@ class DeliveryEvents:
     REQUESTED = "delivery.requested"
     ACCEPTED = "delivery.accepted"
     COMPLETED = "delivery.completed"
+
+
+
+class NotificationEvents:
+    REQUESTED = "notification.requested"
