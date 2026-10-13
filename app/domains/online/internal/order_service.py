@@ -95,9 +95,41 @@ def _order_actions(order: OnlineOrder, *, reservation_status: str) -> dict:
     return actions
 
 
+def _order_priority(
+    order: OnlineOrder,
+    *,
+    reservation_status: str,
+    actions: dict,
+) -> dict:
+    if actions["needs_revalidation"]:
+        return {"rank": 0, "key": "stock_expired", "label": "Stock à revalider"}
+    if actions["can_confirm"]:
+        return {"rank": 1, "key": "confirm", "label": "À confirmer"}
+    if actions["can_prepare"]:
+        return {"rank": 2, "key": "prepare", "label": "À préparer"}
+    if actions["can_mark_ready"]:
+        return {"rank": 3, "key": "ready", "label": "En préparation"}
+    if actions["can_complete"]:
+        return {"rank": 4, "key": "complete", "label": "Prête à terminer"}
+    if order.status == "completed":
+        return {"rank": 8, "key": "completed", "label": "Terminée"}
+    if order.status == "cancelled":
+        return {"rank": 9, "key": "cancelled", "label": "Annulée"}
+    return {"rank": 7, "key": order.status, "label": order.status}
+
+
 def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
     reservation_status = _reservation_status(order, db=db)
     actions = _order_actions(order, reservation_status=reservation_status)
+    priority = _order_priority(
+        order,
+        reservation_status=reservation_status,
+        actions=actions,
+    )
+    age_minutes = max(
+        0,
+        int((datetime.utcnow() - order.created_at).total_seconds() // 60),
+    )
 
     items = (
         db.query(OnlineOrderItem)
@@ -128,6 +160,8 @@ def _order_payload(order: OnlineOrder, *, db: Session) -> dict:
         "updated_at": order.updated_at.isoformat(),
         "reservation_status": reservation_status,
         "actions": actions,
+        "priority": priority,
+        "age_minutes": age_minutes,
         "items": [
             {
                 "product_id": item.product_id,
@@ -169,7 +203,15 @@ def list_orders(
         .limit(limit)
         .all()
     )
-    return [_order_payload(order, db=db) for order in orders]
+    payloads = [_order_payload(order, db=db) for order in orders]
+    payloads.sort(
+        key=lambda row: (
+            row["priority"]["rank"],
+            -row["age_minutes"],
+            -row["id"],
+        )
+    )
+    return payloads
 
 
 def get_order(*, merchant_id: int, order_id: int, db: Session) -> dict | None:
