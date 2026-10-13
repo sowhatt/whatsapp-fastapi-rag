@@ -146,3 +146,27 @@ Before that:
 - test contracts: ready
 - runtime validation: pending
 - staging validation: pending
+
+
+## Pre-migration staging schema audit
+
+Run this before starting the new Online app version if you want to inspect the
+current staging database without applying any DDL:
+
+```bash
+cd /Users/rkjo/Projects/whatsapp-fastapi-rag
+railway run python audit_online_schema.py
+```
+
+The command is read-only and returns:
+- missing_tables
+- missing_columns
+- missing_indexes
+- PostgreSQL RLS readiness for business_transactions and outbox_events
+
+Exit codes:
+- 0 = schema ready
+- 2 = schema drift detected
+
+Important: `app.online_main` applies additive schema installation during
+startup, so the CLI is the correct tool for a true pre-migration comparison.
