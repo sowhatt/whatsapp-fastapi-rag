@@ -11,6 +11,7 @@ from app.domains.online.internal.catalog_models import OnlineProductImage, Onlin
 from app.domains.core.internal.transaction_model import BusinessTransaction
 from app.domains.online.internal.cart_models import OnlineCart, OnlineCartItem
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.notification_service import enqueue_order_notifications
 from app.domains.online.internal.payment_policy import initial_payment_status, normalize_payment_method
 from app.domains.online.internal.reservation_policy import order_reservation_minutes
 from app.domains.online.internal.store_service import get_public_store, get_store_capabilities
@@ -237,6 +238,12 @@ def checkout_cart(
                 "payment_status": resolved_payment_status,
             },
         ),
+    )
+
+    enqueue_order_notifications(
+        order=order,
+        stage="created",
+        db=db,
     )
 
     db.commit()
