@@ -253,6 +253,7 @@ def create_online_product_image(
 def read_online_orders(
     merchant_id: int,
     status: str | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -260,6 +261,7 @@ def read_online_orders(
     return list_orders(
         merchant_id=merchant_id,
         status=status,
+        query=q,
         limit=max(1, min(limit, 100)),
         offset=max(0, offset),
         db=db,
