@@ -36,14 +36,17 @@ def storefront_catalog(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    payload = read_public_catalog(
-        slug=slug,
-        db=db,
-        category_id=category_id,
-        query=q,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        payload = read_public_catalog(
+            slug=slug,
+            db=db,
+            category_id=category_id,
+            query=q,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload is None:
         raise HTTPException(status_code=404, detail="Boutique introuvable")
     return payload
@@ -55,11 +58,14 @@ def storefront_product_by_slug(
     product_slug: str,
     db: Session = Depends(get_db),
 ):
-    payload = read_public_product_by_slug(
-        slug=slug,
-        product_slug=product_slug,
-        db=db,
-    )
+    try:
+        payload = read_public_product_by_slug(
+            slug=slug,
+            product_slug=product_slug,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload is None:
         raise HTTPException(status_code=404, detail="Produit introuvable")
     return payload
@@ -71,11 +77,14 @@ def storefront_product(
     product_id: int,
     db: Session = Depends(get_db),
 ):
-    payload = read_public_product(
-        slug=slug,
-        product_id=product_id,
-        db=db,
-    )
+    try:
+        payload = read_public_product(
+            slug=slug,
+            product_id=product_id,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload is None:
         raise HTTPException(status_code=404, detail="Produit introuvable")
     return payload
@@ -91,7 +100,10 @@ def storefront_create_cart(
     slug: str,
     db: Session = Depends(get_db),
 ):
-    payload = create_cart(slug=slug, db=db)
+    try:
+        payload = create_cart(slug=slug, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload is None:
         raise HTTPException(status_code=404, detail="Boutique introuvable")
     return payload
@@ -103,7 +115,10 @@ def storefront_read_cart(
     token: str,
     db: Session = Depends(get_db),
 ):
-    payload = read_cart(slug=slug, token=token, db=db)
+    try:
+        payload = read_cart(slug=slug, token=token, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload is None:
         raise HTTPException(status_code=404, detail="Panier introuvable ou expiré")
     return payload
@@ -173,12 +188,15 @@ def storefront_order_status(
     phone: str = Query(min_length=3, max_length=40),
     db: Session = Depends(get_db),
 ):
-    result = read_public_order(
-        slug=slug,
-        reference=reference,
-        phone=phone,
-        db=db,
-    )
+    try:
+        result = read_public_order(
+            slug=slug,
+            reference=reference,
+            phone=phone,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Commande introuvable")
     return result
