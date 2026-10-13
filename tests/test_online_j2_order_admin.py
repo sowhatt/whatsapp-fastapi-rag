@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
+from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.online.internal.order_service import get_order, list_orders, order_summary, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.cart import create_cart, set_cart_item
@@ -156,3 +159,135 @@ def test_order_summary_counts_statuses_and_amounts(db):
     assert summary["by_status"]["pending"] == 1
     assert summary["by_status"]["cancelled"] == 1
     assert summary["gross_order_amount"] == first["total"]
+
+
+
+def test_order_payload_exposes_correct_actions_for_pending_and_expired(db):
+    merchant, order = _make_order(
+        db,
+        suffix="actions-pending",
+        customer_name="Action Client",
+        customer_phone="+229444",
+    )
+
+    pending = get_order(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        db=db,
+    )
+    assert pending["actions"]["can_confirm"] is True
+    assert pending["actions"]["can_cancel"] is True
+    assert pending["actions"]["recommended_action"] == "confirm"
+
+    reservation = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.source_type == "online_order",
+            StockReservation.source_id == order["id"],
+        )
+        .one()
+    )
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    expired = get_order(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        db=db,
+    )
+    assert expired["actions"]["can_confirm"] is False
+    assert expired["actions"]["can_revalidate_stock"] is True
+    assert expired["actions"]["needs_revalidation"] is True
+    assert expired["actions"]["recommended_action"] == "revalidate_stock"
+
+
+def test_order_actions_follow_lifecycle(db):
+    merchant, order = _make_order(
+        db,
+        suffix="actions-flow",
+        customer_name="Flow Client",
+        customer_phone="+229445",
+    )
+
+    confirmed = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="confirmed",
+        db=db,
+    )
+    assert confirmed["actions"]["can_prepare"] is True
+    assert confirmed["actions"]["next_status"] == "preparing"
+
+    preparing = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="preparing",
+        db=db,
+    )
+    assert preparing["actions"]["can_mark_ready"] is True
+    assert preparing["actions"]["next_status"] == "ready"
+
+    ready = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="ready",
+        db=db,
+    )
+    assert ready["actions"]["can_complete"] is True
+    assert ready["actions"]["next_status"] == "completed"
+
+    completed = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order["id"],
+        status="completed",
+        db=db,
+    )
+    assert completed["actions"]["recommended_action"] is None
+    assert completed["actions"]["can_cancel"] is False
+
+
+def test_order_summary_exposes_attention_counts(db):
+    merchant, first = _make_order(
+        db,
+        suffix="attention-a",
+        customer_name="Attention A",
+        customer_phone="+229446",
+    )
+
+    store = get_or_create_store(merchant_id=merchant.id, db=db)
+    product = db.query(Product).filter(Product.merchant_id == merchant.id).first()
+    cart = create_cart(slug=store.slug, db=db)
+    set_cart_item(
+        slug=store.slug,
+        token=cart["token"],
+        product_id=product.id,
+        quantity=1,
+        db=db,
+    )
+    second = checkout_cart(
+        slug=store.slug,
+        token=cart["token"],
+        customer_name="Attention B",
+        customer_phone="+229447",
+        delivery_mode="pickup",
+        delivery_address=None,
+        notes=None,
+        db=db,
+    )
+
+    reservation = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.source_type == "online_order",
+            StockReservation.source_id == second["id"],
+        )
+        .one()
+    )
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    summary = order_summary(merchant_id=merchant.id, db=db)
+
+    assert summary["attention"]["can_confirm"] == 1
+    assert summary["attention"]["needs_revalidation"] == 1
+    assert summary["attention"]["total"] == 2
