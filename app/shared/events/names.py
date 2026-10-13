@@ -8,6 +8,7 @@ an event for every compatible schema change.
 class CommerceEvents:
     ORDER_CREATED = "commerce.order.created"
     ORDER_CONFIRMED = "commerce.order.confirmed"
+    ORDER_COMPLETED = "commerce.order.completed"
     ORDER_CANCELLED = "commerce.order.cancelled"
 
 
