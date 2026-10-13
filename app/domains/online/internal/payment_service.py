@@ -48,7 +48,16 @@ def update_payment_status(
     if order is None:
         raise ValueError("Commande Online introuvable.")
 
+    if order.status == "cancelled":
+        raise ValueError("Le paiement d'une commande annulée ne peut plus être modifié.")
+
     target = str(status).strip().lower()
+    if (
+        target == OnlinePaymentStatus.MOBILE_MONEY_PENDING.value
+        and order.payment_method != "mobile_money"
+    ):
+        raise ValueError("Le retry Mobile Money est réservé aux commandes Mobile Money.")
+
     allowed = _ALLOWED_PAYMENT_TRANSITIONS.get(order.payment_status, set())
     if target not in allowed:
         raise ValueError(
