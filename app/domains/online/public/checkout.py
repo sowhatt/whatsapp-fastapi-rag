@@ -269,6 +269,7 @@ def read_public_order(
     return {
         "reference": order.reference,
         "status": order.status,
+        "payment_method": order.payment_method,
         "payment_status": order.payment_status,
         "currency": order.currency,
         "subtotal": order.subtotal_amount,
