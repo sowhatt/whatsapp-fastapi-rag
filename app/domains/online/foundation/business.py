@@ -105,3 +105,15 @@ def require_capability(
     if not has_capability(capabilities, capability):
         target = capability.value if isinstance(capability, StoreCapability) else str(capability).strip().lower()
         raise ValueError(f"Capacité Online non activée : {target}")
+
+
+def require_business_type(
+    actual: str | BusinessType,
+    expected: str | BusinessType,
+) -> None:
+    actual_kind = parse_business_type(actual)
+    expected_kind = parse_business_type(expected)
+    if actual_kind is not expected_kind:
+        raise ValueError(
+            f"Vertical Online non disponible ici : {actual_kind.value}"
+        )
