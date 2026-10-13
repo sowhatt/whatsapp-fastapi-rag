@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
@@ -28,8 +28,13 @@ def reserved_quantity(
     ).filter(
         StockReservation.merchant_id == merchant_id,
         StockReservation.product_id == product_id,
-        StockReservation.status == "active",
-        StockReservation.expires_at > now,
+        or_(
+            StockReservation.status == "consumed",
+            and_(
+                StockReservation.status == "active",
+                StockReservation.expires_at > now,
+            ),
+        ),
     )
 
     if exclude_source_type is not None and exclude_source_id is not None:
@@ -54,6 +59,8 @@ def available_stock(
     if product.merchant_id is None:
         return int(product.stock or 0)
 
+    # Phase A: consumed Online reservations remain unavailable to Online.
+    # We deliberately do not mutate Product.stock because Shop is frozen.
     reserved = reserved_quantity(
         merchant_id=product.merchant_id,
         product_id=product.id,
