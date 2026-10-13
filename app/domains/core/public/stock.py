@@ -157,3 +157,54 @@ def consume_reservations(
         row.status = "consumed"
         row.consumed_at = now
     return len(rows)
+
+
+
+def expire_reservations(
+    *,
+    db: Session,
+    merchant_id: int | None = None,
+    source_type: str | None = None,
+    source_id: int | None = None,
+    now: datetime | None = None,
+) -> int:
+    now = now or datetime.utcnow()
+    query = db.query(StockReservation).filter(
+        StockReservation.status == "active",
+        StockReservation.expires_at <= now,
+    )
+    if merchant_id is not None:
+        query = query.filter(StockReservation.merchant_id == merchant_id)
+    if source_type is not None:
+        query = query.filter(StockReservation.source_type == source_type)
+    if source_id is not None:
+        query = query.filter(StockReservation.source_id == source_id)
+
+    rows = query.all()
+    for row in rows:
+        row.status = "expired"
+        row.released_at = now
+    return len(rows)
+
+
+def active_reservation_count(
+    *,
+    merchant_id: int,
+    source_type: str,
+    source_id: int,
+    db: Session,
+    now: datetime | None = None,
+) -> int:
+    now = now or datetime.utcnow()
+    return int(
+        db.query(func.count(StockReservation.id))
+        .filter(
+            StockReservation.merchant_id == merchant_id,
+            StockReservation.source_type == source_type,
+            StockReservation.source_id == source_id,
+            StockReservation.status == "active",
+            StockReservation.expires_at > now,
+        )
+        .scalar()
+        or 0
+    )
