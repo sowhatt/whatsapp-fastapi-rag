@@ -12,6 +12,7 @@ from app.domains.core.public.stock import stock_position
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.payment_service import update_payment_status
+from app.domains.online.internal.pilot_readiness import pilot_readiness
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -380,3 +381,17 @@ def patch_online_order_payment_status(
         message = str(exc)
         status_code = 404 if "introuvable" in message.lower() else 409
         raise HTTPException(status_code=status_code, detail=message) from exc
+
+
+
+@router.get("/merchants/{merchant_id}/pilot-readiness")
+def read_online_pilot_readiness(
+    merchant_id: int,
+    stale_minutes: int = 30,
+    db: Session = Depends(get_db),
+):
+    return pilot_readiness(
+        merchant_id=merchant_id,
+        db=db,
+        stale_minutes=max(5, min(stale_minutes, 1440)),
+    )
