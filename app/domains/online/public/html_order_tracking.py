@@ -34,6 +34,7 @@ def render_order_tracking_page(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
 <title>Suivi {reference} — {title}</title>
 <link rel="stylesheet" href="/shop/assets/storefront.css">
 <style>
@@ -81,7 +82,7 @@ def render_order_tracking_page(
 
     <div class="tracking-actions">
       <a class="tracking-primary" href="/shop/{slug}">Retour à la boutique</a>
-      <a class="tracking-secondary" href="/shop/{slug}/order/{reference}?phone={phone}">Actualiser</a>
+      <button class="tracking-secondary" type="button" onclick="window.location.reload()" style="border:0">Actualiser</button>
     </div>
   </div>
 </div>
