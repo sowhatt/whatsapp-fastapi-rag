@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.online.foundation import require_capability
+from app.domains.online.foundation import require_business_type, require_capability
 
 from app.domains.online.internal.catalog_models import OnlineProductImage, OnlineProductPublication
 
@@ -33,6 +33,7 @@ def checkout_cart(
     store = get_public_store(slug=slug, db=db)
     if store is None:
         return None
+    require_business_type(store.business_type, "commerce")
     require_capability(get_store_capabilities(store), "checkout")
 
     # Online binds PostgreSQL RLS explicitly for its own transaction.
