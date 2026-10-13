@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.domains.online.internal.order_service import get_order, list_orders
+from app.domains.online.internal.order_service import get_order, list_orders, order_summary, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.cart import create_cart, set_cart_item
 from app.domains.online.public.checkout import checkout_cart
@@ -111,3 +111,48 @@ def test_order_search_matches_reference_name_and_phone(db):
     assert [row["id"] for row in by_name] == [order["id"]]
     assert [row["id"] for row in by_phone] == [order["id"]]
     assert [row["id"] for row in by_ref] == [order["id"]]
+
+
+
+def test_order_summary_counts_statuses_and_amounts(db):
+    merchant, first = _make_order(
+        db,
+        suffix="summary-a",
+        customer_name="Alice",
+        customer_phone="+229333",
+    )
+
+    # Same merchant, second order.
+    store = get_or_create_store(merchant_id=merchant.id, db=db)
+    product = db.query(Product).filter(Product.merchant_id == merchant.id).first()
+    cart = create_cart(slug=store.slug, db=db)
+    set_cart_item(
+        slug=store.slug,
+        token=cart["token"],
+        product_id=product.id,
+        quantity=2,
+        db=db,
+    )
+    second = checkout_cart(
+        slug=store.slug,
+        token=cart["token"],
+        customer_name="Alice 2",
+        customer_phone="+229334",
+        delivery_mode="pickup",
+        delivery_address=None,
+        notes=None,
+        db=db,
+    )
+    update_order_status(
+        merchant_id=merchant.id,
+        order_id=second["id"],
+        status="cancelled",
+        db=db,
+    )
+
+    summary = order_summary(merchant_id=merchant.id, db=db)
+
+    assert summary["orders_total"] == 2
+    assert summary["by_status"]["pending"] == 1
+    assert summary["by_status"]["cancelled"] == 1
+    assert summary["gross_order_amount"] == first["total"]
