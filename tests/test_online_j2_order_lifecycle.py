@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.online.internal.order_models import OnlineOrder
-from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, update_order_status
+from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.cart import create_cart, set_cart_item
 from app.domains.online.public.checkout import checkout_cart
@@ -134,3 +134,61 @@ def test_cleanup_marks_expired_reservations(db):
     db.refresh(reservation)
     assert cleaned == 1
     assert reservation.status == "expired"
+
+
+
+def test_expired_reservation_can_be_revalidated_then_confirmed(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    refreshed = revalidate_order_reservations(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        db=db,
+    )
+
+    assert refreshed["reservation_status"] == "active"
+
+    confirmed = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="confirmed",
+        db=db,
+    )
+    assert confirmed["status"] == "confirmed"
+
+
+def test_revalidation_rolls_back_when_stock_is_insufficient(db):
+    merchant, order = _order(db)
+    reservation = db.query(StockReservation).one()
+    reservation.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    item = db.query(OnlineOrder).filter(OnlineOrder.id == order.id).one()
+    product_id = (
+        db.query(StockReservation.product_id)
+        .filter(StockReservation.source_id == item.id)
+        .scalar()
+    )
+    product = db.query(Product).filter(Product.id == product_id).one()
+    product.stock = 0
+    db.commit()
+
+    with pytest.raises(ValueError, match="Stock disponible insuffisant"):
+        revalidate_order_reservations(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            db=db,
+        )
+
+    active = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.source_id == order.id,
+            StockReservation.status == "active",
+        )
+        .count()
+    )
+    assert active == 0
