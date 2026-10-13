@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
@@ -331,3 +331,44 @@ def revalidate_order_reservations(
         )
         db.commit()
         raise
+
+
+
+def order_summary(*, merchant_id: int, db: Session) -> dict:
+    status_rows = (
+        db.query(OnlineOrder.status, func.count(OnlineOrder.id))
+        .filter(OnlineOrder.merchant_id == merchant_id)
+        .group_by(OnlineOrder.status)
+        .all()
+    )
+    by_status = {status: int(count) for status, count in status_rows}
+
+    gross_total = int(
+        db.query(func.coalesce(func.sum(OnlineOrder.total_amount), 0))
+        .filter(
+            OnlineOrder.merchant_id == merchant_id,
+            OnlineOrder.status != "cancelled",
+        )
+        .scalar()
+        or 0
+    )
+
+    expired_reservations = int(
+        db.query(func.count(StockReservation.id))
+        .filter(
+            StockReservation.merchant_id == merchant_id,
+            StockReservation.source_type == "online_order",
+            StockReservation.status == "active",
+            StockReservation.expires_at <= datetime.utcnow(),
+        )
+        .scalar()
+        or 0
+    )
+
+    return {
+        "merchant_id": merchant_id,
+        "orders_total": sum(by_status.values()),
+        "by_status": by_status,
+        "gross_order_amount": gross_total,
+        "expired_reservations": expired_reservations,
+    }
