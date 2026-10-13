@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.domains.core.public.stock import active_reservation_count, consume_reservations, expire_reservations, extend_reservations, release_reservations, reserve_stock
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
+from app.domains.online.internal.notification_service import enqueue_order_notifications
 from app.domains.online.internal.reservation_policy import confirmed_order_reservation_minutes, order_reservation_minutes
 from app.shared.events import CommerceEvents, DeliveryEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
@@ -315,6 +316,11 @@ def update_order_status(
                 },
             ),
         )
+        enqueue_order_notifications(
+            order=order,
+            stage="confirmed",
+            db=db,
+        )
         if order.delivery_mode == "delivery":
             enqueue_domain_event(
                 db,
@@ -332,6 +338,12 @@ def update_order_status(
                     },
                 ),
             )
+    elif target == "ready":
+        enqueue_order_notifications(
+            order=order,
+            stage="ready",
+            db=db,
+        )
     elif target == "completed":
         consume_reservations(
             merchant_id=merchant_id,
