@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.domains.online.public import read_public_catalog, read_public_product_by_slug, read_public_store
+from app.domains.online.public.checkout import read_public_order
 from app.domains.online.public.seo_discovery import list_indexable_paths
 from app.domains.online.public.html_storefront import render_product_page, render_store_page
+from app.domains.online.public.html_order_tracking import render_order_tracking_page
 from app.domains.online.public.storefront_assets import STOREFRONT_CSS, STOREFRONT_JS
 
 router = APIRouter(tags=["online-storefront-web"])
@@ -77,4 +79,38 @@ def online_robots(request: Request):
         content=content,
         media_type="text/plain",
         headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+
+@router.get("/shop/{slug}/order/{reference}", response_class=HTMLResponse)
+def online_order_tracking_page(
+    slug: str,
+    reference: str,
+    phone: str = Query(min_length=3, max_length=40),
+    db: Session = Depends(get_db),
+):
+    store = read_public_store(slug=slug, db=db)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Boutique introuvable")
+    try:
+        order = read_public_order(
+            slug=slug,
+            reference=reference,
+            phone=phone,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if order is None:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+    return HTMLResponse(
+        render_order_tracking_page(
+            store=store,
+            order={**order, "customer_phone": phone},
+        ),
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Robots-Tag": "noindex, nofollow",
+        },
     )
