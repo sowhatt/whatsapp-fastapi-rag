@@ -79,9 +79,20 @@ def test_checkout_creates_order_transaction_and_outbox(db):
     assert order.merchant_id == merchant.id
     assert order.transaction_id is not None
 
-    event = db.query(OutboxEvent).one()
-    assert event.event_type == "commerce.order.created"
-    assert event.aggregate_id == str(order.id)
+    events = db.query(OutboxEvent).all()
+    created_events = [
+        event for event in events
+        if event.event_type == "commerce.order.created"
+    ]
+    notification_events = [
+        event for event in events
+        if event.event_type == "notification.requested"
+    ]
+
+    assert len(created_events) == 1
+    assert created_events[0].aggregate_id == str(order.id)
+    assert len(notification_events) == 2
+    assert all(event.aggregate_id == str(order.id) for event in notification_events)
 
 
 def test_delivery_checkout_requires_address(db):
