@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -104,6 +105,9 @@ def checkout_cart(
 
     if cart.status != "active":
         raise ValueError("Ce panier n'est plus actif.")
+
+    if cart.expires_at <= datetime.utcnow():
+        raise ValueError("Ce panier a expiré.")
 
     cart_items = (
         db.query(OnlineCartItem)
