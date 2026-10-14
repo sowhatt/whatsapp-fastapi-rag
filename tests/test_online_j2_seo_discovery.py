@@ -1,3 +1,5 @@
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -7,6 +9,7 @@ from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.seo_discovery import list_indexable_paths
 from app.models.merchant import Merchant
 from app.models.product import Product
+from app.routers.online_storefront_web import router as online_storefront_web_router
 
 
 def test_sitemap_paths_include_store_and_published_product_only():
@@ -45,3 +48,23 @@ def test_sitemap_paths_include_store_and_published_product_only():
     assert f"/shop/{store.slug}" in paths
     assert f"/shop/{store.slug}/p/{publication.seo_slug}" in paths
     db.close()
+
+
+def test_robots_uses_forwarded_https_scheme():
+    app = FastAPI()
+    app.include_router(online_storefront_web_router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/robots.txt",
+        headers={
+            "host": "whatzabi-online-staging-staging.up.railway.app",
+            "x-forwarded-proto": "https",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        "Sitemap: https://whatzabi-online-staging-staging.up.railway.app/sitemap.xml"
+        in response.text
+    )
