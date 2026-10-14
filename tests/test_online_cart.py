@@ -77,7 +77,7 @@ def test_cart_rejects_quantity_above_stock(db):
     _, store, product = _merchant_and_product(db, stock=2)
     cart = create_cart(slug=store.slug, db=db)
 
-    with pytest.raises(ValueError, match="Stock insuffisant"):
+    with pytest.raises(ValueError, match="Stock disponible insuffisant"):
         set_cart_item(
             slug=store.slug,
             token=cart["token"],
