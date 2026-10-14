@@ -138,14 +138,23 @@ The following files must stay unchanged during the pilot:
 
 ## J2 exit decision
 
-J2 is considered DONE only after runtime/staging validation.
+J2 is considered DONE after runtime/staging validation.
 
-Before that:
+Validated on staging:
 - architecture: ready
 - implementation: ready
-- test contracts: ready
-- runtime validation: pending
-- staging validation: pending
+- targeted runtime suite: 82/82 passed
+- Online application startup: ready
+- PostgreSQL schema audit: ready
+- RLS audit: ready
+- public smoke (/health, /robots.txt, /sitemap.xml): ready
+- admin authentication: ready
+- merchant 1 pilot-readiness: ready (0 blockers, 0 warnings)
+
+Decision: **GO technique J2 for pilot**.
+
+Operational pilot execution still requires at least one real merchant/store/product
+flow to be exercised end-to-end before broad rollout.
 
 
 ## Pre-migration staging schema audit
