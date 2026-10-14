@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -96,3 +98,32 @@ def test_delivery_checkout_requires_address(db):
             notes=None,
             db=db,
         )
+
+
+def test_checkout_rejects_expired_active_cart(db):
+    _, store, _, cart = _ready_cart(db)
+
+    from app.domains.online.internal.cart_models import OnlineCart
+
+    persisted = (
+        db.query(OnlineCart)
+        .filter(OnlineCart.token == cart["token"])
+        .one()
+    )
+    persisted.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    db.commit()
+
+    with pytest.raises(ValueError, match="panier a expiré"):
+        checkout_cart(
+            slug=store.slug,
+            token=cart["token"],
+            customer_name="Jean Client",
+            customer_phone="+2290100000000",
+            delivery_mode="pickup",
+            delivery_address=None,
+            notes=None,
+            db=db,
+        )
+
+    assert db.query(OnlineOrder).count() == 0
+    assert db.query(OutboxEvent).count() == 0
