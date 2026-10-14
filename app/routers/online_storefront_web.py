@@ -13,7 +13,12 @@ from app.domains.online.public.storefront_assets import STOREFRONT_CSS, STOREFRO
 router = APIRouter(tags=["online-storefront-web"])
 
 def _base_url(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    base_url = str(request.base_url).rstrip("/")
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    if forwarded_proto in {"http", "https"}:
+        _, rest = base_url.split("://", 1)
+        return f"{forwarded_proto}://{rest}"
+    return base_url
 
 @router.get("/shop/{slug}", response_class=HTMLResponse)
 def online_store_page(slug: str, request: Request, q: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db)):
