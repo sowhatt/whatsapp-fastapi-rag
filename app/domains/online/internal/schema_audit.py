@@ -72,12 +72,6 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "total_amount",
         "payment_status",
     },
-    "business_transactions": {
-        "ix_business_transactions_merchant_id",
-        "ix_business_transactions_shop_id",
-        "ix_business_transactions_merchant_created_at",
-        "ix_business_transactions_merchant_kind_status",
-    },
     "online_orders": {
         "id",
         "merchant_id",
@@ -135,6 +129,12 @@ EXPECTED_TABLES: dict[str, set[str]] = {
 
 
 EXPECTED_INDEXES: dict[str, set[str]] = {
+    "business_transactions": {
+        "ix_business_transactions_merchant_id",
+        "ix_business_transactions_shop_id",
+        "ix_business_transactions_merchant_created_at",
+        "ix_business_transactions_merchant_kind_status",
+    },
     "online_stores": {
         "ix_online_stores_merchant_id",
         "ix_online_stores_slug",
