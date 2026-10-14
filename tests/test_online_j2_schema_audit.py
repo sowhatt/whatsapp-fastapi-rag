@@ -44,3 +44,20 @@ def test_schema_audit_reports_missing_tables_without_modifying_database():
     assert "online_orders" in result["missing_tables"]
     assert "stock_reservations" in result["missing_tables"]
     assert "outbox_events" in result["missing_tables"]
+
+
+def test_schema_audit_classifies_business_transaction_indexes_as_indexes():
+    from app.domains.online.internal.schema_audit import EXPECTED_INDEXES, EXPECTED_TABLES
+
+    expected_columns = EXPECTED_TABLES["business_transactions"]
+    expected_indexes = EXPECTED_INDEXES["business_transactions"]
+
+    assert "merchant_id" in expected_columns
+    assert "payment_status" in expected_columns
+    assert not any(name.startswith("ix_") for name in expected_columns)
+    assert {
+        "ix_business_transactions_merchant_id",
+        "ix_business_transactions_shop_id",
+        "ix_business_transactions_merchant_created_at",
+        "ix_business_transactions_merchant_kind_status",
+    } <= expected_indexes
