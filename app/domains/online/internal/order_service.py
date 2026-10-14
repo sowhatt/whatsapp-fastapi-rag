@@ -43,12 +43,15 @@ def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
     statuses = {row.status for row in rows}
     if "active" in statuses:
         return "active"
-    if "expired" in statuses:
-        return "expired"
-    if "released" in statuses:
-        return "released"
+    # Historical expired rows are preserved for auditability. Once a rebuilt
+    # reservation reaches a terminal state, that current state must win over
+    # older expired rows from the same order.
     if "consumed" in statuses:
         return "consumed"
+    if "released" in statuses:
+        return "released"
+    if "expired" in statuses:
+        return "expired"
     return sorted(statuses)[0]
 
 
