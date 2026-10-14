@@ -450,3 +450,47 @@ def test_stock_position_after_cancellation_restores_online_available(db):
         "stock_consumed_online": 0,
         "stock_online_available": 10,
     }
+
+
+def test_revalidated_history_does_not_mask_consumed_state(db):
+    merchant, order = _order(db)
+
+    for status in ("confirmed", "preparing", "ready"):
+        update_order_status(
+            merchant_id=merchant.id,
+            order_id=order.id,
+            status=status,
+            db=db,
+        )
+
+    original = db.query(StockReservation).one()
+    original.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    revalidated = revalidate_order_reservations(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        db=db,
+    )
+    assert revalidated["reservation_status"] == "active"
+
+    completed = update_order_status(
+        merchant_id=merchant.id,
+        order_id=order.id,
+        status="completed",
+        db=db,
+    )
+
+    statuses = {
+        row.status
+        for row in db.query(StockReservation)
+        .filter(
+            StockReservation.merchant_id == merchant.id,
+            StockReservation.source_type == "online_order",
+            StockReservation.source_id == order.id,
+        )
+        .all()
+    }
+    assert "expired" in statuses
+    assert "consumed" in statuses
+    assert completed["reservation_status"] == "consumed"
