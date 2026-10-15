@@ -68,3 +68,40 @@ def test_robots_uses_forwarded_https_scheme():
         "Sitemap: https://whatzabi-online-staging-staging.up.railway.app/sitemap.xml"
         in response.text
     )
+
+
+def test_robots_uses_https_in_staging_without_forwarded_proto(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "staging")
+    monkeypatch.delenv("ONLINE_PUBLIC_BASE_URL", raising=False)
+
+    app = FastAPI()
+    app.include_router(online_storefront_web_router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/robots.txt",
+        headers={"host": "whatzabi-online-staging-staging.up.railway.app"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        "Sitemap: https://whatzabi-online-staging-staging.up.railway.app/sitemap.xml"
+        in response.text
+    )
+
+
+def test_public_base_url_override_wins(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "staging")
+    monkeypatch.setenv("ONLINE_PUBLIC_BASE_URL", "https://online.example.com/")
+
+    app = FastAPI()
+    app.include_router(online_storefront_web_router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/robots.txt",
+        headers={"host": "internal.invalid"},
+    )
+
+    assert response.status_code == 200
+    assert "Sitemap: https://online.example.com/sitemap.xml" in response.text
