@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
@@ -13,11 +15,28 @@ from app.domains.online.public.storefront_assets import STOREFRONT_CSS, STOREFRO
 router = APIRouter(tags=["online-storefront-web"])
 
 def _base_url(request: Request) -> str:
+    explicit_base_url = (os.getenv("ONLINE_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if explicit_base_url:
+        return explicit_base_url
+
     base_url = str(request.base_url).rstrip("/")
+    _, rest = base_url.split("://", 1)
+
     forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
     if forwarded_proto in {"http", "https"}:
-        _, rest = base_url.split("://", 1)
         return f"{forwarded_proto}://{rest}"
+
+    forwarded = request.headers.get("forwarded") or ""
+    for part in forwarded.split(";"):
+        key, sep, value = part.strip().partition("=")
+        if sep and key.lower() == "proto":
+            proto = value.strip().strip('"').lower()
+            if proto in {"http", "https"}:
+                return f"{proto}://{rest}"
+
+    if (os.getenv("APP_ENV") or "").strip().lower() in {"staging", "production", "prod"}:
+        return f"https://{rest}"
+
     return base_url
 
 @router.get("/shop/{slug}", response_class=HTMLResponse)
