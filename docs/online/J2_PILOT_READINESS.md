@@ -153,8 +153,19 @@ Validated on staging:
 
 Decision: **GO technique J2 for pilot**.
 
-Operational pilot execution still requires at least one real merchant/store/product
-flow to be exercised end-to-end before broad rollout.
+Operational pilot execution has now been exercised end-to-end on staging:
+- merchant 2 / store `whatzabi-test-multi-shop`
+- product publication and public catalog: validated
+- cart and cash-on-delivery checkout: validated
+- order lifecycle `pending -> confirmed -> preparing -> ready -> completed`: validated
+- stock reservation: active during order, then consumed on completion
+- Online available stock: validated (`10 -> 9`) while Shop physical stock remains unchanged in Phase A
+- public order tracking: validated
+- pilot-readiness: `ready=true`, 0 blockers
+- outbox: 11 pending events, 0 failed events; pending events are a known warning until the notification dispatcher is implemented
+- public SEO smoke after Railway proxy fix: `robots.txt` and `sitemap.xml` now emit HTTPS URLs
+
+Decision: **J2 pilot scope DONE on staging**.
 
 
 ## Pre-migration staging schema audit
