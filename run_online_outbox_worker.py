@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 
 from sqlalchemy import func
@@ -82,7 +83,22 @@ def _pending_preview(
     return result
 
 
+def _validate_send_environment() -> None:
+    missing = [
+        name
+        for name in ("WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID")
+        if not (os.getenv(name) or "").strip()
+    ]
+    if missing:
+        raise SystemExit(
+            "Missing WhatsApp worker environment variables: " + ", ".join(missing)
+        )
+
+
 def _run_once(args: argparse.Namespace) -> int:
+    if args.send:
+        _validate_send_environment()
+
     db = SessionLocal()
     try:
         recovered = recover_stale_processing(
