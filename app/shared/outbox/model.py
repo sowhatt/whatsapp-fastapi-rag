@@ -14,6 +14,11 @@ class OutboxEvent(Base):
     __table_args__ = (
         Index("ix_outbox_events_status_created_at", "status", "created_at"),
         Index("ix_outbox_events_merchant_created_at", "merchant_id", "created_at"),
+        Index(
+            "ix_outbox_events_status_next_attempt_at",
+            "status",
+            "next_attempt_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
