@@ -124,6 +124,10 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "status",
         "retry_count",
         "created_at",
+        "published_at",
+        "next_attempt_at",
+        "processing_started_at",
+        "provider_message_id",
     },
 }
 
@@ -166,6 +170,7 @@ EXPECTED_INDEXES: dict[str, set[str]] = {
     "outbox_events": {
         "ix_outbox_events_status_created_at",
         "ix_outbox_events_merchant_created_at",
+        "ix_outbox_events_status_next_attempt_at",
     },
 }
 
