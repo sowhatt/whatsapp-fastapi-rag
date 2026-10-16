@@ -164,3 +164,32 @@ def test_recover_stale_processing_requeues_notification():
     assert row.processing_started_at is None
     assert row.next_attempt_at is not None
     db.close()
+
+
+def test_invalid_whatsapp_recipient_fails_without_retry():
+    db = _db()
+    row = _notification(event_id="00000000-0000-0000-0000-000000000006")
+    row.payload["data"]["recipient"] = "testing"
+    db.add(row)
+    db.commit()
+
+    calls = []
+
+    def sender(to, body):
+        calls.append((to, body))
+        return {"messages": [{"id": "should-not-send"}]}
+
+    result = dispatch_notification_batch(
+        db=db,
+        sender=sender,
+        max_retries=3,
+    )
+
+    db.refresh(row)
+    assert result == {"claimed": 1, "published": 0, "retried": 0, "failed": 1}
+    assert calls == []
+    assert row.status == "failed"
+    assert row.retry_count == 1
+    assert row.next_attempt_at is None
+    assert "format international attendu" in row.last_error
+    db.close()
