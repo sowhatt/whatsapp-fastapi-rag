@@ -74,6 +74,22 @@ def pilot_readiness(
         or 0
     )
 
+    pending_notification_outbox = int(
+        db.query(func.count(OutboxEvent.id))
+        .filter(
+            OutboxEvent.merchant_id == merchant_id,
+            OutboxEvent.status == "pending",
+            OutboxEvent.event_type == "notification.requested",
+        )
+        .scalar()
+        or 0
+    )
+
+    pending_domain_outbox = max(
+        0,
+        pending_outbox - pending_notification_outbox,
+    )
+
     failed_outbox = int(
         db.query(func.count(OutboxEvent.id))
         .filter(
@@ -93,6 +109,8 @@ def pilot_readiness(
         "pending_mobile_money": pending_mobile_money,
         "stale_pending_orders": stale_pending_orders,
         "pending_outbox": pending_outbox,
+        "pending_notification_outbox": pending_notification_outbox,
+        "pending_domain_outbox": pending_domain_outbox,
     }
 
     return {
