@@ -38,3 +38,6 @@ class OutboxEvent(Base):
         default=datetime.utcnow,
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
