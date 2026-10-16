@@ -4,7 +4,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
+from app.domains.core.internal import transaction_model as _transaction_model  # noqa: F401
 from app.domains.online.internal import cart_models as _cart_models  # noqa: F401
+from app.domains.online.internal import models as _online_store_models  # noqa: F401
+from app.domains.online.internal import order_models as _order_models  # noqa: F401
+from app.models import merchant as _merchant_model  # noqa: F401
+from app.models import product as _product_model  # noqa: F401
 from app.shared.outbox.model import OutboxEvent
 from app.shared.outbox.worker import (
     dispatch_notification_batch,
