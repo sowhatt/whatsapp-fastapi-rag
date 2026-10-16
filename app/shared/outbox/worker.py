@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.services.whatsapp_sender import send_whatsapp_text_message
 from app.shared.events import NotificationEvents
+from app.shared.tenancy.rls import apply_rls_bypass
 
 from .model import OutboxEvent
 
@@ -34,6 +35,7 @@ def recover_stale_processing(
     stale_minutes: int = 10,
     max_retries: int = 3,
 ) -> int:
+    apply_rls_bypass(db, enabled=True)
     now = datetime.utcnow()
     stale_before = now - timedelta(minutes=max(1, stale_minutes))
     rows = (
@@ -71,6 +73,7 @@ def dispatch_notification_batch(
     max_retries: int = 3,
     base_backoff_seconds: int = 30,
 ) -> dict:
+    apply_rls_bypass(db, enabled=True)
     now = datetime.utcnow()
     rows = (
         db.query(OutboxEvent)
@@ -91,6 +94,7 @@ def dispatch_notification_batch(
     if not rows:
         return {"claimed": 0, "published": 0, "retried": 0, "failed": 0}
 
+    claimed_ids = [row.id for row in rows]
     for row in rows:
         row.status = "processing"
         row.processing_started_at = now
@@ -100,7 +104,12 @@ def dispatch_notification_batch(
     retried = 0
     failed = 0
 
-    for row in rows:
+    for event_id in claimed_ids:
+        apply_rls_bypass(db, enabled=True)
+        row = db.query(OutboxEvent).filter(OutboxEvent.id == event_id).first()
+        if row is None:
+            db.rollback()
+            continue
         try:
             data = (row.payload or {}).get("data") or {}
             channel = data.get("channel")
@@ -124,7 +133,8 @@ def dispatch_notification_batch(
             published += 1
         except Exception as exc:
             db.rollback()
-            current = db.query(OutboxEvent).filter(OutboxEvent.id == row.id).first()
+            apply_rls_bypass(db, enabled=True)
+            current = db.query(OutboxEvent).filter(OutboxEvent.id == event_id).first()
             if current is None:
                 continue
 
