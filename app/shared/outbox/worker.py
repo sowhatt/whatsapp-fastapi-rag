@@ -72,10 +72,11 @@ def dispatch_notification_batch(
     limit: int = 20,
     max_retries: int = 3,
     base_backoff_seconds: int = 30,
+    merchant_id: int | None = None,
 ) -> dict:
     apply_rls_bypass(db, enabled=True)
     now = datetime.utcnow()
-    rows = (
+    query = (
         db.query(OutboxEvent)
         .filter(
             OutboxEvent.event_type == NotificationEvents.REQUESTED,
@@ -85,7 +86,12 @@ def dispatch_notification_batch(
                 OutboxEvent.next_attempt_at <= now,
             ),
         )
-        .order_by(OutboxEvent.created_at, OutboxEvent.id)
+    )
+    if merchant_id is not None:
+        query = query.filter(OutboxEvent.merchant_id == merchant_id)
+
+    rows = (
+        query.order_by(OutboxEvent.created_at, OutboxEvent.id)
         .with_for_update(skip_locked=True)
         .limit(max(1, min(limit, 100)))
         .all()
