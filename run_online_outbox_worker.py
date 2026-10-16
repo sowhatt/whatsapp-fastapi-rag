@@ -13,9 +13,11 @@ from app.shared.outbox.worker import (
     dispatch_notification_batch,
     recover_stale_processing,
 )
+from app.shared.tenancy.rls import apply_rls_bypass
 
 
 def _pending_count(db, *, merchant_id: int | None = None) -> int:
+    apply_rls_bypass(db, enabled=True)
     query = db.query(func.count(OutboxEvent.id)).filter(
         OutboxEvent.event_type == NotificationEvents.REQUESTED,
         OutboxEvent.status == "pending",
