@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import re
 from typing import Callable, Any
 
 from sqlalchemy import or_
@@ -14,6 +15,17 @@ from .model import OutboxEvent
 
 
 Sender = Callable[[str, str], Any]
+
+
+class InvalidWhatsAppRecipientError(ValueError):
+    """Permanent validation error: retrying the same recipient cannot succeed."""
+
+
+def is_valid_whatsapp_recipient(value: object) -> bool:
+    if value is None:
+        return False
+    recipient = str(value).strip()
+    return bool(re.fullmatch(r"\+?[1-9]\d{7,14}", recipient))
 
 
 def _provider_message_id(result: Any) -> str | None:
@@ -127,7 +139,11 @@ def dispatch_notification_batch(
             if channel != "whatsapp":
                 raise ValueError(f"Canal de notification non supporté : {channel!r}")
             if not recipient:
-                raise ValueError("Destinataire WhatsApp manquant.")
+                raise InvalidWhatsAppRecipientError("Destinataire WhatsApp manquant.")
+            if not is_valid_whatsapp_recipient(recipient):
+                raise InvalidWhatsAppRecipientError(
+                    "Destinataire WhatsApp invalide : format international attendu."
+                )
             if not message:
                 raise ValueError("Message WhatsApp manquant.")
 
@@ -150,8 +166,9 @@ def dispatch_notification_batch(
             current.retry_count += 1
             current.processing_started_at = None
             current.last_error = f"{type(exc).__name__}: {exc}"[:2000]
+            terminal_error = isinstance(exc, InvalidWhatsAppRecipientError)
 
-            if current.retry_count >= max_retries:
+            if terminal_error or current.retry_count >= max_retries:
                 current.status = "failed"
                 current.next_attempt_at = None
                 failed += 1
