@@ -12,6 +12,7 @@ from app.shared.events import NotificationEvents
 from app.shared.outbox.model import OutboxEvent
 from app.shared.outbox.worker import (
     dispatch_notification_batch,
+    is_valid_whatsapp_recipient,
     recover_stale_processing,
 )
 from app.shared.tenancy.rls import apply_rls_bypass
@@ -75,6 +76,7 @@ def _pending_preview(
                 "aggregate_id": row.aggregate_id,
                 "recipient_role": data.get("recipient_role"),
                 "recipient": _mask_recipient(data.get("recipient")),
+                "recipient_valid": is_valid_whatsapp_recipient(data.get("recipient")),
                 "template": data.get("template"),
                 "retry_count": row.retry_count,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
