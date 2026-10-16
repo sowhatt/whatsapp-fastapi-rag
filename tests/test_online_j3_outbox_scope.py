@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
+from app.domains.online.internal import cart_models as _cart_models  # noqa: F401
 from app.shared.outbox.model import OutboxEvent
 from app.shared.outbox.worker import dispatch_notification_batch
 
