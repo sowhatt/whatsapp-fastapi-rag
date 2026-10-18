@@ -25,6 +25,12 @@ def _materialized_payload(row: OutboxEvent) -> dict:
     data = (row.payload or {}).get("data") or {}
     channel = str(data.get("channel") or "").strip()
     recipient_role = str(data.get("recipient_role") or "").strip()
+
+    # Backward compatibility for J3 events already queued before the
+    # PWA-first decision: merchant messages become in-app notifications,
+    # customer messages become explicit WhatsApp handoffs.
+    if channel == "whatsapp":
+        channel = "in_app" if recipient_role == "merchant" else "whatsapp_handoff"
     message = str(data.get("message") or "").strip()
     title = str(data.get("title") or "").strip()
 
