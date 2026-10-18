@@ -1,8 +1,35 @@
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 
 router = APIRouter(tags=["online-admin-web"])
+
+
+@router.get("/online-admin-sw.js")
+def online_admin_service_worker():
+    return Response(
+        content=r"""
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_) {}
+  const title = data.title || "Whatzabi";
+  const options = {
+    body: data.body || "Nouvelle activité",
+    data: { url: data.url || "/online-admin-ui" },
+    tag: data.notification_id ? "wz-" + data.notification_id : undefined
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/online-admin-ui";
+  event.waitUntil(clients.openWindow(url));
+});
+""",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/online-admin-ui", response_class=HTMLResponse)
@@ -35,6 +62,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     <div class="auth">
       <div class="notif-wrap">
         <button id="notifications-toggle" class="notif-btn" type="button">Notifications <span id="notifications-count" class="notif-count">0</span></button>
+        <button id="push-enable" class="secondary" type="button">Activer notifications</button>
       </div>
       <input id="merchant-id" type="number" min="1" placeholder="Merchant ID">
       <input id="admin-token" type="password" placeholder="Admin token">
@@ -82,6 +110,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
   const notificationsCount=document.getElementById("notifications-count");
   const notificationsPanel=document.getElementById("notifications-panel");
   const notificationsList=document.getElementById("notifications-list");
+  const pushEnable=document.getElementById("push-enable");
 
   function cfg(){
     return {
@@ -125,6 +154,40 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     if(a.can_retry_mobile_money)buttons.push('<button class="secondary" data-payment-status="mobile_money_pending">Réessayer Mobile Money</button>');
     if(a.can_cancel)buttons.push('<button class="danger" data-status="cancelled">Annuler</button>');
     return buttons.join("");
+  }
+  function urlBase64ToUint8Array(base64String){
+    const padding="=".repeat((4-base64String.length%4)%4);
+    const base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/");
+    const raw=atob(base64);
+    return Uint8Array.from([...raw].map(ch=>ch.charCodeAt(0)));
+  }
+  async function enablePush(){
+    const {merchant,token}=cfg();
+    if(!merchant||!token)throw new Error("Chargez d’abord le commerçant.");
+    if(!("serviceWorker" in navigator)||!("PushManager" in window)){
+      throw new Error("Web Push non supporté sur cet appareil.");
+    }
+    const config=await api("/online-admin/push/config");
+    if(!config.enabled||!config.public_key){
+      throw new Error("Web Push n’est pas configuré sur le serveur.");
+    }
+    const permission=await Notification.requestPermission();
+    if(permission!=="granted")throw new Error("Permission de notification refusée.");
+    const registration=await navigator.serviceWorker.register("/online-admin-sw.js");
+    let subscription=await registration.pushManager.getSubscription();
+    if(!subscription){
+      subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(config.public_key)
+      });
+    }
+    await api("/online-admin/merchants/"+merchant+"/push-subscriptions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(subscription.toJSON())
+    });
+    pushEnable.textContent="Notifications activées";
+    pushEnable.disabled=true;
   }
   function renderNotifications(rows){
     const unread=rows.filter(n=>n.status==="unread").length;
@@ -219,6 +282,11 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     }catch(err){
       if(readButton){alert(err.message);}
     }
+  });
+  pushEnable.addEventListener("click",async()=>{
+    pushEnable.disabled=true;
+    try{await enablePush();}
+    catch(err){alert(err.message);pushEnable.disabled=false;}
   });
   document.getElementById("connect").addEventListener("click",load);
   document.getElementById("refresh").addEventListener("click",load);
