@@ -85,19 +85,23 @@ def enqueue_order_notifications(
     messages = (
         (
             "customer",
+            "whatsapp_handoff",
             order.customer_phone,
             templates["customer"],
+            f"Commande {order.reference}",
         ),
         (
             "merchant",
-            merchant.whatsapp_number,
+            "in_app",
+            None,
             templates["merchant"],
+            f"Commande {order.reference}",
         ),
     )
 
     count = 0
-    for recipient_role, recipient, template in messages:
-        if not recipient:
+    for recipient_role, channel, recipient, template, title in messages:
+        if channel == "whatsapp_handoff" and not recipient:
             continue
         message = render_order_notification(
             stage=stage,
@@ -123,11 +127,17 @@ def enqueue_order_notifications(
                 aggregate_type="online_order",
                 aggregate_id=str(order.id),
                 data={
-                    "channel": "whatsapp",
+                    "channel": channel,
                     "recipient_role": recipient_role,
                     "recipient": recipient,
                     "template": template,
+                    "title": title,
                     "message": message,
+                    "action_url": (
+                        "/online-admin-ui"
+                        if recipient_role == "merchant"
+                        else None
+                    ),
                     "tracking_path": (
                         customer_tracking_path
                         if recipient_role == "customer"
