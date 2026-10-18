@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 
 from sqlalchemy import func
@@ -10,8 +9,8 @@ from sqlalchemy import func
 from app.db.session import SessionLocal
 from app.shared.events import NotificationEvents
 from app.shared.outbox.model import OutboxEvent
+from app.shared.notifications.worker import materialize_notification_batch
 from app.shared.outbox.worker import (
-    dispatch_notification_batch,
     is_valid_whatsapp_recipient,
     recover_stale_processing,
 )
@@ -85,22 +84,7 @@ def _pending_preview(
     return result
 
 
-def _validate_send_environment() -> None:
-    missing = [
-        name
-        for name in ("WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID")
-        if not (os.getenv(name) or "").strip()
-    ]
-    if missing:
-        raise SystemExit(
-            "Missing WhatsApp worker environment variables: " + ", ".join(missing)
-        )
-
-
 def _run_once(args: argparse.Namespace) -> int:
-    if args.send:
-        _validate_send_environment()
-
     db = SessionLocal()
     try:
         recovered = recover_stale_processing(
@@ -129,7 +113,7 @@ def _run_once(args: argparse.Namespace) -> int:
                             event_id=args.event_id,
                             limit=args.limit,
                         ),
-                        "message": "Use --send to dispatch WhatsApp notifications.",
+                        "message": "Use --send to materialize PWA / WhatsApp handoff notifications.",
                     },
                     ensure_ascii=False,
                 ),
@@ -137,10 +121,9 @@ def _run_once(args: argparse.Namespace) -> int:
             )
             return 0
 
-        result = dispatch_notification_batch(
+        result = materialize_notification_batch(
             db=db,
             limit=max(1, min(args.limit, 100)),
-            max_retries=max(1, args.max_retries),
             merchant_id=args.merchant_id,
             event_id=args.event_id,
         )
@@ -166,7 +149,7 @@ def main() -> int:
     parser.add_argument(
         "--send",
         action="store_true",
-        help="Actually send WhatsApp notifications. Without this flag the command is a dry-run.",
+        help="Materialize PWA / WhatsApp handoff notifications. No Meta API call is made.",
     )
     parser.add_argument("--merchant-id", type=int, default=None)
     parser.add_argument("--event-id", type=int, default=None)
