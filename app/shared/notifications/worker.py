@@ -12,6 +12,7 @@ from app.shared.outbox.model import OutboxEvent
 from app.shared.tenancy.rls import apply_rls_bypass
 
 from .model import OnlineNotification
+from .web_push import dispatch_web_push_for_notification
 
 
 def whatsapp_handoff_url(*, recipient: str, message: str) -> str:
@@ -118,6 +119,20 @@ def materialize_notification_batch(
             row.last_error = None
             row.provider_message_id = None
             db.commit()
+
+            # In-app persistence is authoritative. Web Push is best-effort:
+            # a push provider/browser failure must never lose the notification.
+            apply_rls_bypass(db, enabled=True)
+            persisted = (
+                db.query(OnlineNotification)
+                .filter(OnlineNotification.source_event_id == row.event_id)
+                .first()
+            )
+            if persisted is not None:
+                dispatch_web_push_for_notification(
+                    db=db,
+                    notification=persisted,
+                )
             published += 1
         except IntegrityError:
             # A concurrent worker may have materialized the same source event.
