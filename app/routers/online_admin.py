@@ -413,6 +413,7 @@ def read_online_schema_audit(
 def read_online_notifications(
     merchant_id: int,
     status: str | None = None,
+    recipient_role: str | None = None,
     limit: int = 50,
     db: Session = Depends(get_db),
 ):
@@ -422,6 +423,8 @@ def read_online_notifications(
     )
     if status:
         query = query.filter(OnlineNotification.status == status)
+    if recipient_role:
+        query = query.filter(OnlineNotification.recipient_role == recipient_role)
     rows = (
         query.order_by(OnlineNotification.created_at.desc(), OnlineNotification.id.desc())
         .limit(max(1, min(limit, 100)))
