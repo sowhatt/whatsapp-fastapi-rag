@@ -10,9 +10,19 @@ from app.shared.tenancy.rls import apply_rls_bypass
 
 from .model import OnlineNotification
 from .push_model import WebPushSubscription
+from .push_endpoint import (
+    InvalidPushEndpoint,
+    PinnedPushSession,
+    allowed_host_suffixes,
+    validate_push_endpoint,
+)
 
 
 def web_push_enabled() -> bool:
+    try:
+        allowed_host_suffixes()
+    except InvalidPushEndpoint:
+        return False
     return bool(
         (os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY") or "").strip()
         and (os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY") or "").strip()
@@ -31,14 +41,18 @@ def _send(subscription_info: dict, payload: dict) -> Any:
     except ImportError as exc:
         raise RuntimeError("pywebpush is required for Web Push delivery") from exc
 
-    return webpush(
-        subscription_info=subscription_info,
-        data=json.dumps(payload, ensure_ascii=False),
-        vapid_private_key=(os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY") or "").strip(),
-        vapid_claims={
-            "sub": (os.getenv("WEB_PUSH_VAPID_SUBJECT") or "").strip(),
-        },
-    )
+    # Re-resolve here and pin the actual connection to a validated address.
+    with PinnedPushSession(subscription_info["endpoint"]) as session:
+        return webpush(
+            subscription_info=subscription_info,
+            data=json.dumps(payload, ensure_ascii=False),
+            vapid_private_key=(os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY") or "").strip(),
+            vapid_claims={
+                "sub": (os.getenv("WEB_PUSH_VAPID_SUBJECT") or "").strip(),
+            },
+            requests_session=session,
+            timeout=10,
+        )
 
 
 def dispatch_web_push_for_notification(
@@ -49,9 +63,6 @@ def dispatch_web_push_for_notification(
 ) -> dict:
     if notification.recipient_role != "merchant":
         return {"attempted": 0, "sent": 0, "failed": 0}
-    if not web_push_enabled():
-        return {"attempted": 0, "sent": 0, "failed": 0}
-
     apply_rls_bypass(db, enabled=True)
     subscriptions = (
         db.query(WebPushSubscription)
@@ -64,6 +75,8 @@ def dispatch_web_push_for_notification(
 
     sent = 0
     failed = 0
+    attempted = 0
+    disabled = False
     payload = {
         "title": notification.title,
         "body": notification.body,
@@ -73,6 +86,10 @@ def dispatch_web_push_for_notification(
 
     for subscription in subscriptions:
         try:
+            validate_push_endpoint(subscription.endpoint)
+            if not web_push_enabled():
+                continue
+            attempted += 1
             sender(
                 {
                     "endpoint": subscription.endpoint,
@@ -84,11 +101,18 @@ def dispatch_web_push_for_notification(
                 payload,
             )
             sent += 1
+        except InvalidPushEndpoint:
+            subscription.is_active = False
+            disabled = True
+            failed += 1
         except Exception:
             failed += 1
 
+    if disabled:
+        db.commit()
+
     return {
-        "attempted": len(subscriptions),
+        "attempted": attempted,
         "sent": sent,
         "failed": failed,
     }

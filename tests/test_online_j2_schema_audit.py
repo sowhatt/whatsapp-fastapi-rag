@@ -11,6 +11,8 @@ from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderIte
 from app.models.merchant import Merchant
 from app.models.product import Product
 from app.shared.outbox.model import OutboxEvent
+from app.shared.notifications.model import OnlineNotification
+from app.shared.notifications.push_model import WebPushSubscription
 from app.domains.online.internal.schema_audit import audit_online_schema
 
 

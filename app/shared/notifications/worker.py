@@ -75,7 +75,7 @@ def materialize_notification_batch(
     merchant_id: int | None = None,
     event_id: int | None = None,
 ) -> dict:
-    """Materialize PWA/handoff notifications without calling Meta or another provider."""
+    """Persist PWA/handoff notifications, then attempt optional Push (never Meta)."""
     apply_rls_bypass(db, enabled=True)
     now = datetime.utcnow()
 
@@ -104,6 +104,7 @@ def materialize_notification_batch(
 
     for row in rows:
         try:
+            apply_rls_bypass(db, enabled=True)
             payload = _materialized_payload(row)
             existing = (
                 db.query(OnlineNotification)
@@ -119,21 +120,22 @@ def materialize_notification_batch(
             row.last_error = None
             row.provider_message_id = None
             db.commit()
-
-            # In-app persistence is authoritative. Web Push is best-effort:
-            # a push provider/browser failure must never lose the notification.
-            apply_rls_bypass(db, enabled=True)
-            persisted = (
-                db.query(OnlineNotification)
-                .filter(OnlineNotification.source_event_id == row.event_id)
-                .first()
-            )
-            if persisted is not None:
-                dispatch_web_push_for_notification(
-                    db=db,
-                    notification=persisted,
-                )
             published += 1
+
+            # This transaction starts AFTER the durable notification commit.
+            # Even subscription lookup/validation/storage failures must not
+            # reclassify the published event or interrupt the rest of the batch.
+            try:
+                apply_rls_bypass(db, enabled=True)
+                persisted = (
+                    db.query(OnlineNotification)
+                    .filter(OnlineNotification.source_event_id == row.event_id)
+                    .first()
+                )
+                if persisted is not None:
+                    dispatch_web_push_for_notification(db=db, notification=persisted)
+            except Exception:
+                db.rollback()
         except IntegrityError:
             # A concurrent worker may have materialized the same source event.
             # The UNIQUE(source_event_id) constraint makes that a successful,

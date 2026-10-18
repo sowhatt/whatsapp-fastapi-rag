@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.domains.online.internal.pilot_readiness import pilot_readiness
 from app.domains.online.internal.schema_audit import audit_online_schema
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.push_model import WebPushSubscription
+from app.shared.notifications.push_endpoint import InvalidPushEndpoint, validate_push_endpoint
 from app.shared.notifications.web_push import web_push_enabled, web_push_public_key
 from app.shared.tenancy.rls import apply_rls_context
 
@@ -81,8 +82,17 @@ class WebPushKeysPayload(BaseModel):
 
 
 class WebPushSubscriptionPayload(BaseModel):
-    endpoint: HttpUrl
+    endpoint: str
     keys: WebPushKeysPayload
+
+
+async def _web_push_subscription_payload(request: Request) -> WebPushSubscriptionPayload:
+    # Pydantic's standard HTTP errors echo `input`, including userinfo in an
+    # invalid endpoint or a subscription auth secret. Sanitize the whole body.
+    try:
+        return WebPushSubscriptionPayload.model_validate(await request.json())
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Souscription Web Push invalide.") from None
 
 
 class WebPushUnsubscribePayload(BaseModel):
@@ -509,11 +519,14 @@ def read_web_push_config():
 @router.post("/merchants/{merchant_id}/push-subscriptions", status_code=201)
 def create_web_push_subscription(
     merchant_id: int,
-    payload: WebPushSubscriptionPayload,
+    payload: WebPushSubscriptionPayload = Depends(_web_push_subscription_payload),
     db: Session = Depends(get_db),
 ):
+    try:
+        endpoint = validate_push_endpoint(payload.endpoint).url
+    except InvalidPushEndpoint:
+        raise HTTPException(status_code=422, detail="Souscription Web Push invalide.") from None
     apply_rls_context(db, merchant_id=merchant_id)
-    endpoint = str(payload.endpoint)
     row = (
         db.query(WebPushSubscription)
         .filter(

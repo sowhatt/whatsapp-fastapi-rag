@@ -25,6 +25,7 @@ def _db():
 
 
 def _enable_push_env(monkeypatch):
+    monkeypatch.setenv("WEB_PUSH_ALLOWED_HOST_SUFFIXES", "example.test")
     monkeypatch.setenv("WEB_PUSH_VAPID_PUBLIC_KEY", "public-key")
     monkeypatch.setenv("WEB_PUSH_VAPID_PRIVATE_KEY", "private-key")
     monkeypatch.setenv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.com")
@@ -44,6 +45,10 @@ def test_web_push_config_requires_all_vapid_values(monkeypatch):
 
 def test_dispatch_web_push_targets_active_merchant_subscription(monkeypatch):
     _enable_push_env(monkeypatch)
+    monkeypatch.setattr(
+        "app.shared.notifications.push_endpoint.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", ("8.8.8.8", 443))],
+    )
     db = _db()
     subscription = WebPushSubscription(
         merchant_id=2,
