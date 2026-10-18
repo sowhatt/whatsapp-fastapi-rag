@@ -15,6 +15,8 @@ from app.domains.online.internal.payment_service import update_payment_status
 from app.domains.online.internal.pilot_readiness import pilot_readiness
 from app.domains.online.internal.schema_audit import audit_online_schema
 from app.shared.notifications.model import OnlineNotification
+from app.shared.notifications.push_model import WebPushSubscription
+from app.shared.notifications.web_push import web_push_enabled, web_push_public_key
 from app.shared.tenancy.rls import apply_rls_context
 
 
@@ -71,6 +73,20 @@ class OnlineProductImagePayload(BaseModel):
     image_url: HttpUrl
     storage_key: str | None = Field(default=None, max_length=500)
     is_primary: bool = True
+
+
+class WebPushKeysPayload(BaseModel):
+    p256dh: str = Field(min_length=10, max_length=255)
+    auth: str = Field(min_length=5, max_length=255)
+
+
+class WebPushSubscriptionPayload(BaseModel):
+    endpoint: HttpUrl
+    keys: WebPushKeysPayload
+
+
+class WebPushUnsubscribePayload(BaseModel):
+    endpoint: HttpUrl
 
 
 def _store_payload(store: OnlineStore):
@@ -479,3 +495,68 @@ def mark_online_notification_read(
         "status": row.status,
         "read_at": row.read_at,
     }
+
+
+
+@router.get("/push/config")
+def read_web_push_config():
+    return {
+        "enabled": web_push_enabled(),
+        "public_key": web_push_public_key(),
+    }
+
+
+@router.post("/merchants/{merchant_id}/push-subscriptions", status_code=201)
+def create_web_push_subscription(
+    merchant_id: int,
+    payload: WebPushSubscriptionPayload,
+    db: Session = Depends(get_db),
+):
+    apply_rls_context(db, merchant_id=merchant_id)
+    endpoint = str(payload.endpoint)
+    row = (
+        db.query(WebPushSubscription)
+        .filter(
+            WebPushSubscription.merchant_id == merchant_id,
+            WebPushSubscription.endpoint == endpoint,
+        )
+        .first()
+    )
+    if row is None:
+        row = WebPushSubscription(
+            merchant_id=merchant_id,
+            endpoint=endpoint,
+            p256dh=payload.keys.p256dh,
+            auth=payload.keys.auth,
+            is_active=True,
+        )
+        db.add(row)
+    else:
+        row.p256dh = payload.keys.p256dh
+        row.auth = payload.keys.auth
+        row.is_active = True
+    db.commit()
+    apply_rls_context(db, merchant_id=merchant_id)
+    db.refresh(row)
+    return {"id": row.id, "active": row.is_active}
+
+
+@router.delete("/merchants/{merchant_id}/push-subscriptions")
+def delete_web_push_subscription(
+    merchant_id: int,
+    payload: WebPushUnsubscribePayload,
+    db: Session = Depends(get_db),
+):
+    apply_rls_context(db, merchant_id=merchant_id)
+    row = (
+        db.query(WebPushSubscription)
+        .filter(
+            WebPushSubscription.merchant_id == merchant_id,
+            WebPushSubscription.endpoint == str(payload.endpoint),
+        )
+        .first()
+    )
+    if row is not None:
+        row.is_active = False
+        db.commit()
+    return {"active": False}
