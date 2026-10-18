@@ -24,6 +24,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:18px 0}.card{background:white;border:1px solid #e8e8e8;border-radius:14px;padding:16px}.card strong{display:block;font-size:1.5rem;margin-top:6px}
 .order{background:white;border:1px solid #e8e8e8;border-radius:16px;padding:16px;margin:12px 0}.order-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ref{font-weight:850}.meta{color:#666;font-size:.92rem;margin-top:4px}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#f0f0f0;font-size:.8rem;font-weight:700}
 .items{margin:12px 0;padding-top:10px;border-top:1px solid #eee}.item{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.warning{background:#fff4e5;border:1px solid #ffd79a;padding:10px;border-radius:10px;margin-top:10px}.empty{padding:36px;text-align:center;color:#777}.priority{font-size:.82rem;font-weight:800;margin-top:8px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.detail-box{background:#fafafa;border-radius:10px;padding:10px}.detail-box small{display:block;color:#777;margin-bottom:4px}.whatsapp{background:#1f7a45}.muted{color:#777;font-size:.85rem}
+.notif-wrap{position:relative}.notif-btn{background:white;color:#181818;border:1px solid #ddd}.notif-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#181818;color:white;font-size:.75rem;margin-left:6px}.notif-panel{display:none;background:white;border:1px solid #e5e5e5;border-radius:16px;padding:14px;margin:0 0 18px}.notif-panel.open{display:block}.notif-row{padding:12px 0;border-bottom:1px solid #eee}.notif-row:last-child{border-bottom:0}.notif-row.unread{font-weight:650}.notif-head{display:flex;justify-content:space-between;gap:12px}.notif-body{margin-top:5px;color:#555;font-weight:400}.notif-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.notif-actions a{display:inline-block;text-decoration:none;border-radius:9px;padding:8px 11px;background:#181818;color:white;font-weight:700;font-size:.86rem}
 @media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}.order-head{flex-direction:column}}
 </style>
 </head>
@@ -32,6 +33,9 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
   <div class="top">
     <h1>Whatzabi Online — Commandes</h1>
     <div class="auth">
+      <div class="notif-wrap">
+        <button id="notifications-toggle" class="notif-btn" type="button">Notifications <span id="notifications-count" class="notif-count">0</span></button>
+      </div>
       <input id="merchant-id" type="number" min="1" placeholder="Merchant ID">
       <input id="admin-token" type="password" placeholder="Admin token">
       <button id="connect">Charger</button>
@@ -39,6 +43,16 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
   </div>
 
   <div id="summary" class="cards"></div>
+  <section id="notifications-panel" class="notif-panel">
+    <div class="order-head">
+      <div>
+        <div class="ref">Notifications</div>
+        <div class="meta">Commandes et actions importantes</div>
+      </div>
+      <button id="notifications-refresh" class="secondary" type="button">Actualiser</button>
+    </div>
+    <div id="notifications-list"></div>
+  </section>
 
   <div class="toolbar">
     <input id="search" placeholder="Référence, nom, téléphone">
@@ -64,6 +78,10 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
   const summaryEl=document.getElementById("summary");
   const searchInput=document.getElementById("search");
   const statusInput=document.getElementById("status");
+  const notificationsToggle=document.getElementById("notifications-toggle");
+  const notificationsCount=document.getElementById("notifications-count");
+  const notificationsPanel=document.getElementById("notifications-panel");
+  const notificationsList=document.getElementById("notifications-list");
 
   function cfg(){
     return {
@@ -108,6 +126,27 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     if(a.can_cancel)buttons.push('<button class="danger" data-status="cancelled">Annuler</button>');
     return buttons.join("");
   }
+  function renderNotifications(rows){
+    const unread=rows.filter(n=>n.status==="unread").length;
+    notificationsCount.textContent=String(unread);
+    notificationsCount.style.display=unread?"inline-flex":"none";
+    if(!rows.length){
+      notificationsList.innerHTML='<div class="empty">Aucune notification.</div>';
+      return;
+    }
+    notificationsList.innerHTML=rows.map(n=>{
+      const unreadClass=n.status==="unread"?" unread":"";
+      const action=n.action_url?'<a href="'+esc(n.action_url)+'" data-notification-link="'+n.id+'">Voir</a>':'';
+      const mark=n.status==="unread"?'<button class="secondary" data-notification-read="'+n.id+'">Marquer lue</button>':'';
+      return '<div class="notif-row'+unreadClass+'" data-notification-id="'+n.id+'"><div class="notif-head"><span>'+esc(n.title||"Whatzabi")+'</span><span class="badge">'+esc(n.status)+'</span></div><div class="notif-body">'+esc(n.body||"")+'</div><div class="notif-actions">'+action+mark+'</div></div>';
+    }).join("");
+  }
+  async function loadNotifications(){
+    const {merchant,token}=cfg();
+    if(!merchant||!token){renderNotifications([]);return;}
+    const rows=await api("/online-admin/merchants/"+merchant+"/notifications?recipient_role=merchant&limit=50");
+    renderNotifications(rows);
+  }
   function renderOrders(orders){
     if(!orders.length){ordersEl.innerHTML='<div class="empty">Aucune commande.</div>';return;}
     ordersEl.innerHTML=orders.map(o=>{
@@ -116,7 +155,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
       const address=o.delivery_address?'<div class="detail-box"><small>Adresse</small>'+esc(o.delivery_address)+'</div>':'';
       const notes=o.notes?'<div class="detail-box"><small>Note client</small>'+esc(o.notes)+'</div>':'';
       const details=(address||notes)?'<div class="detail-grid">'+address+notes+'</div>':'';
-      return '<article class="order" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+' · créée il y a '+esc(ageLabel(o.age_minutes))+'</div><div class="priority">'+esc(o.priority?.label||"")+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span> <span class="badge">paiement: '+esc(o.payment_status)+'</span></div></div>'+warning+details+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
+      return '<article class="order" id="order-'+o.id+'" data-order-id="'+o.id+'"><div class="order-head"><div><div class="ref">'+esc(o.reference)+'</div><div class="meta">'+esc(o.customer_name)+' · '+esc(o.customer_phone)+'</div><div class="meta">'+esc(o.delivery_mode)+' · créée il y a '+esc(ageLabel(o.age_minutes))+'</div><div class="priority">'+esc(o.priority?.label||"")+'</div></div><div><span class="badge">'+esc(o.status)+'</span> <span class="badge">stock: '+esc(o.reservation_status)+'</span> <span class="badge">paiement: '+esc(o.payment_status)+'</span></div></div>'+warning+details+'<div class="items">'+items+'</div><div class="order-head"><strong>'+money(o.total)+'</strong><div class="actions">'+actionButtons(o)+'</div></div></article>';
     }).join("");
   }
   function renderSummary(s){
@@ -138,11 +177,12 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
     if(searchInput.value.trim())params.set("q",searchInput.value.trim());
     if(statusInput.value)params.set("status",statusInput.value);
     try{
-      const [orders,summary]=await Promise.all([
+      const [orders,summary,notifications]=await Promise.all([
         api("/online-admin/merchants/"+merchant+"/orders?"+params.toString()),
-        api("/online-admin/merchants/"+merchant+"/orders-summary")
+        api("/online-admin/merchants/"+merchant+"/orders-summary"),
+        api("/online-admin/merchants/"+merchant+"/notifications?recipient_role=merchant&limit=50")
       ]);
-      renderOrders(orders);renderSummary(summary);
+      renderOrders(orders);renderSummary(summary);renderNotifications(notifications);
     }catch(e){ordersEl.innerHTML='<div class="warning">'+esc(e.message)+'</div>';}
   }
   ordersEl.addEventListener("click",async e=>{
@@ -160,6 +200,25 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
       }
       await load();
     }catch(err){alert(err.message);}finally{button.disabled=false;}
+  });
+  notificationsToggle.addEventListener("click",()=>{
+    notificationsPanel.classList.toggle("open");
+  });
+  document.getElementById("notifications-refresh").addEventListener("click",async()=>{
+    try{await loadNotifications();}catch(e){notificationsList.innerHTML='<div class="warning">'+esc(e.message)+'</div>';}
+  });
+  notificationsList.addEventListener("click",async e=>{
+    const readButton=e.target.closest("[data-notification-read]");
+    const link=e.target.closest("[data-notification-link]");
+    const target=readButton||link;
+    if(!target)return;
+    const id=target.dataset.notificationRead||target.dataset.notificationLink;
+    try{
+      await api("/online-admin/merchants/"+cfg().merchant+"/notifications/"+id+"/read",{method:"PATCH"});
+      await loadNotifications();
+    }catch(err){
+      if(readButton){alert(err.message);}
+    }
   });
   document.getElementById("connect").addEventListener("click",load);
   document.getElementById("refresh").addEventListener("click",load);
