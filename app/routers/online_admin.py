@@ -14,6 +14,8 @@ from app.domains.online.internal.order_service import cleanup_expired_order_rese
 from app.domains.online.internal.payment_service import update_payment_status
 from app.domains.online.internal.pilot_readiness import pilot_readiness
 from app.domains.online.internal.schema_audit import audit_online_schema
+from app.shared.notifications.model import OnlineNotification
+from app.shared.tenancy.rls import apply_rls_context
 
 
 router = APIRouter(prefix="/online-admin", tags=["online-admin"])
@@ -404,3 +406,72 @@ def read_online_schema_audit(
     db: Session = Depends(get_db),
 ):
     return audit_online_schema(db=db)
+
+
+
+@router.get("/merchants/{merchant_id}/notifications")
+def read_online_notifications(
+    merchant_id: int,
+    status: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    apply_rls_context(db, merchant_id=merchant_id)
+    query = db.query(OnlineNotification).filter(
+        OnlineNotification.merchant_id == merchant_id
+    )
+    if status:
+        query = query.filter(OnlineNotification.status == status)
+    rows = (
+        query.order_by(OnlineNotification.created_at.desc(), OnlineNotification.id.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    return [
+        {
+            "id": row.id,
+            "merchant_id": row.merchant_id,
+            "aggregate_type": row.aggregate_type,
+            "aggregate_id": row.aggregate_id,
+            "recipient_role": row.recipient_role,
+            "channel": row.channel,
+            "title": row.title,
+            "body": row.body,
+            "action_url": row.action_url,
+            "status": row.status,
+            "created_at": row.created_at,
+            "read_at": row.read_at,
+        }
+        for row in rows
+    ]
+
+
+@router.patch("/merchants/{merchant_id}/notifications/{notification_id}/read")
+def mark_online_notification_read(
+    merchant_id: int,
+    notification_id: int,
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime
+
+    apply_rls_context(db, merchant_id=merchant_id)
+    row = (
+        db.query(OnlineNotification)
+        .filter(
+            OnlineNotification.id == notification_id,
+            OnlineNotification.merchant_id == merchant_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Notification introuvable")
+    if row.status != "read":
+        row.status = "read"
+        row.read_at = datetime.utcnow()
+        db.commit()
+        db.refresh(row)
+    return {
+        "id": row.id,
+        "status": row.status,
+        "read_at": row.read_at,
+    }
