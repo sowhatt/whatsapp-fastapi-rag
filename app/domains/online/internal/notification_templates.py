@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from urllib.parse import quote
 
 
@@ -8,6 +9,23 @@ def tracking_path(*, store_slug: str, reference: str, phone: str) -> str:
         f"/shop/{quote(store_slug, safe='')}/order/"
         f"{quote(reference, safe='')}?phone={quote(phone, safe='')}"
     )
+
+
+def public_base_url() -> str | None:
+    explicit = (os.getenv("ONLINE_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+
+    railway_domain = (os.getenv("RAILWAY_PUBLIC_DOMAIN") or "").strip().strip("/")
+    if railway_domain:
+        return f"https://{railway_domain}"
+
+    return None
+
+
+def absolute_tracking_url(*, path: str) -> str:
+    base = public_base_url()
+    return f"{base}{path}" if base else path
 
 
 def render_order_notification(
