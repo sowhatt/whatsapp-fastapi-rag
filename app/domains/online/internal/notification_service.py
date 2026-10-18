@@ -3,7 +3,11 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.domains.online.internal.models import OnlineStore
-from app.domains.online.internal.notification_templates import render_order_notification, tracking_path
+from app.domains.online.internal.notification_templates import (
+    absolute_tracking_url,
+    render_order_notification,
+    tracking_path,
+)
 from app.domains.online.internal.order_models import OnlineOrder
 from app.models.merchant import Merchant
 from app.shared.events import DomainEvent, NotificationEvents
@@ -81,6 +85,11 @@ def enqueue_order_notifications(
         if store is not None
         else None
     )
+    customer_tracking_url = (
+        absolute_tracking_url(path=customer_tracking_path)
+        if customer_tracking_path
+        else None
+    )
 
     messages = (
         (
@@ -114,7 +123,7 @@ def enqueue_order_notifications(
             payment_status=order.payment_status,
             store_name=store_name,
             tracking_url_path=(
-                customer_tracking_path
+                customer_tracking_url
                 if recipient_role == "customer"
                 else None
             ),
@@ -140,6 +149,11 @@ def enqueue_order_notifications(
                     ),
                     "tracking_path": (
                         customer_tracking_path
+                        if recipient_role == "customer"
+                        else None
+                    ),
+                    "tracking_url": (
+                        customer_tracking_url
                         if recipient_role == "customer"
                         else None
                     ),
