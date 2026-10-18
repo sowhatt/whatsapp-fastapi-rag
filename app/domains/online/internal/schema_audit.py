@@ -113,6 +113,16 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "consumed_at",
         "released_at",
     },
+    "web_push_subscriptions": {
+        "id",
+        "merchant_id",
+        "endpoint",
+        "p256dh",
+        "auth",
+        "is_active",
+        "created_at",
+        "updated_at",
+    },
     "online_notifications": {
         "id",
         "source_event_id",
@@ -181,6 +191,9 @@ EXPECTED_INDEXES: dict[str, set[str]] = {
     "stock_reservations": {
         "ix_stock_reservations_product_status_expires",
         "ix_stock_reservations_source",
+    },
+    "web_push_subscriptions": {
+        "ix_web_push_subscriptions_merchant_active",
     },
     "online_notifications": {
         "ix_online_notifications_merchant_status_created_at",
@@ -265,6 +278,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
         "business_transactions": "business_transactions_tenant_isolation",
         "outbox_events": "outbox_events_tenant_isolation",
         "online_notifications": "online_notifications_tenant_isolation",
+        "web_push_subscriptions": "web_push_subscriptions_tenant_isolation",
     }
 
     rows = db.execute(
@@ -277,7 +291,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = current_schema()
-              AND c.relname IN ('business_transactions', 'outbox_events', 'online_notifications')
+              AND c.relname IN ('business_transactions', 'outbox_events', 'online_notifications', 'web_push_subscriptions')
             """
         )
     ).mappings().all()
@@ -297,7 +311,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             SELECT tablename, policyname
             FROM pg_policies
             WHERE schemaname = current_schema()
-              AND tablename IN ('business_transactions', 'outbox_events', 'online_notifications')
+              AND tablename IN ('business_transactions', 'outbox_events', 'online_notifications', 'web_push_subscriptions')
             """
         )
     ).mappings().all()
