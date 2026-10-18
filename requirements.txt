@@ -9,3 +9,5 @@ python-dotenv
 python-multipart
 requests
 openai
+
+pywebpush
