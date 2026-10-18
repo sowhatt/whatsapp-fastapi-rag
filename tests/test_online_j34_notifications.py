@@ -8,6 +8,10 @@ from app.domains.online.internal import models as _online_store_models  # noqa: 
 from app.domains.online.internal import order_models as _order_models  # noqa: F401
 from app.models import merchant as _merchant_model  # noqa: F401
 from app.models import product as _product_model  # noqa: F401
+from app.domains.online.internal.notification_templates import (
+    absolute_tracking_url,
+    public_base_url,
+)
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.worker import (
     materialize_notification_batch,
@@ -121,3 +125,39 @@ def test_materialization_is_idempotent_by_source_event():
     assert second["published"] == 1
     assert db.query(OnlineNotification).count() == 1
     db.close()
+
+
+
+def test_public_base_url_prefers_explicit_env(monkeypatch):
+    monkeypatch.setenv("ONLINE_PUBLIC_BASE_URL", "https://online.example.com/")
+    monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", "ignored.example.com")
+
+    assert public_base_url() == "https://online.example.com"
+    assert absolute_tracking_url(path="/shop/demo/order/WO-1") == (
+        "https://online.example.com/shop/demo/order/WO-1"
+    )
+
+
+def test_public_base_url_falls_back_to_railway_domain(monkeypatch):
+    monkeypatch.delenv("ONLINE_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv(
+        "RAILWAY_PUBLIC_DOMAIN",
+        "whatzabi-online-staging-staging.up.railway.app",
+    )
+
+    assert public_base_url() == (
+        "https://whatzabi-online-staging-staging.up.railway.app"
+    )
+    assert absolute_tracking_url(path="/shop/demo/order/WO-1") == (
+        "https://whatzabi-online-staging-staging.up.railway.app"
+        "/shop/demo/order/WO-1"
+    )
+
+
+def test_absolute_tracking_url_keeps_relative_path_without_public_domain(monkeypatch):
+    monkeypatch.delenv("ONLINE_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+
+    assert absolute_tracking_url(path="/shop/demo/order/WO-1") == (
+        "/shop/demo/order/WO-1"
+    )
