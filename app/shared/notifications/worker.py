@@ -119,10 +119,42 @@ def materialize_notification_batch(
             row.provider_message_id = None
             db.commit()
             published += 1
-        except (ValueError, IntegrityError) as exc:
+        except IntegrityError:
+            # A concurrent worker may have materialized the same source event.
+            # The UNIQUE(source_event_id) constraint makes that a successful,
+            # idempotent outcome rather than a delivery failure.
+            row_id = row.id
+            source_event_id = row.event_id
             db.rollback()
             apply_rls_bypass(db, enabled=True)
-            current = db.query(OutboxEvent).filter(OutboxEvent.id == row.id).first()
+            existing = (
+                db.query(OnlineNotification)
+                .filter(OnlineNotification.source_event_id == source_event_id)
+                .first()
+            )
+            current = db.query(OutboxEvent).filter(OutboxEvent.id == row_id).first()
+            if existing is not None and current is not None:
+                current.status = "published"
+                current.published_at = datetime.utcnow()
+                current.processing_started_at = None
+                current.next_attempt_at = None
+                current.last_error = None
+                db.commit()
+                published += 1
+            else:
+                if current is not None:
+                    current.status = "failed"
+                    current.processing_started_at = None
+                    current.next_attempt_at = None
+                    current.retry_count += 1
+                    current.last_error = "IntegrityError: notification materialization conflict"
+                    db.commit()
+                failed += 1
+        except ValueError as exc:
+            row_id = row.id
+            db.rollback()
+            apply_rls_bypass(db, enabled=True)
+            current = db.query(OutboxEvent).filter(OutboxEvent.id == row_id).first()
             if current is not None:
                 current.status = "failed"
                 current.processing_started_at = None
