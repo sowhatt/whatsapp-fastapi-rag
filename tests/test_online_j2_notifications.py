@@ -80,8 +80,8 @@ def _notification_events(db):
     )
 
 
-def test_order_created_enqueues_customer_and_merchant_notifications(db):
-    merchant, _, _, order = _create_order(db)
+def test_order_created_enqueues_customer_handoff_and_merchant_in_app(db):
+    _, _, _, order = _create_order(db)
 
     events = _notification_events(db)
     assert len(events) == 2
@@ -89,13 +89,25 @@ def test_order_created_enqueues_customer_and_merchant_notifications(db):
     payloads = [event.payload["data"] for event in events]
     by_role = {payload["recipient_role"]: payload for payload in payloads}
 
-    assert by_role["customer"]["recipient"] == "+22997000000"
-    assert by_role["customer"]["template"] == "online_order_created_customer"
-    assert by_role["merchant"]["recipient"] == merchant.whatsapp_number
-    assert by_role["merchant"]["template"] == "online_order_created_merchant"
+    customer = by_role["customer"]
+    merchant_notification = by_role["merchant"]
+
+    assert customer["channel"] == "whatsapp_handoff"
+    assert customer["recipient"] == "+22997000000"
+    assert customer["template"] == "online_order_created_customer"
+
+    assert merchant_notification["channel"] == "in_app"
+    assert merchant_notification["recipient"] is None
+    assert (
+        merchant_notification["template"]
+        == "online_order_created_merchant"
+    )
+    assert (
+        merchant_notification["action_url"]
+        == f"/online-admin-ui#order-{order.id}"
+    )
 
     for payload in payloads:
-        assert payload["channel"] == "whatsapp"
         assert payload["context"]["reference"] == order.reference
         assert payload["context"]["stage"] == "created"
 
