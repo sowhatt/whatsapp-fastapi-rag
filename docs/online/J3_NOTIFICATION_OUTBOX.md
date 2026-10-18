@@ -83,6 +83,24 @@ The allowlist is mandatory in **every environment**, including staging and
 production. Empty or invalid configuration fails closed. No configuration has
 been applied to Railway as part of this security change.
 
+An unavailable allowlist raises `PushPolicyUnavailable`, separately from
+`InvalidPushEndpoint`. The worker checks the complete Push configuration before
+reading or validating subscriptions. If the allowlist is unavailable/malformed
+or a required VAPID value is missing, it returns zero attempted/sent/failed,
+performs no DNS/HTTP request and preserves every subscription. Policy loss during
+validation or transport preflight also preserves the subscription. Only an
+endpoint rejected under a valid policy is deactivated. In-app persistence is
+unaffected in either case. `/push/config` returns `enabled: false` and
+`public_key: null` when disabled, without configuration details. Registration
+returns a generic HTTP 503 when policy is unavailable, rather than blaming the
+subscription with HTTP 422.
+
+P1 regression validation: the seven-file suite previously containing 137 tests
+now passes **159 tests**, including 22 new cases for configuration outages,
+subscription preservation, invalid endpoints under a valid policy, and policy
+loss between validation and transport. Executed with the same Python 3.12.13
+virtualenv and SQLite; no external requests or Railway changes.
+
 Registration and delivery both call the same endpoint validator. It requires
 HTTPS, a hostname, no userinfo, and port 443 (or no explicit port). Local names,
 IP literals outside the provider domain policy, non-public DNS answers,

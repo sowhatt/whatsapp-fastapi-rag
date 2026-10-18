@@ -16,7 +16,11 @@ from app.domains.online.internal.pilot_readiness import pilot_readiness
 from app.domains.online.internal.schema_audit import audit_online_schema
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.push_model import WebPushSubscription
-from app.shared.notifications.push_endpoint import InvalidPushEndpoint, validate_push_endpoint
+from app.shared.notifications.push_endpoint import (
+    InvalidPushEndpoint,
+    PushPolicyUnavailable,
+    validate_push_endpoint,
+)
 from app.shared.notifications.web_push import web_push_enabled, web_push_public_key
 from app.shared.tenancy.rls import apply_rls_context
 
@@ -510,9 +514,10 @@ def mark_online_notification_read(
 
 @router.get("/push/config")
 def read_web_push_config():
+    enabled = web_push_enabled()
     return {
-        "enabled": web_push_enabled(),
-        "public_key": web_push_public_key(),
+        "enabled": enabled,
+        "public_key": web_push_public_key() if enabled else None,
     }
 
 
@@ -524,6 +529,8 @@ def create_web_push_subscription(
 ):
     try:
         endpoint = validate_push_endpoint(payload.endpoint).url
+    except PushPolicyUnavailable:
+        raise HTTPException(status_code=503, detail="Configuration Web Push indisponible.") from None
     except InvalidPushEndpoint:
         raise HTTPException(status_code=422, detail="Souscription Web Push invalide.") from None
     apply_rls_context(db, merchant_id=merchant_id)

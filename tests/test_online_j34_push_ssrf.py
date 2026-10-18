@@ -153,7 +153,7 @@ def test_allowlist_fails_closed(monkeypatch, value, environment):
     monkeypatch.setenv("APP_ENV", environment)
     monkeypatch.setenv("WEB_PUSH_ALLOWED_HOST_SUFFIXES", value)
     assert web_push.web_push_enabled() is False
-    with pytest.raises(push_endpoint.InvalidPushEndpoint):
+    with pytest.raises(push_endpoint.PushPolicyUnavailable):
         push_endpoint.validate_push_endpoint(ENDPOINT)
 
 
@@ -189,6 +189,111 @@ def notification(db):
     db.add(row)
     db.commit()
     return row
+
+
+@pytest.mark.parametrize("setting,value", [
+    ("WEB_PUSH_ALLOWED_HOST_SUFFIXES", None),
+    ("WEB_PUSH_ALLOWED_HOST_SUFFIXES", ""),
+    ("WEB_PUSH_ALLOWED_HOST_SUFFIXES", "googleapis.com,"),
+    ("WEB_PUSH_ALLOWED_HOST_SUFFIXES", "*"),
+    ("WEB_PUSH_VAPID_PUBLIC_KEY", None),
+    ("WEB_PUSH_VAPID_PRIVATE_KEY", None),
+    ("WEB_PUSH_VAPID_SUBJECT", None),
+    ("WEB_PUSH_VAPID_SUBJECT", "   "),
+])
+@pytest.mark.parametrize("endpoint", [ENDPOINT, "https://127.0.0.1/private"])
+def test_unavailable_config_preserves_subscriptions_and_in_app(
+    client, db, monkeypatch, setting, value, endpoint,
+):
+    db.add(WebPushSubscription(merchant_id=2, endpoint=endpoint, p256dh="p", auth="a", is_active=True))
+    row = notification(db)
+    if value is None:
+        monkeypatch.delenv(setting, raising=False)
+    else:
+        monkeypatch.setenv(setting, value)
+    validator = Mock(wraps=web_push.validate_push_endpoint)
+    monkeypatch.setattr(web_push, "validate_push_endpoint", validator)
+    sender = Mock()
+    result = web_push.dispatch_web_push_for_notification(db=db, notification=row, sender=sender)
+    assert result == {"attempted": 0, "sent": 0, "failed": 0}
+    validator.assert_not_called()
+    sender.assert_not_called()
+
+    # The real transport also rejects configuration loss before DNS or HTTP.
+    with pytest.raises(push_endpoint.PushPolicyUnavailable):
+        web_push._send({"endpoint": endpoint}, {"body": "test"})
+
+    config = client.get("/online-admin/push/config", headers={"X-Admin-Token": "test-admin"})
+    assert config.status_code == 200
+    assert config.json() == {"enabled": False, "public_key": None}
+
+    db.add(OutboxEvent(
+        event_id="00000000-0000-0000-0000-000000000703", merchant_id=2,
+        aggregate_type="online_order", aggregate_id="43", event_type="notification.requested",
+        event_version=1, payload={"data": {"channel": "in_app", "recipient_role": "merchant", "message": "Order"}},
+        status="pending", retry_count=0,
+    ))
+    db.commit()
+    assert worker.materialize_notification_batch(db=db, merchant_id=2) == {
+        "claimed": 1, "published": 1, "retried": 0, "failed": 0,
+    }
+    db.rollback()
+    assert db.query(WebPushSubscription).one().is_active is True
+    assert db.query(OnlineNotification).count() == 2
+    assert all(item.status == "unread" for item in db.query(OnlineNotification))
+    assert db.query(OutboxEvent).one().status == "published"
+    push_endpoint.socket.getaddrinfo.assert_not_called()
+    socket.socket.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", ["https://10.0.0.1/private", "https://outside.example.test/token"])
+def test_valid_policy_disables_invalid_endpoint_without_network(db, endpoint):
+    db.add(WebPushSubscription(merchant_id=2, endpoint=endpoint, p256dh="p", auth="a", is_active=True))
+    row = notification(db)
+    sender = Mock()
+    result = web_push.dispatch_web_push_for_notification(db=db, notification=row, sender=sender)
+    assert result == {"attempted": 0, "sent": 0, "failed": 1}
+    db.expire_all()
+    assert db.query(WebPushSubscription).one().is_active is False
+    assert db.query(OnlineNotification).one().status == "unread"
+    sender.assert_not_called()
+    push_endpoint.socket.getaddrinfo.assert_not_called()
+    socket.socket.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("stage", ["validation", "transport"])
+def test_policy_loss_during_dispatch_does_not_invalidate_subscription(db, monkeypatch, stage):
+    db.add(WebPushSubscription(merchant_id=2, endpoint=ENDPOINT, p256dh="p", auth="a", is_active=True))
+    row = notification(db)
+    if stage == "validation":
+        monkeypatch.setattr(push_endpoint, "allowed_host_suffixes", Mock(side_effect=push_endpoint.PushPolicyUnavailable))
+    else:
+        def resolve_then_lose_config(*args, **kwargs):
+            monkeypatch.delenv("WEB_PUSH_ALLOWED_HOST_SUFFIXES")
+            return dns_answers("8.8.8.8")
+        monkeypatch.setattr(push_endpoint.socket, "getaddrinfo", Mock(side_effect=resolve_then_lose_config))
+    result = web_push.dispatch_web_push_for_notification(db=db, notification=row)
+    assert result == {"attempted": 0, "sent": 0, "failed": 0}
+    db.expire_all()
+    assert db.query(WebPushSubscription).one().is_active is True
+    assert db.query(OnlineNotification).one().status == "unread"
+    socket.socket.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("allowlist", [None, "googleapis.com,"])
+def test_registration_policy_unavailable_returns_generic_503(client, db, monkeypatch, allowlist):
+    assert subscribe(client).status_code == 201
+    push_endpoint.socket.getaddrinfo.reset_mock()
+    if allowlist is None:
+        monkeypatch.delenv("WEB_PUSH_ALLOWED_HOST_SUFFIXES")
+    else:
+        monkeypatch.setenv("WEB_PUSH_ALLOWED_HOST_SUFFIXES", allowlist)
+    response = subscribe(client)
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Configuration Web Push indisponible."}
+    assert db.query(WebPushSubscription).one().is_active is True
+    push_endpoint.socket.getaddrinfo.assert_not_called()
+    socket.socket.connect.assert_not_called()
 
 
 def test_revalidation_disables_old_subscription_without_send(client, db, monkeypatch):

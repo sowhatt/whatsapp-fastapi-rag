@@ -19,6 +19,11 @@ class InvalidPushEndpoint(ValueError):
         super().__init__("Endpoint Web Push non autorisé.")
 
 
+class PushPolicyUnavailable(RuntimeError):
+    def __init__(self):
+        super().__init__("Configuration Web Push indisponible.")
+
+
 _LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
 _LOCAL_SUFFIXES = ("localhost", "local", "internal", "home.arpa")
 
@@ -43,12 +48,12 @@ def allowed_host_suffixes() -> tuple[str, ...]:
             or "." not in value
             or any(_matches(value, suffix) for suffix in _LOCAL_SUFFIXES)
         ):
-            raise InvalidPushEndpoint()
+            raise PushPolicyUnavailable()
         try:
             ipaddress.ip_address(value)
         except ValueError:
             continue
-        raise InvalidPushEndpoint()
+        raise PushPolicyUnavailable()
     return values
 
 
@@ -83,6 +88,9 @@ class PushEndpoint:
 
 def validate_push_endpoint(endpoint: object) -> PushEndpoint:
     """Resolve all addresses; reject the entire subscription if any is unsafe."""
+    # Configuration failure is not evidence that the subscription is unsafe.
+    # Resolve policy separately from endpoint parsing and DNS error handling.
+    suffixes = allowed_host_suffixes()
     if (
         not isinstance(endpoint, str)
         or not endpoint
@@ -106,7 +114,7 @@ def validate_push_endpoint(endpoint: object) -> PushEndpoint:
             or any(_matches(host, suffix) for suffix in _LOCAL_SUFFIXES)
         ):
             raise InvalidPushEndpoint()
-        if not any(_matches(host, suffix) for suffix in allowed_host_suffixes()):
+        if not any(_matches(host, suffix) for suffix in suffixes):
             raise InvalidPushEndpoint()
         answers = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
         addresses = tuple(dict.fromkeys(answer[4][0] for answer in answers))

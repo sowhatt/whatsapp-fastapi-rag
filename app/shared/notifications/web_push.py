@@ -13,6 +13,7 @@ from .push_model import WebPushSubscription
 from .push_endpoint import (
     InvalidPushEndpoint,
     PinnedPushSession,
+    PushPolicyUnavailable,
     allowed_host_suffixes,
     validate_push_endpoint,
 )
@@ -21,7 +22,7 @@ from .push_endpoint import (
 def web_push_enabled() -> bool:
     try:
         allowed_host_suffixes()
-    except InvalidPushEndpoint:
+    except PushPolicyUnavailable:
         return False
     return bool(
         (os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY") or "").strip()
@@ -36,6 +37,8 @@ def web_push_public_key() -> str | None:
 
 
 def _send(subscription_info: dict, payload: dict) -> Any:
+    if not web_push_enabled():
+        raise PushPolicyUnavailable()
     try:
         from pywebpush import webpush
     except ImportError as exc:
@@ -63,6 +66,9 @@ def dispatch_web_push_for_notification(
 ) -> dict:
     if notification.recipient_role != "merchant":
         return {"attempted": 0, "sent": 0, "failed": 0}
+    # Skip all subscription validation/mutation (and DNS) while config is down.
+    if not web_push_enabled():
+        return {"attempted": 0, "sent": 0, "failed": 0}
     apply_rls_bypass(db, enabled=True)
     subscriptions = (
         db.query(WebPushSubscription)
@@ -87,9 +93,6 @@ def dispatch_web_push_for_notification(
     for subscription in subscriptions:
         try:
             validate_push_endpoint(subscription.endpoint)
-            if not web_push_enabled():
-                continue
-            attempted += 1
             sender(
                 {
                     "endpoint": subscription.endpoint,
@@ -100,12 +103,18 @@ def dispatch_web_push_for_notification(
                 },
                 payload,
             )
+            attempted += 1
             sent += 1
+        except PushPolicyUnavailable:
+            # Also handle policy loss during revalidation/transport preflight.
+            # This is neither a delivery attempt nor an invalid subscription.
+            break
         except InvalidPushEndpoint:
             subscription.is_active = False
             disabled = True
             failed += 1
         except Exception:
+            attempted += 1
             failed += 1
 
     if disabled:
