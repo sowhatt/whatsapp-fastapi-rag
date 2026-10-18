@@ -68,14 +68,26 @@ def _pending_preview(
     result = []
     for row in rows:
         data = (row.payload or {}).get("data") or {}
+        recipient_role = data.get("recipient_role")
+        raw_channel = data.get("channel")
+        effective_channel = raw_channel
+        if raw_channel == "whatsapp":
+            effective_channel = (
+                "in_app" if recipient_role == "merchant" else "whatsapp_handoff"
+            )
         result.append(
             {
                 "id": row.id,
                 "merchant_id": row.merchant_id,
                 "aggregate_id": row.aggregate_id,
-                "recipient_role": data.get("recipient_role"),
+                "recipient_role": recipient_role,
+                "channel": effective_channel,
                 "recipient": _mask_recipient(data.get("recipient")),
-                "recipient_valid": is_valid_whatsapp_recipient(data.get("recipient")),
+                "recipient_valid": (
+                    is_valid_whatsapp_recipient(data.get("recipient"))
+                    if effective_channel == "whatsapp_handoff"
+                    else None
+                ),
                 "template": data.get("template"),
                 "retry_count": row.retry_count,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
