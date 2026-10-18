@@ -469,6 +469,7 @@ def mark_online_notification_read(
         row.status = "read"
         row.read_at = datetime.utcnow()
         db.commit()
+        apply_rls_context(db, merchant_id=merchant_id)
         db.refresh(row)
     return {
         "id": row.id,
