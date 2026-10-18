@@ -134,7 +134,7 @@ def enqueue_order_notifications(
                     "title": title,
                     "message": message,
                     "action_url": (
-                        "/online-admin-ui"
+                        f"/online-admin-ui#order-{order.id}"
                         if recipient_role == "merchant"
                         else None
                     ),
