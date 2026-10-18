@@ -12,6 +12,7 @@ from app.routers.online_admin_web import router as online_admin_web_router
 from app.routers.online_public import router as online_public_router
 from app.routers.online_storefront_web import router as online_storefront_web_router
 from app.security import require_admin_token
+from app.shared.notifications.schema import install_online_notifications_schema
 from app.shared.outbox.schema import install_outbox_schema
 from app.shared.tenancy.rls import install_foundation_rls
 
@@ -24,6 +25,7 @@ def ensure_online_schema() -> None:
     with engine.begin() as connection:
         install_foundation_rls(connection)
         install_outbox_schema(connection)
+        install_online_notifications_schema(connection)
         install_online_schema(connection)
         install_online_cart_schema(connection)
         install_online_order_schema(connection)
