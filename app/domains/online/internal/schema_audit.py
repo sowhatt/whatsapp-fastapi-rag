@@ -113,6 +113,21 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "consumed_at",
         "released_at",
     },
+    "online_notifications": {
+        "id",
+        "source_event_id",
+        "merchant_id",
+        "aggregate_type",
+        "aggregate_id",
+        "recipient_role",
+        "channel",
+        "title",
+        "body",
+        "action_url",
+        "status",
+        "created_at",
+        "read_at",
+    },
     "outbox_events": {
         "id",
         "event_id",
@@ -166,6 +181,9 @@ EXPECTED_INDEXES: dict[str, set[str]] = {
     "stock_reservations": {
         "ix_stock_reservations_product_status_expires",
         "ix_stock_reservations_source",
+    },
+    "online_notifications": {
+        "ix_online_notifications_merchant_status_created_at",
     },
     "outbox_events": {
         "ix_outbox_events_status_created_at",
@@ -246,6 +264,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
     expected = {
         "business_transactions": "business_transactions_tenant_isolation",
         "outbox_events": "outbox_events_tenant_isolation",
+        "online_notifications": "online_notifications_tenant_isolation",
     }
 
     rows = db.execute(
@@ -258,7 +277,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = current_schema()
-              AND c.relname IN ('business_transactions', 'outbox_events')
+              AND c.relname IN ('business_transactions', 'outbox_events', 'online_notifications')
             """
         )
     ).mappings().all()
@@ -278,7 +297,7 @@ def _postgres_rls_audit(*, db: Session) -> dict:
             SELECT tablename, policyname
             FROM pg_policies
             WHERE schemaname = current_schema()
-              AND tablename IN ('business_transactions', 'outbox_events')
+              AND tablename IN ('business_transactions', 'outbox_events', 'online_notifications')
             """
         )
     ).mappings().all()
