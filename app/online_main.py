@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.db.session import engine
 from app.domains.core.internal.stock_schema import install_stock_reservation_schema
@@ -11,6 +12,8 @@ from app.routers.online_admin import router as online_admin_router
 from app.routers.online_admin_web import router as online_admin_web_router
 from app.routers.online_public import router as online_public_router
 from app.routers.online_storefront_web import router as online_storefront_web_router
+from app.routers.merchant_pwa import router as merchant_pwa_router
+from app.routers.merchant_api import router as merchant_api_router
 from app.security import require_admin_token
 from app.shared.notifications.schema import install_online_notifications_schema
 from app.shared.notifications.push_schema import install_web_push_schema
@@ -18,6 +21,22 @@ from app.shared.outbox.schema import install_outbox_schema
 from app.shared.tenancy.rls import install_foundation_rls
 
 app = FastAPI(title="Whatzabi Online")
+
+
+@app.middleware("http")
+async def merchant_private_responses(request, call_next):
+    if not request.url.path.startswith("/merchant-api/"):
+        return await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        response = JSONResponse({"detail": "Service temporairement indisponible."}, status_code=500)
+    if response.status_code == 422:
+        response = JSONResponse({"detail": "Requête invalide."}, status_code=422)
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Vary"] = "Cookie"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 @app.on_event("startup")
 def ensure_online_schema() -> None:
@@ -42,6 +61,8 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(merchant_pwa_router)
+app.include_router(merchant_api_router)
 app.include_router(online_public_router)
 app.include_router(online_storefront_web_router)
 app.include_router(online_admin_web_router)
