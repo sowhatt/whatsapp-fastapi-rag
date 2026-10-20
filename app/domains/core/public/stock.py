@@ -12,6 +12,80 @@ from app.models.product import Product
 DEFAULT_RESERVATION_MINUTES = 10
 
 
+class ReservationSetError(ValueError):
+    """The source no longer owns exactly the requested stock."""
+
+
+def check_reservation_set(
+    *, merchant_id: int, source_type: str, source_id: int,
+    quantities: dict[int, int], db: Session, completed: bool = False,
+    consume: bool = False, extend_minutes: int | None = None,
+) -> None:
+    """Validate every product/quantity under locks; optionally consume or extend.
+
+    Caller first locks its aggregate. Products are locked in ascending ID order,
+    as in checkout/revalidation. Time is sampled AFTER locks are acquired, so
+    waiting for another buyer cannot revive an expired hold. Consumed rows only
+    satisfy a replay of an already completed source, never a new completion.
+    No commit: these changes belong to the caller's atomic transaction.
+    """
+    if not quantities or any(q <= 0 for q in quantities.values()):
+        raise ReservationSetError("La commande ne contient aucun ensemble d'articles valide.")
+    products = (
+        db.query(Product)
+        .filter(Product.merchant_id == merchant_id, Product.id.in_(sorted(quantities)))
+        .order_by(Product.id).populate_existing().with_for_update().all()
+    )
+    if {p.id for p in products} != set(quantities):
+        raise ReservationSetError("Produit introuvable pour la réservation.")
+    rows = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.merchant_id == merchant_id,
+            StockReservation.source_type == source_type,
+            StockReservation.source_id == source_id,
+        )
+        .order_by(StockReservation.id).populate_existing().with_for_update().all()
+    )
+    now = datetime.utcnow()
+    current = [row for row in rows if row.status in {"active", "consumed"}]
+    expected_status = "consumed" if completed else "active"
+    actual: dict[int, int] = {}
+    for row in current:
+        if (
+            row.status != expected_status or row.quantity <= 0
+            or (not completed and row.expires_at <= now)
+        ):
+            raise ReservationSetError(
+                "La réservation de stock a expiré ou son état est incohérent. Revalidez le stock."
+            )
+        actual[row.product_id] = actual.get(row.product_id, 0) + row.quantity
+    if actual != quantities:
+        raise ReservationSetError(
+            "La réservation de stock a expiré ou est incomplète. Revalidez le stock."
+        )
+    if consume and not completed:
+        for row in current:
+            row.status = "consumed"
+            row.consumed_at = now
+    if extend_minutes is not None and not completed:
+        if extend_minutes <= 0:
+            raise ValueError("La durée de réservation doit être positive.")
+        for row in current:
+            row.expires_at = max(row.expires_at, now + timedelta(minutes=extend_minutes))
+
+
+def has_consumed_reservations(
+    *, merchant_id: int, source_type: str, source_id: int, db: Session,
+) -> bool:
+    return db.query(StockReservation.id).filter(
+        StockReservation.merchant_id == merchant_id,
+        StockReservation.source_type == source_type,
+        StockReservation.source_id == source_id,
+        StockReservation.status == "consumed",
+    ).first() is not None
+
+
 def reserved_quantity(
     *,
     merchant_id: int,
@@ -187,7 +261,7 @@ def expire_reservations(
     if source_id is not None:
         query = query.filter(StockReservation.source_id == source_id)
 
-    rows = query.all()
+    rows = query.populate_existing().with_for_update().all()
     for row in rows:
         row.status = "expired"
         row.released_at = now

@@ -6,7 +6,10 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
-from app.domains.core.public.stock import active_reservation_count, consume_reservations, expire_reservations, extend_reservations, release_reservations, reserve_stock
+from app.domains.core.public.stock import (
+    ReservationSetError, check_reservation_set, expire_reservations,
+    has_consumed_reservations, release_reservations, reserve_stock,
+)
 from app.domains.online.internal.order_models import OnlineOrder, OnlineOrderItem
 from app.domains.online.internal.notification_service import enqueue_order_notifications
 from app.domains.online.internal.reservation_policy import confirmed_order_reservation_minutes, order_reservation_minutes
@@ -26,6 +29,19 @@ _ALLOWED_TRANSITIONS = {
     "completed": set(),
     "cancelled": set(),
 }
+
+
+def _order_quantities(order: OnlineOrder, *, db: Session) -> dict[int, int]:
+    items = db.query(OnlineOrderItem).filter(
+        OnlineOrderItem.merchant_id == order.merchant_id,
+        OnlineOrderItem.order_id == order.id,
+    ).all()
+    quantities: dict[int, int] = {}
+    for item in items:
+        if item.quantity <= 0:
+            raise ValueError("Quantité de commande invalide.")
+        quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+    return quantities
 
 
 def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
@@ -268,17 +284,22 @@ def update_order_status(
             f"Transition de commande invalide : {order.status} -> {target}"
         )
 
-    if not replay and target in {"confirmed", "completed"}:
-        if active_reservation_count(
-            merchant_id=merchant_id,
-            source_type="online_order",
-            source_id=order.id,
-            db=db,
-        ) == 0:
-            action = "confirmer" if target == "confirmed" else "terminer"
-            raise ValueError(
-                f"La réservation de stock a expiré. Revalidez avant de {action} la commande."
+    if target in {"confirmed", "completed"}:
+        quantities = _order_quantities(order, db=db)
+        try:
+            check_reservation_set(
+                merchant_id=merchant_id, source_type="online_order",
+                source_id=order.id, quantities=quantities, db=db,
+                completed=replay and target == "completed",
+                consume=not replay and target == "completed",
+                extend_minutes=(
+                    confirmed_order_reservation_minutes()
+                    if not replay and target == "confirmed" else None
+                ),
             )
+        except ReservationSetError as exc:
+            action = "confirmer" if target == "confirmed" else "terminer"
+            raise ValueError(f"{exc} Revalidez avant de {action} la commande.") from exc
 
     core_status = {
         "pending": TransactionStatus.PENDING,
@@ -321,13 +342,6 @@ def update_order_status(
             ),
         )
     elif target == "confirmed":
-        extend_reservations(
-            merchant_id=merchant_id,
-            source_type="online_order",
-            source_id=order.id,
-            db=db,
-            minutes=confirmed_order_reservation_minutes(),
-        )
         enqueue_domain_event(
             db,
             DomainEvent(
@@ -371,12 +385,6 @@ def update_order_status(
             db=db,
         )
     elif target == "completed":
-        consume_reservations(
-            merchant_id=merchant_id,
-            source_type="online_order",
-            source_id=order.id,
-            db=db,
-        )
         enqueue_domain_event(
             db,
             DomainEvent(
@@ -457,13 +465,20 @@ def revalidate_order_reservations(
     if not items:
         raise ValueError("La commande ne contient aucun article.")
 
-    active_count = active_reservation_count(
-        merchant_id=merchant_id,
-        source_type="online_order",
-        source_id=order.id,
-        db=db,
-    )
-    if active_count == len(items):
+    if has_consumed_reservations(
+        merchant_id=merchant_id, source_type="online_order", source_id=order.id, db=db,
+    ):
+        raise ValueError("Le stock de cette commande est déjà consommé.")
+    try:
+        check_reservation_set(
+            merchant_id=merchant_id, source_type="online_order", source_id=order.id,
+            quantities=_order_quantities(order, db=db), db=db,
+        )
+    except ReservationSetError:
+        pass
+    else:
+        db.commit()
+        apply_rls_context(db, merchant_id=merchant_id)
         return _order_payload(order, db=db)
 
     # Clean expired rows and release any partial active set before rebuilding
@@ -474,13 +489,12 @@ def revalidate_order_reservations(
         source_id=order.id,
         db=db,
     )
-    if active_count:
-        release_reservations(
-            merchant_id=merchant_id,
-            source_type="online_order",
-            source_id=order.id,
-            db=db,
-        )
+    release_reservations(
+        merchant_id=merchant_id,
+        source_type="online_order",
+        source_id=order.id,
+        db=db,
+    )
 
     try:
         for item in items:
