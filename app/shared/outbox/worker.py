@@ -46,11 +46,13 @@ def recover_stale_processing(
     db: Session,
     stale_minutes: int = 10,
     max_retries: int = 3,
+    merchant_id: int | None = None,
+    event_id: int | None = None,
 ) -> int:
     apply_rls_bypass(db, enabled=True)
     now = datetime.utcnow()
     stale_before = now - timedelta(minutes=max(1, stale_minutes))
-    rows = (
+    query = (
         db.query(OutboxEvent)
         .filter(
             OutboxEvent.event_type == NotificationEvents.REQUESTED,
@@ -58,8 +60,12 @@ def recover_stale_processing(
             OutboxEvent.processing_started_at.isnot(None),
             OutboxEvent.processing_started_at <= stale_before,
         )
-        .all()
     )
+    if merchant_id is not None:
+        query = query.filter(OutboxEvent.merchant_id == merchant_id)
+    if event_id is not None:
+        query = query.filter(OutboxEvent.id == event_id)
+    rows = query.populate_existing().with_for_update(skip_locked=True).all()
 
     for row in rows:
         row.retry_count += 1

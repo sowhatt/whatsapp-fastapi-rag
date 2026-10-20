@@ -99,11 +99,15 @@ def _pending_preview(
 def _run_once(args: argparse.Namespace) -> int:
     db = SessionLocal()
     try:
-        recovered = recover_stale_processing(
-            db=db,
-            stale_minutes=max(1, args.recover_stale_minutes),
-            max_retries=max(1, args.max_retries),
-        )
+        recovered = 0
+        if args.send:
+            recovered = recover_stale_processing(
+                db=db,
+                stale_minutes=max(1, args.recover_stale_minutes),
+                max_retries=max(1, args.max_retries),
+                merchant_id=args.merchant_id,
+                event_id=args.event_id,
+            )
         pending_before = _pending_count(
             db,
             merchant_id=args.merchant_id,
