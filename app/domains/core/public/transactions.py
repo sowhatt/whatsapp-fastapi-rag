@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from sqlalchemy.orm import Session
+
+from app.domains.core.internal.transaction_model import BusinessTransaction
+
 
 class TransactionKind(StrEnum):
     COMMERCE = "commerce"
@@ -45,3 +49,40 @@ class TransactionRef:
     discount_amount: int
     total_amount: int
     payment_status: PaymentStatus
+
+
+def update_commerce_transaction(
+    *, db: Session, merchant_id: int, transaction_id: int,
+    status: TransactionStatus | None = None, payment_status: str | None = None,
+) -> None:
+    """Update the Core root within the caller's tenant-bound transaction.
+
+    Never commit here: order, stock and outbox must commit or roll back together.
+    Preparation and readiness are Online details of a confirmed Core transaction.
+    Pending roots from pre-J4.2 orders may catch up; terminal roots cannot regress.
+    """
+    transaction = (
+        db.query(BusinessTransaction)
+        .filter(
+            BusinessTransaction.id == transaction_id,
+            BusinessTransaction.merchant_id == merchant_id,
+            BusinessTransaction.kind == TransactionKind.COMMERCE.value,
+        )
+        .populate_existing()
+        .with_for_update()
+        .one_or_none()
+    )
+    if transaction is None:
+        raise ValueError("Transaction Core introuvable.")
+    if status is not None:
+        allowed = {
+            "pending": {"pending", "confirmed", "completed", "cancelled"},
+            "confirmed": {"confirmed", "completed", "cancelled"},
+            "completed": {"completed"},
+            "cancelled": {"cancelled"},
+        }
+        if status.value not in allowed.get(transaction.status, set()):
+            raise ValueError("État de transaction Core incompatible.")
+        transaction.status = status.value
+    if payment_status is not None:
+        transaction.payment_status = payment_status

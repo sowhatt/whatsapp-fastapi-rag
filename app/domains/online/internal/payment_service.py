@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.domains.core.internal.transaction_model import BusinessTransaction
+from app.domains.core.public.transactions import update_commerce_transaction
+from app.domains.online.internal.mutation import tenant_mutation
+from app.shared.tenancy.rls import apply_rls_context
 from app.domains.online.internal.order_models import OnlineOrder
 from app.domains.online.internal.payment_policy import OnlinePaymentStatus
 from app.shared.events import DomainEvent, PaymentEvents
@@ -29,6 +31,7 @@ _ALLOWED_PAYMENT_TRANSITIONS = {
 }
 
 
+@tenant_mutation
 def update_payment_status(
     *,
     merchant_id: int,
@@ -42,6 +45,7 @@ def update_payment_status(
             OnlineOrder.id == order_id,
             OnlineOrder.merchant_id == merchant_id,
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -59,6 +63,15 @@ def update_payment_status(
         raise ValueError("Le retry Mobile Money est réservé aux commandes Mobile Money.")
 
     allowed = _ALLOWED_PAYMENT_TRANSITIONS.get(order.payment_status, set())
+    if target == order.payment_status:
+        update_commerce_transaction(
+            db=db, merchant_id=merchant_id, transaction_id=order.transaction_id,
+            payment_status=target,
+        )
+        db.commit()
+        apply_rls_context(db, merchant_id=merchant_id)
+        db.refresh(order)
+        return order
     if target not in allowed:
         raise ValueError(
             f"Transition de paiement invalide : {order.payment_status} -> {target}"
@@ -66,16 +79,10 @@ def update_payment_status(
 
     order.payment_status = target
 
-    transaction = (
-        db.query(BusinessTransaction)
-        .filter(
-            BusinessTransaction.id == order.transaction_id,
-            BusinessTransaction.merchant_id == merchant_id,
-        )
-        .first()
+    update_commerce_transaction(
+        db=db, merchant_id=merchant_id, transaction_id=order.transaction_id,
+        payment_status=target,
     )
-    if transaction is not None:
-        transaction.payment_status = target
 
     if target == OnlinePaymentStatus.PAID.value:
         enqueue_domain_event(
@@ -97,5 +104,6 @@ def update_payment_status(
         )
 
     db.commit()
+    apply_rls_context(db, merchant_id=merchant_id)
     db.refresh(order)
     return order

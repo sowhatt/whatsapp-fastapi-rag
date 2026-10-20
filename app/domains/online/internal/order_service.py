@@ -13,6 +13,9 @@ from app.domains.online.internal.reservation_policy import confirmed_order_reser
 from app.shared.events import CommerceEvents, DeliveryEvents, DomainEvent
 from app.shared.outbox import enqueue_domain_event
 from app.models.product import Product
+from app.domains.core.public.transactions import TransactionStatus, update_commerce_transaction
+from app.domains.online.internal.mutation import tenant_mutation
+from app.shared.tenancy.rls import apply_rls_context
 
 
 _ALLOWED_TRANSITIONS = {
@@ -236,6 +239,7 @@ def get_order(*, merchant_id: int, order_id: int, db: Session) -> dict | None:
     return _order_payload(order, db=db)
 
 
+@tenant_mutation
 def update_order_status(
     *,
     merchant_id: int,
@@ -249,6 +253,7 @@ def update_order_status(
             OnlineOrder.id == order_id,
             OnlineOrder.merchant_id == merchant_id,
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -257,12 +262,13 @@ def update_order_status(
 
     target = status.strip().lower()
     allowed = _ALLOWED_TRANSITIONS.get(order.status)
-    if allowed is None or target not in allowed:
+    replay = target == order.status
+    if allowed is None or (not replay and target not in allowed):
         raise ValueError(
             f"Transition de commande invalide : {order.status} -> {target}"
         )
 
-    if target in {"confirmed", "completed"}:
+    if not replay and target in {"confirmed", "completed"}:
         if active_reservation_count(
             merchant_id=merchant_id,
             source_type="online_order",
@@ -273,6 +279,23 @@ def update_order_status(
             raise ValueError(
                 f"La réservation de stock a expiré. Revalidez avant de {action} la commande."
             )
+
+    core_status = {
+        "pending": TransactionStatus.PENDING,
+        "confirmed": TransactionStatus.CONFIRMED,
+        "preparing": TransactionStatus.CONFIRMED,
+        "ready": TransactionStatus.CONFIRMED,
+        "completed": TransactionStatus.COMPLETED,
+        "cancelled": TransactionStatus.CANCELLED,
+    }[target]
+    update_commerce_transaction(
+        db=db, merchant_id=merchant_id, transaction_id=order.transaction_id,
+        status=core_status,
+    )
+    if replay:
+        db.commit()
+        apply_rls_context(db, merchant_id=merchant_id)
+        return _order_payload(order, db=db)
 
     order.status = target
 
@@ -376,11 +399,13 @@ def update_order_status(
         )
 
     db.commit()
+    apply_rls_context(db, merchant_id=merchant_id)
     db.refresh(order)
     return _order_payload(order, db=db)
 
 
 
+@tenant_mutation
 def cleanup_expired_order_reservations(
     *,
     merchant_id: int,
@@ -396,6 +421,7 @@ def cleanup_expired_order_reservations(
 
 
 
+@tenant_mutation
 def revalidate_order_reservations(
     *,
     merchant_id: int,
@@ -408,6 +434,7 @@ def revalidate_order_reservations(
             OnlineOrder.id == order_id,
             OnlineOrder.merchant_id == merchant_id,
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -481,10 +508,12 @@ def revalidate_order_reservations(
             )
 
         db.commit()
+        apply_rls_context(db, merchant_id=merchant_id)
         db.refresh(order)
         return _order_payload(order, db=db)
     except Exception:
         db.rollback()
+        apply_rls_context(db, merchant_id=merchant_id)
         # Persist expiry cleanup even when the new reservation set cannot be rebuilt.
         expire_reservations(
             merchant_id=merchant_id,
