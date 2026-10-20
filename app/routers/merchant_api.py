@@ -2,7 +2,6 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.exc import IntegrityError
 
 from app.merchant.identity import MerchantContext, merchant_context
 from app.merchant.verticals import configuration
@@ -11,7 +10,9 @@ from app.domains.online.internal.order_models import OnlineOrder
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.web_push import web_push_enabled, web_push_public_key
 from app.shared.notifications.worker import whatsapp_handoff_url
-from app.routers.online_admin import create_web_push_subscription, WebPushSubscriptionPayload
+from app.shared.notifications.subscription_service import (
+    SubscriptionError, parse_subscription_payload, save_subscription,
+)
 
 router = APIRouter(prefix="/merchant-api", tags=["merchant"])
 STATUS = {"pending": "À confirmer", "confirmed": "Confirmée", "preparing": "En préparation",
@@ -140,16 +141,10 @@ async def subscribe(request: Request, ctx: MerchantContext = Depends(merchant_co
     if not web_push_enabled():
         raise HTTPException(503, "Les notifications Push ne sont pas disponibles.")
     try:
-        raw = await request.json()
-        if set(raw.get("keys", {})) != {"p256dh", "auth"}:
-            raise ValueError()
-        payload = WebPushSubscriptionPayload.model_validate(raw)
-    except (ValueError, TypeError):
+        payload = parse_subscription_payload(await request.json())
+        save_subscription(merchant_id=ctx.identity.merchant_id, payload=payload, db=ctx.db)
+    except ValueError:
         raise HTTPException(422, "Souscription Web Push invalide.") from None
-    try:
-        # Reuse the existing validator and persistence path without modifying J3.4C.
-        create_web_push_subscription(merchant_id=ctx.identity.merchant_id, payload=payload, db=ctx.db)
-    except IntegrityError:
-        ctx.db.rollback()
-        raise HTTPException(409, "Souscription indisponible pour cette session.") from None
+    except SubscriptionError as exc:
+        raise HTTPException(exc.status_code, exc.message) from None
     return {"active": True}

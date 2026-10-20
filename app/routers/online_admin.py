@@ -16,10 +16,11 @@ from app.domains.online.internal.pilot_readiness import pilot_readiness
 from app.domains.online.internal.schema_audit import audit_online_schema
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.push_model import WebPushSubscription
-from app.shared.notifications.push_endpoint import (
-    InvalidPushEndpoint,
-    PushPolicyUnavailable,
-    validate_push_endpoint,
+from app.shared.notifications.subscription_service import (
+    SubscriptionError,
+    WebPushSubscriptionPayload,
+    parse_subscription_payload,
+    save_subscription,
 )
 from app.shared.notifications.web_push import web_push_enabled, web_push_public_key
 from app.shared.tenancy.rls import apply_rls_context
@@ -80,21 +81,13 @@ class OnlineProductImagePayload(BaseModel):
     is_primary: bool = True
 
 
-class WebPushKeysPayload(BaseModel):
-    p256dh: str = Field(min_length=10, max_length=255)
-    auth: str = Field(min_length=5, max_length=255)
-
-
-class WebPushSubscriptionPayload(BaseModel):
-    endpoint: str
-    keys: WebPushKeysPayload
-
-
 async def _web_push_subscription_payload(request: Request) -> WebPushSubscriptionPayload:
     # Pydantic's standard HTTP errors echo `input`, including userinfo in an
     # invalid endpoint or a subscription auth secret. Sanitize the whole body.
     try:
-        return WebPushSubscriptionPayload.model_validate(await request.json())
+        return parse_subscription_payload(await request.json())
+    except SubscriptionError as exc:
+        raise HTTPException(exc.status_code, exc.message) from None
     except ValueError:
         raise HTTPException(status_code=422, detail="Souscription Web Push invalide.") from None
 
@@ -528,37 +521,9 @@ def create_web_push_subscription(
     db: Session = Depends(get_db),
 ):
     try:
-        endpoint = validate_push_endpoint(payload.endpoint).url
-    except PushPolicyUnavailable:
-        raise HTTPException(status_code=503, detail="Configuration Web Push indisponible.") from None
-    except InvalidPushEndpoint:
-        raise HTTPException(status_code=422, detail="Souscription Web Push invalide.") from None
-    apply_rls_context(db, merchant_id=merchant_id)
-    row = (
-        db.query(WebPushSubscription)
-        .filter(
-            WebPushSubscription.merchant_id == merchant_id,
-            WebPushSubscription.endpoint == endpoint,
-        )
-        .first()
-    )
-    if row is None:
-        row = WebPushSubscription(
-            merchant_id=merchant_id,
-            endpoint=endpoint,
-            p256dh=payload.keys.p256dh,
-            auth=payload.keys.auth,
-            is_active=True,
-        )
-        db.add(row)
-    else:
-        row.p256dh = payload.keys.p256dh
-        row.auth = payload.keys.auth
-        row.is_active = True
-    db.commit()
-    apply_rls_context(db, merchant_id=merchant_id)
-    db.refresh(row)
-    return {"id": row.id, "active": row.is_active}
+        return save_subscription(merchant_id=merchant_id, payload=payload, db=db)
+    except SubscriptionError as exc:
+        raise HTTPException(exc.status_code, exc.message) from None
 
 
 @router.delete("/merchants/{merchant_id}/push-subscriptions")
