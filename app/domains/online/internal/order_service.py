@@ -489,54 +489,50 @@ def revalidate_order_reservations(
         source_id=order.id,
         db=db,
     )
+    # Runtime sessions disable autoflush. Persist expiry within this transaction
+    # before the SQL predicate in release_reservations selects active rows.
+    # This preserves expired history instead of relabelling it as released.
+    db.flush()
     release_reservations(
         merchant_id=merchant_id,
         source_type="online_order",
         source_id=order.id,
         db=db,
     )
+    # Availability must see these releases before rebuilding the set. A flush
+    # retains the order/product/reservation locks; it is NOT a commit.
+    db.flush()
 
-    try:
-        for item in items:
-            product = (
-                db.query(Product)
-                .filter(
-                    Product.id == item.product_id,
-                    Product.merchant_id == merchant_id,
-                )
-                .first()
+    for item in items:
+        product = (
+            db.query(Product)
+            .filter(
+                Product.id == item.product_id,
+                Product.merchant_id == merchant_id,
             )
-            if product is None:
-                raise ValueError(
-                    f"Produit introuvable pour la commande : {item.product_name_snapshot}."
-                )
-
-            reserve_stock(
-                merchant_id=merchant_id,
-                product_id=item.product_id,
-                quantity=item.quantity,
-                source_type="online_order",
-                source_id=order.id,
-                db=db,
-                minutes=order_reservation_minutes(),
+            .first()
+        )
+        if product is None:
+            raise ValueError(
+                f"Produit introuvable pour la commande : {item.product_name_snapshot}."
             )
 
-        db.commit()
-        apply_rls_context(db, merchant_id=merchant_id)
-        db.refresh(order)
-        return _order_payload(order, db=db)
-    except Exception:
-        db.rollback()
-        apply_rls_context(db, merchant_id=merchant_id)
-        # Persist expiry cleanup even when the new reservation set cannot be rebuilt.
-        expire_reservations(
+        reserve_stock(
             merchant_id=merchant_id,
+            product_id=item.product_id,
+            quantity=item.quantity,
             source_type="online_order",
             source_id=order.id,
             db=db,
+            minutes=order_reservation_minutes(),
         )
-        db.commit()
-        raise
+
+    # tenant_mutation rolls back expiry, release and rebuild together on failure.
+    # Do not start a second cleanup transaction in the exception path.
+    db.commit()
+    apply_rls_context(db, merchant_id=merchant_id)
+    db.refresh(order)
+    return _order_payload(order, db=db)
 
 
 

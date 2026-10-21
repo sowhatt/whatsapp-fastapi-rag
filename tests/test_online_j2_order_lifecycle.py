@@ -22,7 +22,7 @@ from app.domains.online.internal.catalog_service import publish_product
 def db():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
+    session = sessionmaker(bind=engine, autoflush=False)()
     yield session
     session.close()
 
@@ -177,6 +177,7 @@ def test_revalidation_rolls_back_when_stock_is_insufficient(db):
     product = db.query(Product).filter(Product.id == product_id).one()
     product.stock = 0
     db.commit()
+    before = tuple(getattr(reservation, col.name) for col in StockReservation.__table__.columns)
 
     with pytest.raises(ValueError, match="Stock disponible insuffisant"):
         revalidate_order_reservations(
@@ -185,15 +186,11 @@ def test_revalidation_rolls_back_when_stock_is_insufficient(db):
             db=db,
         )
 
-    active = (
-        db.query(StockReservation)
-        .filter(
-            StockReservation.source_id == order.id,
-            StockReservation.status == "active",
-        )
-        .count()
-    )
-    assert active == 0
+    db.commit()
+    db.refresh(reservation)
+    assert db.query(StockReservation).count() == 1
+    assert tuple(getattr(reservation, col.name) for col in StockReservation.__table__.columns) == before
+    assert reservation.expires_at < datetime.utcnow()
 
 
 

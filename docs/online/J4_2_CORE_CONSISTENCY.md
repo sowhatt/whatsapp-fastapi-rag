@@ -101,8 +101,9 @@ administratifs :
 
 Les filtres SQL explicites sur le marchand sont maintenus. Aucun nouveau
 bypass n'est introduit ; les commandes imposent `app.rls_bypass=false`.
-Le contexte est réappliqué après commit pour les lectures de réponse, et
-après rollback avant le nettoyage d'expiration existant de la revalidation.
+Le contexte est réappliqué après commit pour les lectures de réponse.
+Depuis J4.2.1, un échec de revalidation annule toute la transaction : aucun
+nettoyage n'est commité dans une seconde transaction après rollback.
 
 Les politiques RLS installées sur `business_transactions` et `outbox_events`
 ne sont pas changées. Les tables Online encore protégées uniquement par
@@ -129,7 +130,7 @@ Le contexte privilégié préexistant du worker global est conservé, sans
 extension aux commandes métier. Le dry-run peut établir ce contexte SQL
 transactionnel pour lire ; il ne modifie aucune donnée persistante.
 
-## Tests et résultats exécutés
+## Tests et résultats exécutés à la livraison initiale J4.2
 
 Virtualenv utilisé :
 `/Users/rkjo/Projects/whatsapp-fastapi-rag/.venv/bin/python`.
@@ -246,3 +247,86 @@ Fichiers applicatifs concernés : `app/domains/core/public/transactions.py`,
 `app/domains/online/internal/payment_service.py`, `app/online_outbox_worker.py`,
 `app/shared/outbox/worker.py`. Les quatre fichiers de tests ci-dessus et
 ce document complètent la livraison.
+
+## Hotfix J4.2.1 — autoflush=False (21 octobre 2026)
+
+Base vérifiée : `f019a466380e89f83810ae8700077b6d89ed2815`, sur la même
+branche `feat/whatzabi-online-j4-2-core-consistency`, sans modification locale.
+La revue de cette base avait ensuite donné NO-GO : les résultats J4.2
+ci-dessus utilisaient des fixtures avec autoflush activé, contrairement au runtime.
+
+### Cause et correction
+
+`app/db/session.py` configure `autoflush=False`. Sans flush explicite, le
+calcul SQL de disponibilité voit les anciennes réservations encore actives,
+même après leur libération en mémoire. Un stock suffisant est alors refusé.
+
+La commande de revalidation effectue désormais deux flush dans sa transaction :
+
+1. Après expiration, avant la sélection SQL des lignes encore actives à libérer.
+   Les anciennes lignes expirées conservent ainsi leur état d'historique.
+2. Après libération, avant le calcul de disponibilité et la reconstruction.
+
+Les flush synchronisent l'unité de travail de la commande, sans commit ni
+nouvelle transaction. Le contexte tenant, les verrous et leur ordre sont
+conservés. Aucun changement du moteur stock, de `Product.stock`, du runtime
+SQLAlchemy, des politiques RLS, d'Auth V2 ou des workflows Shop.
+
+Le bloc de secours qui commitait un nettoyage d'expiration après échec est
+supprimé. `tenant_mutation` annule maintenant expiration, libération et
+reconstruction ensemble. Une réservation dont la date était déjà dépassée
+peut donc retrouver son statut enregistré `active` après rollback ; sa date
+d'expiration demeure dépassée et elle ne réduit pas la disponibilité.
+Le nettoyage explicite reste disponible dans sa commande dédiée.
+
+Un seul commit valide une revalidation réussie ; zéro commit sur échec avant
+validation. Les lectures de réponse restent postérieures au commit : une erreur
+survenant alors ne peut pas annuler une transaction déjà validée.
+
+### Régressions et fidélité au runtime
+
+Fixtures J4.2 SQLite, J2 lifecycle et PostgreSQL alignées sur `autoflush=False`.
+Les scénarios nouveaux sont partagés entre SQLite et PostgreSQL non propriétaire :
+
+- publication et checkout réels de deux articles, stock initial 2 et 3,
+  quantités commandées 2 et 3 ; seule la première réservation expire ;
+- revalidation puis confirmation réussies, aucune modification du stock physique,
+  aucune unité supplémentaire réservable, aucun doublon au rejeu ;
+- injection d'échec après libération flushée, puis après insertion et flush
+  de la première nouvelle réservation ;
+- insuffisance réelle du deuxième article après reconstruction partielle ;
+- comparaison complète avant/après échec des produits, commande, lignes,
+  réservations, racine Core et outbox, même après un commit fautif de l'appelant ;
+- invariance des données d'un second marchand pour le succès et les échecs.
+
+Les assertions héritées qui attendaient le nettoyage commité après échec sont
+remplacées par des assertions de restauration de l'état initial. Cela correspond
+au nouveau contrat explicite de rollback intégral.
+
+### Exécutions du hotfix
+
+Même virtualenv et mêmes options pytest que ci-dessus. Les suites avec PostgreSQL
+utilisent `WHATZABI_J42_PG_PORT=61493` pour un conteneur local jetable, sans base
+partagée. Le nom du conteneur de ce hotfix est `whatzabi-j421-pg16` ; la procédure
+de reproduction est celle décrite plus haut, avec son port dynamique.
+
+| Exécution réelle | Résultat |
+|---|---|
+| Baseline ciblée, avant changement des fixtures et du code | 45 passed, 1784 warnings, 1.53 s |
+| Huit nouvelles régressions avant correction du code, SQLite + PostgreSQL | 8 failed, 9 deselected, 580 warnings, 2.01 s |
+| Ciblés après correction, dont les 13 cas PostgreSQL | 62 passed, 3035 warnings, 6.82 s |
+| Online + fondations, PostgreSQL activé | 389 passed, 4298 warnings, 9.92 s |
+| Dépôt complet, PostgreSQL activé | 875 passed, 4458 warnings, 13.22 s |
+| Compilation `python -m compileall -q app` | exit 0 |
+| `git diff --check` | exit 0 |
+
+Les tests PostgreSQL ne sont pas skipped dans ces validations après correction.
+Les cas concurrents J4.2 et RLS A/B sont réexécutés avec autoflush désactivé.
+Les avertissements sont comptabilisés sans prétendre les avoir corrigés.
+Serveur vérifié : PostgreSQL 16.15. Zéro schéma et zéro rôle de test résiduels
+après les suites ; conteneur arrêté et supprimé avec `--rm`.
+
+GO technique pour fusion dans J4.1B sur le périmètre J4.2/J4.2.1, après ce
+correctif du blocage de revue. Livraison locale uniquement : aucun push,
+merge, déploiement ou migration staging. Les autres limites listées ci-dessus
+(Auth V2, données historiques, couverture RLS des tables) restent inchangées.

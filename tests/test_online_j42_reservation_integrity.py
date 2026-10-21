@@ -16,7 +16,7 @@ from app.shared.outbox.model import OutboxEvent
 from tests.test_online_j42_core_consistency import advance, db  # noqa: F401
 
 
-def multi_order(db, suffix="a"):
+def multi_order(db, suffix="a", stocks=(10, 10)):
     """Real two-product publication/cart/checkout, also used by PostgreSQL tests."""
     merchant = Merchant(whatsapp_number=f"j42-{suffix}", shop_name=f"J42 {suffix}")
     db.add(merchant)
@@ -24,7 +24,7 @@ def multi_order(db, suffix="a"):
     store = get_or_create_store(merchant_id=merchant.id, db=db)
     products = [
         Product(merchant_id=merchant.id, name=f"Article {i}", unit="Pièce",
-                price=1000, purchase_price=500, stock=10, initial_stock=10, threshold=0)
+                price=1000, purchase_price=500, stock=stocks[i], initial_stock=stocks[i], threshold=0)
         for i in range(2)
     ]
     db.add_all(products)

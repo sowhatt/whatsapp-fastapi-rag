@@ -71,7 +71,7 @@ def pg():
                 "SELECT tableowner <> current_user FROM pg_tables "
                 "WHERE schemaname=current_schema() AND tablename='business_transactions'"
             ))
-        yield sessionmaker(bind=runtime), owner, runtime
+        yield sessionmaker(bind=runtime, autoflush=False), owner, runtime
     finally:
         if runtime is not None:
             runtime.dispose()
@@ -309,7 +309,9 @@ def test_revalidation_and_cleanup_use_tenant_context_after_rollback(pg):
         db.commit()
         with pytest.raises(ValueError, match="Stock disponible insuffisant"):
             revalidate_order_reservations(db=db, merchant_id=a[0], order_id=a[1])
-        assert {r.status for r in db.query(StockReservation).filter_by(merchant_id=a[0])} == {"expired"}
+        # Failure is a full rollback: expiry cleanup is now a separate command.
+        assert {r.status for r in db.query(StockReservation).filter_by(merchant_id=a[0])} == {"active"}
+        assert all(r.expires_at < datetime.utcnow() for r in db.query(StockReservation).filter_by(merchant_id=a[0]))
         assert {r.status for r in db.query(StockReservation).filter_by(merchant_id=b[0])} == {"active"}
         assert cleanup_expired_order_reservations(db=db, merchant_id=b[0]) == 2
         for product in db.query(Product).filter_by(merchant_id=a[0]):
@@ -319,3 +321,18 @@ def test_revalidation_and_cleanup_use_tenant_context_after_rollback(pg):
         advance(db, a[0], a[1], "confirmed")
         assert db.query(BusinessTransaction).one().status == "confirmed"
         assert {r.status for r in db.query(StockReservation).filter_by(merchant_id=b[0])} == {"expired"}
+
+
+def test_j421_partial_expiry_with_exact_stock(pg):
+    from tests.test_online_j421_revalidation import assert_success
+    sessions, _, _ = pg
+    with sessions() as db:
+        assert_success(db)
+
+
+@pytest.mark.parametrize("phase", ["after_release", "after_new_reservation", "insufficient_stock"])
+def test_j421_rollback_after_flush(pg, monkeypatch, phase):
+    from tests.test_online_j421_revalidation import assert_failure_rollback
+    sessions, _, _ = pg
+    with sessions() as db:
+        assert_failure_rollback(db, monkeypatch, phase)

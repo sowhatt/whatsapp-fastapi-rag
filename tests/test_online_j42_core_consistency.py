@@ -15,7 +15,7 @@ from tests.test_online_j2_order_lifecycle import _order
 def db():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    with sessionmaker(bind=engine)() as session:
+    with sessionmaker(bind=engine, autoflush=False)() as session:
         yield session
     engine.dispose()
 
