@@ -1,0 +1,21 @@
+{
+  "code_commit": "f8256fe669d78ac83921b2301b03da0e4086e65d",
+  "versions": {
+    "python": "3.12.13",
+    "pytest": "9.1.1",
+    "sqlalchemy": "2.0.51",
+    "psycopg": "3.3.4",
+    "psycopg2": "2.9.13"
+  },
+  "backup_restore": {
+    "j43a_backup_bytes": "206687",
+    "j43a_backup_sha256": "20ba6c47629019de0b12919f88d681cf450517f145403835e2e787aee599d4fe",
+    "j43a_restore_physical_instance_distinct": "True"
+  },
+  "artifacts_sha256": {
+    "git_inventory.json": "8dacfb0f882dcb8cdf5a14854d19f535884fd2f48ca70ac2ca708e783f51e59a",
+    "pytest.txt": "210e02092d062d0847d730115c35636c4a516e49f5d9372251fc5a50d37a479d",
+    "pytest.xml": "fa5ba4d4edbacde327a5dc7997b6fb0d5bf30a9e96ebf7c202f8f17cd8e19413",
+    "run.json": "89a0f4b04e78cbeb68f95f0ccc933cdb40b9f1eefa33588666ee1e3c75cc6e17"
+  }
+}

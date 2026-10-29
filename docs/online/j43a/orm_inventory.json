@@ -1,0 +1,3272 @@
+[
+  {
+    "schema": "public",
+    "table": "business_transactions",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_business_transactions_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_business_transactions_merchant_created_at",
+        "columns": [
+          "merchant_id",
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_business_transactions_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_business_transactions_merchant_kind_status",
+        "columns": [
+          "merchant_id",
+          "kind",
+          "status"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_business_transactions_shop_id",
+        "columns": [
+          "shop_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "shop_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "kind",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "currency",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "subtotal_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "tax_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "fee_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "discount_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "total_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "payment_status",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "categories",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_categories_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_categories_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_categories_name",
+        "columns": [
+          "name"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "name"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "currencies",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [],
+    "indexes": [
+      {
+        "name": "ix_currencies_code",
+        "columns": [
+          "code"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_currencies_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "symbol",
+        "type": "VARCHAR(20)",
+        "nullable": true
+      },
+      {
+        "name": "decimals",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "customers",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_customers_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_customers_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_customers_name",
+        "columns": [
+          "name"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "phone",
+        "type": "VARCHAR(30)",
+        "nullable": true
+      },
+      {
+        "name": "debt",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "exchange_rates",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "base_currency_id",
+        "target": "currencies.id",
+        "nullable": false
+      },
+      {
+        "column": "quote_currency_id",
+        "target": "currencies.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_exchange_rates_base_currency_id",
+        "columns": [
+          "base_currency_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_exchange_rates_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_exchange_rates_quote_currency_id",
+        "columns": [
+          "quote_currency_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "base_currency_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "quote_currency_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "rate",
+        "type": "NUMERIC(20, 8)",
+        "nullable": false
+      },
+      {
+        "name": "source",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "retrieved_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "valid_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "financial_entries",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_financial_entries_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_financial_entries_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "entry_type",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "channel",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "label",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "category",
+        "type": "VARCHAR(30)",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      {
+        "name": "origin_kind",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "reference_type",
+        "type": "VARCHAR(50)",
+        "nullable": true
+      },
+      {
+        "name": "reference_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "merchants",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [],
+    "indexes": [
+      {
+        "name": "ix_merchants_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_merchants_subscription_status",
+        "columns": [
+          "subscription_status"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_merchants_whatsapp_number",
+        "columns": [
+          "whatsapp_number"
+        ],
+        "unique": true
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "whatsapp_number",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "shop_name",
+        "type": "VARCHAR(150)",
+        "nullable": true
+      },
+      {
+        "name": "subscription_status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "subscription_ends_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "online_cart_items",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "cart_id",
+        "target": "online_carts.id",
+        "nullable": false
+      },
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_cart_items_cart_id",
+        "columns": [
+          "cart_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_cart_items_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_cart_items_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_cart_items_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "cart_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_price_snapshot",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "cart_id",
+        "product_id"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "online_carts",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "store_id",
+        "target": "online_stores.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_carts_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_carts_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_carts_merchant_status",
+        "columns": [
+          "merchant_id",
+          "status"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_carts_store_id",
+        "columns": [
+          "store_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_carts_token",
+        "columns": [
+          "token"
+        ],
+        "unique": true
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "store_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "token",
+        "type": "VARCHAR(36)",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "currency",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "expires_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "online_notifications",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [],
+    "indexes": [
+      {
+        "name": "ix_online_notifications_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_notifications_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_notifications_merchant_status_created_at",
+        "columns": [
+          "merchant_id",
+          "status",
+          "created_at"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "source_event_id",
+        "type": "VARCHAR(36)",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "aggregate_type",
+        "type": "VARCHAR(80)",
+        "nullable": false
+      },
+      {
+        "name": "aggregate_id",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "recipient_role",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "channel",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "title",
+        "type": "VARCHAR(180)",
+        "nullable": false
+      },
+      {
+        "name": "body",
+        "type": "TEXT",
+        "nullable": false
+      },
+      {
+        "name": "action_url",
+        "type": "VARCHAR(2000)",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "read_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "source_event_id"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "online_order_items",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "order_id",
+        "target": "online_orders.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_order_items_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_order_items_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_order_items_order_id",
+        "columns": [
+          "order_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_order_items_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "order_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_name_snapshot",
+        "type": "VARCHAR(150)",
+        "nullable": false
+      },
+      {
+        "name": "unit_snapshot",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_price_snapshot",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "line_total",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "online_orders",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "cart_id",
+        "target": "online_carts.id",
+        "nullable": false
+      },
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "store_id",
+        "target": "online_stores.id",
+        "nullable": false
+      },
+      {
+        "column": "transaction_id",
+        "target": "business_transactions.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_orders_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_orders_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_orders_merchant_status",
+        "columns": [
+          "merchant_id",
+          "status"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_orders_reference",
+        "columns": [
+          "reference"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_online_orders_store_created_at",
+        "columns": [
+          "store_id",
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_orders_store_id",
+        "columns": [
+          "store_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_orders_transaction_id",
+        "columns": [
+          "transaction_id"
+        ],
+        "unique": true
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "store_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "transaction_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "cart_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "reference",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "customer_name",
+        "type": "VARCHAR(150)",
+        "nullable": false
+      },
+      {
+        "name": "customer_phone",
+        "type": "VARCHAR(40)",
+        "nullable": false
+      },
+      {
+        "name": "delivery_mode",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "delivery_address",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "notes",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "currency",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "subtotal_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "delivery_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "total_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "payment_method",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "payment_status",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "cart_id"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "online_product_images",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_product_images_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_product_images_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_product_images_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "image_url",
+        "type": "VARCHAR(1000)",
+        "nullable": false
+      },
+      {
+        "name": "storage_key",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "is_primary",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "position",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "online_product_publications",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_product_publications_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_product_publications_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_product_publications_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_product_publications_seo_slug",
+        "columns": [
+          "seo_slug"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "is_published",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "show_price",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "show_stock",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "seo_slug",
+        "type": "VARCHAR(120)",
+        "nullable": true
+      },
+      {
+        "name": "seo_title",
+        "type": "VARCHAR(180)",
+        "nullable": true
+      },
+      {
+        "name": "seo_description",
+        "type": "VARCHAR(320)",
+        "nullable": true
+      },
+      {
+        "name": "display_order",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "published_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "product_id"
+      ],
+      [
+        "merchant_id",
+        "seo_slug"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "online_stores",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_online_stores_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_online_stores_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_online_stores_slug",
+        "columns": [
+          "slug"
+        ],
+        "unique": true
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "slug",
+        "type": "VARCHAR(80)",
+        "nullable": false
+      },
+      {
+        "name": "display_name",
+        "type": "VARCHAR(150)",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "logo_url",
+        "type": "VARCHAR(1000)",
+        "nullable": true
+      },
+      {
+        "name": "banner_url",
+        "type": "VARCHAR(1000)",
+        "nullable": true
+      },
+      {
+        "name": "primary_color",
+        "type": "VARCHAR(20)",
+        "nullable": true
+      },
+      {
+        "name": "accent_color",
+        "type": "VARCHAR(20)",
+        "nullable": true
+      },
+      {
+        "name": "business_type",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "capabilities_json",
+        "type": "TEXT",
+        "nullable": true
+      },
+      {
+        "name": "template",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "currency",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "country_code",
+        "type": "VARCHAR(2)",
+        "nullable": false
+      },
+      {
+        "name": "seo_title",
+        "type": "VARCHAR(180)",
+        "nullable": true
+      },
+      {
+        "name": "seo_description",
+        "type": "VARCHAR(320)",
+        "nullable": true
+      },
+      {
+        "name": "canonical_domain",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      {
+        "name": "address",
+        "type": "VARCHAR(300)",
+        "nullable": true
+      },
+      {
+        "name": "city",
+        "type": "VARCHAR(120)",
+        "nullable": true
+      },
+      {
+        "name": "postal_code",
+        "type": "VARCHAR(30)",
+        "nullable": true
+      },
+      {
+        "name": "latitude",
+        "type": "VARCHAR(40)",
+        "nullable": true
+      },
+      {
+        "name": "longitude",
+        "type": "VARCHAR(40)",
+        "nullable": true
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "open_tab_items",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": true
+      },
+      {
+        "column": "tab_id",
+        "target": "open_tabs.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_open_tab_items_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_open_tab_items_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_open_tab_items_tab_id",
+        "columns": [
+          "tab_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "tab_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "product_name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "unit",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_price",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "line_total",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "open_tabs",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_open_tabs_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_open_tabs_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_open_tabs_table_name",
+        "columns": [
+          "table_name"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "table_name",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "total_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "closed_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "outbox_events",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [],
+    "indexes": [
+      {
+        "name": "ix_outbox_events_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_outbox_events_merchant_created_at",
+        "columns": [
+          "merchant_id",
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_outbox_events_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_outbox_events_status_created_at",
+        "columns": [
+          "status",
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_outbox_events_status_next_attempt_at",
+        "columns": [
+          "status",
+          "next_attempt_at"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "event_id",
+        "type": "VARCHAR(36)",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "aggregate_type",
+        "type": "VARCHAR(80)",
+        "nullable": false
+      },
+      {
+        "name": "aggregate_id",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "event_type",
+        "type": "VARCHAR(120)",
+        "nullable": false
+      },
+      {
+        "name": "event_version",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "payload",
+        "type": "JSON",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "retry_count",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "last_error",
+        "type": "TEXT",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "published_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "next_attempt_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "processing_started_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "provider_message_id",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "event_id"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "payment_allocations",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "payment_id",
+        "target": "payments.id",
+        "nullable": false
+      },
+      {
+        "column": "sale_item_id",
+        "target": "sale_items.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_payment_allocations_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "payment_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "sale_item_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "allocated_amount",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "payments",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "customer_id",
+        "target": "customers.id",
+        "nullable": true
+      },
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      },
+      {
+        "column": "sale_id",
+        "target": "sales.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_payments_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_payments_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "sale_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "customer_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "channel",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "reference",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "paid_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "product_images",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_product_images_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_product_images_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_product_images_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "image_url",
+        "type": "VARCHAR(1000)",
+        "nullable": false
+      },
+      {
+        "name": "storage_key",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "is_primary",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "position",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "product_publications",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_product_publications_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_product_publications_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_product_publications_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "is_published",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "show_price",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "show_stock",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(500)",
+        "nullable": true
+      },
+      {
+        "name": "display_order",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "published_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "product_id"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "products",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "category_id",
+        "target": "categories.id",
+        "nullable": true
+      },
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_products_category_id",
+        "columns": [
+          "category_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_products_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_products_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_products_name",
+        "columns": [
+          "name"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_products_product_type",
+        "columns": [
+          "product_type"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "category_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "product_type",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "brand",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "variant",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "packaging",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "unit",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "stock",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "initial_stock",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "purchase_price",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "price",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "threshold",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "name"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "purchase_items",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      },
+      {
+        "column": "purchase_id",
+        "target": "purchases.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_purchase_items_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "purchase_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_cost",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "line_total",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "paid_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "remaining_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "purchases",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      },
+      {
+        "column": "supplier_id",
+        "target": "suppliers.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_purchases_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_purchases_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "supplier_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "total_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "paid_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "remaining_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "due_date",
+        "type": "DATE",
+        "nullable": true
+      },
+      {
+        "name": "original_amount",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "original_currency",
+        "type": "VARCHAR(3)",
+        "nullable": false
+      },
+      {
+        "name": "exchange_rate",
+        "type": "NUMERIC(20, 8)",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "cancelled_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "cancellation_reason",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "sale_items",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      },
+      {
+        "column": "sale_id",
+        "target": "sales.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_sale_items_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "sale_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_price",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "unit_cost_snapshot",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "line_total",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "paid_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "remaining_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "sales",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "customer_id",
+        "target": "customers.id",
+        "nullable": true
+      },
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_sales_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_sales_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "sale_number",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "customer_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "total_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "paid_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "remaining_amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "due_date",
+        "type": "DATE",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "sale_number"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "stock_movements",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_stock_movements_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stock_movements_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "movement_type",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "reference_type",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "reference_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "note",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "stock_reservations",
+    "owner_target": "Core",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": false
+      },
+      {
+        "column": "product_id",
+        "target": "products.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_stock_reservations_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stock_reservations_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stock_reservations_product_id",
+        "columns": [
+          "product_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stock_reservations_product_status_expires",
+        "columns": [
+          "product_id",
+          "status",
+          "expires_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stock_reservations_source",
+        "columns": [
+          "source_type",
+          "source_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "product_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "quantity",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "source_type",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "source_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(20)",
+        "nullable": false
+      },
+      {
+        "name": "expires_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "consumed_at",
+        "type": "DATETIME",
+        "nullable": true
+      },
+      {
+        "name": "released_at",
+        "type": "DATETIME",
+        "nullable": true
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "supplier_payment_allocations",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "purchase_item_id",
+        "target": "purchase_items.id",
+        "nullable": false
+      },
+      {
+        "column": "supplier_payment_id",
+        "target": "supplier_payments.id",
+        "nullable": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_supplier_payment_allocations_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "supplier_payment_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "purchase_item_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "allocated_amount",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": null,
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "supplier_payments",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      },
+      {
+        "column": "purchase_id",
+        "target": "purchases.id",
+        "nullable": false
+      },
+      {
+        "column": "supplier_id",
+        "target": "suppliers.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_supplier_payments_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_supplier_payments_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "purchase_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "supplier_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "amount",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "channel",
+        "type": "VARCHAR(30)",
+        "nullable": false
+      },
+      {
+        "name": "reference",
+        "type": "VARCHAR(100)",
+        "nullable": true
+      },
+      {
+        "name": "paid_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "suppliers",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_suppliers_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_suppliers_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_suppliers_name",
+        "columns": [
+          "name"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(100)",
+        "nullable": false
+      },
+      {
+        "name": "phone",
+        "type": "VARCHAR(30)",
+        "nullable": true
+      },
+      {
+        "name": "debt",
+        "type": "INTEGER",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "merchant_id",
+        "name"
+      ]
+    ]
+  },
+  {
+    "schema": "public",
+    "table": "transaction_events",
+    "owner_target": "Shop",
+    "pk": [
+      "id"
+    ],
+    "fk": [
+      {
+        "column": "merchant_id",
+        "target": "merchants.id",
+        "nullable": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_transaction_events_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_transaction_events_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "entity_type",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "entity_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "event_type",
+        "type": "VARCHAR(50)",
+        "nullable": false
+      },
+      {
+        "name": "amount_signed",
+        "type": "INTEGER",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": []
+  },
+  {
+    "schema": "public",
+    "table": "web_push_subscriptions",
+    "owner_target": "Online",
+    "pk": [
+      "id"
+    ],
+    "fk": [],
+    "indexes": [
+      {
+        "name": "ix_web_push_subscriptions_id",
+        "columns": [
+          "id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_web_push_subscriptions_merchant_active",
+        "columns": [
+          "merchant_id",
+          "is_active"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_web_push_subscriptions_merchant_id",
+        "columns": [
+          "merchant_id"
+        ],
+        "unique": false
+      }
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "merchant_id",
+        "type": "INTEGER",
+        "nullable": false
+      },
+      {
+        "name": "endpoint",
+        "type": "TEXT",
+        "nullable": false
+      },
+      {
+        "name": "p256dh",
+        "type": "VARCHAR(255)",
+        "nullable": false
+      },
+      {
+        "name": "auth",
+        "type": "VARCHAR(255)",
+        "nullable": false
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false
+      }
+    ],
+    "tenant": "merchant_id",
+    "unique": [
+      [
+        "endpoint"
+      ]
+    ]
+  }
+]
