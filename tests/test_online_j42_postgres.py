@@ -1,4 +1,4 @@
-"""Opt-in isolated PostgreSQL 16 integration tests.
+"""Isolated PostgreSQL 16 or mandatory J4.3A PostgreSQL 18.6 integration tests.
 
 Only localhost / whatzabi_j42_test is accepted; no DATABASE_URL or deployment
 credentials are consumed. See docs/online/J4_2_CORE_CONSISTENCY.md.
@@ -36,7 +36,10 @@ from tests.test_online_j42_reservation_integrity import multi_order
 
 @pytest.fixture()
 def pg():
-    port = os.getenv("WHATZABI_J42_PG_PORT")
+    j43a = os.getenv("WHATZABI_J43A_REQUIRED") == "1"
+    port = os.getenv("WHATZABI_J43A_PG_PORT") if j43a else os.getenv("WHATZABI_J42_PG_PORT")
+    if j43a and not port:
+        pytest.fail("J4.3A requires its disposable PostgreSQL 18.6 instance")
     if not port:
         pytest.skip("Isolated PostgreSQL 16 not requested (WHATZABI_J42_PG_PORT).")
     assert port.isdigit() and 1024 < int(port) < 65536
@@ -48,7 +51,8 @@ def pg():
     runtime = None
     try:
         with admin.begin() as connection:
-            assert 160000 <= int(connection.scalar(text("SHOW server_version_num"))) < 170000
+            version = int(connection.scalar(text("SHOW server_version_num")))
+            assert version == 180006 if j43a else 160000 <= version < 170000
             connection.execute(text(f"CREATE SCHEMA {schema}"))
             connection.execute(text(
                 f"CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
