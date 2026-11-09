@@ -1,0 +1,7 @@
+Command: node tests/merchant_j41_sw_test.cjs
+Exit code: 0
+Service worker: cache, API exclusion, offline and Push deep links PASS
+
+Command: git diff --check
+Exit code: 0
+No output.

@@ -1,0 +1,41 @@
+{
+  "created_at": "2026-11-09T19:52:10.540250+00:00",
+  "base_commit": "56b866a974363a7298f9f494aa10aa665b8dc51a",
+  "versions": {
+    "python": "3.12.13",
+    "pytest": "9.1.1",
+    "sqlalchemy": "2.0.51",
+    "psycopg": "3.3.4",
+    "psycopg2": "2.9.13"
+  },
+  "backup_restore": {
+    "j43a_backup_bytes": "218345",
+    "j43a_backup_sha256": "2aaad6d69f3d7a850214fd6be1c0a2ad65baff69538ee9d5b282608a8f422a66",
+    "j43a_restore_physical_instance_distinct": "True"
+  },
+  "scope_checks": {
+    "app_and_procfile_unchanged": true,
+    "migrations_001_004_unchanged": true,
+    "only_requested_paths_changed": true
+  },
+  "artifacts_sha256": {
+    "git_inventory.json": "1965c1385cce0fbd214225e4042346d97e27554f372d7bdebc9163fce6ef7304",
+    "non_regression.txt": "3cff2343ea5207083522b5de8a34c5ce791e490e26b66266f83e1fb17a7f95f0",
+    "pytest.txt": "8e70ac7deed0d51a88ac06e2cdcb54610b3e8eec1498f538dd4360acf871b36f",
+    "pytest.xml": "346cf79d005ef7167c20aa2ebbb69058599b8e30b5cbc9725e9f45af3a7d3559",
+    "run.json": "70ce2f5fa453224a8a5a3629720760213aaf8cfd37db4a16c5bc0f4c52ec836e"
+  },
+  "validated_files_sha256": {
+    "docs/online/j43a/REPORT.md": "5df77a2cc2f1724f2bb44e190d064f11fef9d90a1ac67a4cf9403cb24dff83ce",
+    "docs/online/j43a/SECURITY_AND_RUNBOOK.md": "839682f1b564d3f8fc597a90b550b6b41b0615aecdc4f1c7c2584e0362824fda",
+    "docs/online/j43a/TABLE_MATRIX.md": "c6a016001ba94c4e0caeb088115d8fb89d2ae22d6efd3ce40a036d98445bf0f8",
+    "docs/online/j43a1/REPORT.md": "2aba309f8ca6ea78e6cacc9373e3daa8ac866f0e591ded09dd89a8c1721d25cd",
+    "docs/online/j43a1/STARTUP_SEPARATION.md": "6d58ed0669469ed49e3afb114d56e01d69b3e4af4e5627aa60ceb570a398ba5e",
+    "migrations/j43a_lab/005_inbox_retention.sql": "b95e90406e325e1e41174052028b3197577a84fd8f1eeb76aec7fdc73e2d757a",
+    "migrations/j43a_lab/README.md": "fc830a51e2af94fac7d8a6c398431d22880b258135710b80279fc29ee792de38",
+    "scripts/j43a/lab.py": "b9e5a9c612ebe2dc95afd24cc34646256fe43281a403316b1f6de559660764b3",
+    "scripts/j43a/reconcile_readonly.sql": "4548c6223355d5c1951bfdf28b2b2d48ff791fc20fab7a6809eec5ecd50a3156",
+    "scripts/j43a/verify_readonly.sql": "1578b103948d388fe863856ea00d144b5dace1d20e2a0d4c82855d420a9e4158",
+    "tests/test_online_j43a_postgres.py": "8dad0d521e6bf958aad94fbcb3760e202fe84c4d56b15553a67f45f4b0dd57c3"
+  }
+}

@@ -1,5 +1,7 @@
 # J4.3A — Rapport de livraison locale et verdict
 
+Rapport historique conservé. Les corrections de sécurité et la nouvelle recette sont documentées dans [J4.3A.1](../j43a1/REPORT.md).
+
 **Fondations locales livrées et vérifiées. NO-GO pour une séparation/bascule J4.3B.**
 L'extraction physique et la réécriture des transactions sont arrêtées à la frontière de l'ADR, conformément à la consigne. Aucun blocage n'a été contourné en augmentant les droits ou en désactivant RLS.
 

@@ -121,7 +121,7 @@ Les objets externes `shop_inventories`, `product_barcodes` et `product_reference
 | Table | Domaine préparatoire | PK / FK | RLS / droits | Migration / synchronisation |
 | --- | --- | --- | --- | --- |
 | command_receipts | Core | (merchant_id,source,idempotency_key) ; merchant→merchants | R ; C SIU | 002 ; commande, empreinte, résultat et effet dans transaction locale ; pas d'expiration automatique du reçu |
-| inbox_receipts | Online (une inbox par consommateur/autorité à terme) | (merchant_id,consumer,event_id) ; merchant→merchants | R ; O/W SIU | 002 ; déduplication atomique avec effet local ; pas de publication distante ici |
+| inbox_receipts | Online (une inbox par consommateur/autorité à terme) | (merchant_id,consumer,event_id) ; merchant→merchants | R ; O/W S + I identité/empreinte uniquement ; maintenance SD tenant + âge >2160 h | 002 + 005 ; déduplication atomique avec effet local ; horodatage serveur, pas de mutation runtime ni publication distante |
 | schema_migrations | Infrastructure locale | version ; sha256 | aucun runtime ; propriétaire/migrateur seulement | journal, checksums obligatoires, transaction et verrou advisory |
 
 ## Écritures croisées identifiées

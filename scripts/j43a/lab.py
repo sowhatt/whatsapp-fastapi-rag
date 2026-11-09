@@ -16,7 +16,8 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "postgres:18.6@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4"
 LABEL = "com.whatzabi.j43a"
-ROLES = ("j43a_owner", "j43a_migrator", "j43a_core_runtime", "j43a_online_runtime", "j43a_worker")
+ROLES = ("j43a_owner", "j43a_migrator", "j43a_core_runtime", "j43a_online_runtime", "j43a_worker",
+         "j43a_inbox_maintenance")
 DB = "whatzabi_j43a_lab"
 
 
@@ -146,6 +147,16 @@ class Lab:
 
 
 def snapshot(connection):
+    """Own one read-only MVCC snapshot; sequence comparisons require idle writers."""
+    from psycopg.pq import TransactionStatus
+    if connection.info.transaction_status != TransactionStatus.IDLE:
+        raise RuntimeError("Snapshot requires an idle connection")
+    with connection.transaction():
+        connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        return _snapshot(connection)
+
+
+def _snapshot(connection):
     """Exact synthetic data + sequence/constraint/policy/ACL comparisons, no secrets."""
     from psycopg import sql
     tables = [r[0] for r in connection.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")]
@@ -156,9 +167,10 @@ def snapshot(connection):
     queries = {
         "sequences": "SELECT sequencename,start_value,min_value,max_value,increment_by,cycle,cache_size,last_value FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename",
         "constraints": "SELECT conrelid::regclass::text,conname,pg_get_constraintdef(oid),convalidated FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY 1,2",
-        "policies": "SELECT tablename,policyname,roles,cmd,qual,with_check FROM pg_policies WHERE schemaname='public' ORDER BY 1,2",
+        "policies": "SELECT tablename,policyname,permissive,roles,cmd,qual,with_check FROM pg_policies WHERE schemaname='public' ORDER BY 1,2",
         "tables": "SELECT relname,pg_get_userbyid(relowner),relrowsecurity,relforcerowsecurity,COALESCE(relacl,acldefault(CASE relkind WHEN 'S' THEN 's'::\"char\" ELSE 'r'::\"char\" END,relowner))::text FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','S') ORDER BY 1",
         "column_acl": "SELECT c.relname,a.attname,a.attacl::text FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid WHERE c.relnamespace='public'::regnamespace AND a.attacl IS NOT NULL ORDER BY 1,2",
+        "columns": "SELECT c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_get_expr(d.adbin,d.adrelid) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE c.relnamespace='public'::regnamespace AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped ORDER BY 1,2",
         "indexes": "SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' ORDER BY 1,2",
         "effective_acl": "SELECT r.rolname,c.relname,has_table_privilege(r.oid,c.oid,'SELECT'),has_table_privilege(r.oid,c.oid,'INSERT'),has_table_privilege(r.oid,c.oid,'UPDATE'),has_table_privilege(r.oid,c.oid,'DELETE'),has_table_privilege(r.oid,c.oid,'TRUNCATE') FROM pg_roles r CROSS JOIN pg_class c WHERE r.rolname LIKE 'j43a_%' AND c.relnamespace='public'::regnamespace AND c.relkind='r' ORDER BY 1,2",
         "roles": "SELECT rolname,rolsuper,rolbypassrls,rolcanlogin,rolcreatedb,rolcreaterole,rolreplication,rolinherit FROM pg_roles WHERE rolname LIKE 'j43a_%' ORDER BY 1",

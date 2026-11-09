@@ -1,7 +1,7 @@
 -- Legacy co-located schema only; authorised tenant context required.
 -- Counts are not globally exhaustive when RLS hides other tenants.
 -- No repair, payment capture, stock decrement, or event publication.
-BEGIN READ ONLY;
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT count(*) AS divergent_core_status
 FROM online_orders o JOIN business_transactions t ON t.id=o.transaction_id
