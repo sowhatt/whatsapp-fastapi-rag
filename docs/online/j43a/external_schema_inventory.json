@@ -1,0 +1,958 @@
+{
+  "reference": "bcdecabb484b6e72bdb99672b278c405217f2162",
+  "method": "Read-only AST of committed models; no import, no credentials, no database. Uncommitted Auth work excluded.",
+  "models": [
+    {
+      "table": "activation_invitations",
+      "source": "app/models/activation_invitation.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "admin_users",
+      "source": "app/models/admin_user.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [],
+      "tenant_columns": []
+    },
+    {
+      "table": "categories",
+      "source": "app/models/category.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "currencies",
+      "source": "app/models/currency.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [],
+      "tenant_columns": []
+    },
+    {
+      "table": "customers",
+      "source": "app/models/customer.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "exchange_rates",
+      "source": "app/models/exchange_rate.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "base_currency_id",
+          "target": "currencies.id"
+        },
+        {
+          "column": "quote_currency_id",
+          "target": "currencies.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "financial_entries",
+      "source": "app/models/financial_entry.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "merchant_auth_attempts",
+      "source": "app/models/merchant_auth_attempt.py",
+      "pk": [
+        "merchant_id",
+        "user_id",
+        "purpose"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "merchant_auth_devices",
+      "source": "app/models/merchant_auth_device.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "merchant_auth_sessions",
+      "source": "app/models/merchant_auth_session.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id",
+        "shop_id"
+      ]
+    },
+    {
+      "table": "merchant_passkey_challenges",
+      "source": "app/models/merchant_passkey.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id",
+        "shop_id"
+      ]
+    },
+    {
+      "table": "merchant_passkey_rate_limits",
+      "source": "app/models/merchant_passkey.py",
+      "pk": [
+        "bucket"
+      ],
+      "fk": [],
+      "tenant_columns": []
+    },
+    {
+      "table": "merchant_passkey_users",
+      "source": "app/models/merchant_passkey.py",
+      "pk": [
+        "user_id"
+      ],
+      "fk": [
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        },
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "user_id",
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "merchant_passkeys",
+      "source": "app/models/merchant_passkey.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "merchant_pin_credentials",
+      "source": "app/models/merchant_pin_credential.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "merchant_users",
+      "source": "app/models/merchant_user.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "merchants",
+      "source": "app/models/merchant.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [],
+      "tenant_columns": []
+    },
+    {
+      "table": "open_tab_items",
+      "source": "app/models/open_tab.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "tab_id",
+          "target": "open_tabs.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "open_tabs",
+      "source": "app/models/open_tab.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "payment_allocations",
+      "source": "app/models/payment_allocation.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "payment_id",
+          "target": "payments.id"
+        },
+        {
+          "column": "sale_item_id",
+          "target": "sale_items.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "payments",
+      "source": "app/models/payment.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "sale_id",
+          "target": "sales.id"
+        },
+        {
+          "column": "customer_id",
+          "target": "customers.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "product_barcodes",
+      "source": "app/models/product_barcode.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "product_images",
+      "source": "app/models/product_image.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "product_publications",
+      "source": "app/models/product_publication.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "product_references",
+      "source": "app/models/product_reference.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [],
+      "tenant_columns": []
+    },
+    {
+      "table": "products",
+      "source": "app/models/product.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "category_id",
+          "target": "categories.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "purchase_items",
+      "source": "app/models/purchase_item.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "purchase_id",
+          "target": "purchases.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "purchases",
+      "source": "app/models/purchase.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "supplier_id",
+          "target": "suppliers.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "sale_items",
+      "source": "app/models/sale_item.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "sale_id",
+          "target": "sales.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "sale_photo_imports",
+      "source": "app/models/sale_photo_import.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        },
+        {
+          "column": "sale_id",
+          "target": "sales.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "shop_id"
+      ]
+    },
+    {
+      "table": "sales",
+      "source": "app/models/sale.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "customer_id",
+          "target": "customers.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "security_assignments",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "request_id",
+          "target": "security_requests.id"
+        },
+        {
+          "column": "admin_id",
+          "target": "admin_users.id"
+        },
+        {
+          "column": "assigned_by",
+          "target": "admin_users.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "security_audit",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        },
+        {
+          "column": "admin_id",
+          "target": "admin_users.id"
+        },
+        {
+          "column": "request_id",
+          "target": "security_requests.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "security_mandates",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "admin_id",
+          "target": "admin_users.id"
+        },
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "security_notifications",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "request_id",
+          "target": "security_requests.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "security_requests",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "security_reviews",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "request_id",
+          "target": "security_requests.id"
+        },
+        {
+          "column": "admin_id",
+          "target": "admin_users.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "security_subjects",
+      "source": "app/models/security_review.py",
+      "pk": [
+        "user_id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "user_id",
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "shop_inventories",
+      "source": "app/models/shop_inventory.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "shop_id"
+      ]
+    },
+    {
+      "table": "shop_operations",
+      "source": "app/models/shop_operation.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "shop_id",
+        "user_id"
+      ]
+    },
+    {
+      "table": "shops",
+      "source": "app/models/shop.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "stock_movements",
+      "source": "app/models/stock_movement.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "product_id",
+          "target": "products.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "supplier_payment_allocations",
+      "source": "app/models/supplier_payment_allocation.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "supplier_payment_id",
+          "target": "supplier_payments.id"
+        },
+        {
+          "column": "purchase_item_id",
+          "target": "purchase_items.id"
+        }
+      ],
+      "tenant_columns": []
+    },
+    {
+      "table": "supplier_payments",
+      "source": "app/models/supplier_payment.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "purchase_id",
+          "target": "purchases.id"
+        },
+        {
+          "column": "supplier_id",
+          "target": "suppliers.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "suppliers",
+      "source": "app/models/supplier.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "transaction_events",
+      "source": "app/models/transaction_event.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id"
+      ]
+    },
+    {
+      "table": "user_phones",
+      "source": "app/models/user_phone.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "merchant_id",
+          "target": "merchants.id"
+        },
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        }
+      ],
+      "tenant_columns": [
+        "merchant_id",
+        "user_id",
+        "shop_id"
+      ]
+    },
+    {
+      "table": "user_shop_memberships",
+      "source": "app/models/user_shop_membership.py",
+      "pk": [
+        "id"
+      ],
+      "fk": [
+        {
+          "column": "user_id",
+          "target": "merchant_users.id"
+        },
+        {
+          "column": "shop_id",
+          "target": "shops.id"
+        }
+      ],
+      "tenant_columns": [
+        "user_id",
+        "shop_id"
+      ]
+    }
+  ],
+  "sql_tables": {
+    "merchant_auth_schema_versions": [
+      "migrations/001_s1_5_pin_enrollment.sql"
+    ],
+    "merchant_auth_devices": [
+      "migrations/001_s1_5_pin_enrollment.sql"
+    ],
+    "merchant_pin_credentials": [
+      "migrations/001_s1_5_pin_enrollment.sql"
+    ],
+    "merchant_auth_sessions": [
+      "migrations/001_s1_5_pin_enrollment.sql"
+    ],
+    "merchant_auth_attempts": [
+      "migrations/001_s1_5_pin_enrollment.sql"
+    ],
+    "merchant_passkey_users": [
+      "migrations/002_s1_6_webauthn.sql"
+    ],
+    "merchant_passkeys": [
+      "migrations/002_s1_6_webauthn.sql"
+    ],
+    "merchant_passkey_challenges": [
+      "migrations/002_s1_6_webauthn.sql"
+    ],
+    "merchant_passkey_rate_limits": [
+      "migrations/002_s1_6_webauthn.sql"
+    ],
+    "security_requests": [
+      "migrations/003_auth_v21_security_review.sql"
+    ],
+    "security_reviews": [
+      "migrations/003_auth_v21_security_review.sql"
+    ],
+    "security_audit": [
+      "migrations/003_auth_v21_security_review.sql"
+    ],
+    "security_mandates": [
+      "migrations/004_s1_11_security_authority.sql"
+    ],
+    "security_subjects": [
+      "migrations/004_s1_11_security_authority.sql"
+    ],
+    "security_assignments": [
+      "migrations/004_s1_11_security_authority.sql"
+    ],
+    "security_notifications": [
+      "migrations/004_s1_11_security_authority.sql"
+    ]
+  }
+}
