@@ -1,0 +1,12 @@
+{
+  "url": "https://github.com/sowhatt/whatsapp-fastapi-rag/pull/8",
+  "number": 8,
+  "state": "open",
+  "draft": true,
+  "merged": false,
+  "mergeable": true,
+  "base": "feat/whatzabi-online-j4-1-auth-v2-adapter",
+  "base_sha": "e34ea2f0d9c5f3270129e4b163e373f701f84520",
+  "head": "feat/whatzabi-online-j4-3a-db-isolation",
+  "head_sha": "d1e5dfa45d9678f792b199e68444347c7a79b6b5"
+}

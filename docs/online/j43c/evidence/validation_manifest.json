@@ -1,0 +1,39 @@
+{
+  "implementation_commit": "5f4f16c74022cff0d2e8cb96ed2029f8c3bf00d7",
+  "base_commit": "d1e5dfa45d9678f792b199e68444347c7a79b6b5",
+  "tested_source_matches_commit": {
+    "scripts/j43c/__init__.py": true,
+    "scripts/j43c/client.sql": true,
+    "scripts/j43c/contracts.py": true,
+    "scripts/j43c/core.py": true,
+    "scripts/j43c/core.sql": true,
+    "scripts/j43c/lab.py": true,
+    "scripts/j43c/orchestrator.py": true,
+    "scripts/j43c/run.py": true,
+    "scripts/j43c/security.py": true,
+    "scripts/j43c/test_distributed.py": true,
+    "scripts/j43c/transport.py": true
+  },
+  "artifacts_sha256": {
+    "docs/online/j43c/ADR-002-STOCK-AUTHORITY.md": "d1d9255ca6083ce4f8f3bedc0795375941fe8ceae3ac754369085e959e449268",
+    "docs/online/j43c/CONTRACTS-V2.md": "cdfbe855e960f380ff0b2387778f4b649e0f11448978ede4b8f277ea1d031c25",
+    "docs/online/j43c/ORCHESTRATION.md": "21e3330bc6272651bc1d86d3c0a6c398a9da32aad2c65bc88ab0aea363b4d334",
+    "docs/online/j43c/PR8-REVIEW.md": "144e79d848f74f2cdbee7a33fabea5013dcb07cefef81a8703830c73b73604ff",
+    "docs/online/j43c/REPORT.md": "614fc7f240bdd5e5178d956f95b6fc52a42d904382d6aa74b24427811f16ffb5",
+    "docs/online/j43c/WRITERS-AND-OFFLINE.md": "f23a5a52ec980668864e98fbe8170e685964462af71515425412c286eee2fcb1",
+    "docs/online/j43c/contracts-v2.schema.json": "9ad99d73e373faaff5efcb87d5fbf136a9303b85527cc505dd9eb0f4de11b572",
+    "docs/online/j43c/evidence/concurrency_after.json": "aa915e5279cac8602c3c5c6df3f645e9b562f3ac4f7424264b2dee435fed4b4a",
+    "docs/online/j43c/evidence/concurrency_before.json": "30e230890abc33426026dd3541bb3a2d18478c87ea3186b25a4576fed3fc5e4f",
+    "docs/online/j43c/evidence/lab/pytest.txt": "69c113937c6fd1451a46319022e657e261668abccc2d79e0814bb1360324c88c",
+    "docs/online/j43c/evidence/lab/pytest.xml": "4a96f40cd0ecbdf6a1825fa13767b78b36090ee2d353e455f891e4b18106f685",
+    "docs/online/j43c/evidence/lab/run.json": "9eb8c2c51f083c918eff5106d13c55e37ff137d0152360a531953f8cceeb8815",
+    "docs/online/j43c/evidence/non_regression.txt": "85d9a0462b944b903f51bd9b57e7296547a73f06c63168f5113dda032dbb4b98",
+    "docs/online/j43c/evidence/pr8_artifact_verification.json": "2455acc4c119324f429a20fe18c29a9744baa28d8feaaaffc8033b10f37e370f",
+    "docs/online/j43c/evidence/pr8_files.json": "dd5bbff6cbad044f59ad74074d3b966650170353af806a0903b49ad8abfea129",
+    "docs/online/j43c/evidence/pr8_regression/pytest.txt": "1c2b4db14687a8297fd9355ceee8009db1779c0de17642fe3b9cdd3013e65592",
+    "docs/online/j43c/evidence/pr8_regression/pytest.xml": "b23a61e241d2de2a7cab086c9ae1824160a30553ae35700049a6391e2282d817",
+    "docs/online/j43c/evidence/pr8_regression/run.json": "571ea7328520d1b6b91a644dc90405a1357801fe0be78a42af5b73db4c6126f7",
+    "docs/online/j43c/evidence/pr8_remote_readonly.json": "2f75d55c11315a8813f2e480f2c928392ae90b536c4dc4da8b68b992cec594fe"
+  },
+  "scope": "Only local scripts/j43c and docs/online/j43c; no production wiring or remote writes"
+}
