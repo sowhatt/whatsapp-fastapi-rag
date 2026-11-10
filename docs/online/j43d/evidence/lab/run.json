@@ -1,0 +1,277 @@
+{
+  "started_at": "2026-11-10T11:11:12.343493+00:00",
+  "image": "postgres:18.6@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4",
+  "git_head": "aeacb36ee4571d8046118fa8da955b63185a99b6",
+  "source_sha256": {
+    "scripts/j43a/__init__.py": "ae92407fbb19a253098510e42e9769d576638a4bae15bdb629d42d2f36af3419",
+    "scripts/j43a/inventory.py": "d29fab1142e5a91b40babb499038e698b9ade6d1eb0afc72907052c57abce27b",
+    "scripts/j43a/lab.py": "b9e5a9c612ebe2dc95afd24cc34646256fe43281a403316b1f6de559660764b3",
+    "scripts/j43a/pytest_guard.py": "af10118b4e915dbea7c0f13311b7f02c0efe8c23682e5c6594b49e41a72cbac7",
+    "scripts/j43a/receipts.py": "52614abc08794eecf2bc32a3c3112d5413150b241ebb5885fd8e9600840e9b26",
+    "scripts/j43a/reconcile_readonly.sql": "4548c6223355d5c1951bfdf28b2b2d48ff791fc20fab7a6809eec5ecd50a3156",
+    "scripts/j43a/run.py": "77ab613f399a58cc26021d49bf228d1d119617c90d9c02e19f844850b04457e6",
+    "scripts/j43a/verify_readonly.sql": "1578b103948d388fe863856ea00d144b5dace1d20e2a0d4c82855d420a9e4158",
+    "scripts/j43c/__init__.py": "16f6411716d52d28935184924e53e36153d08c31e4418547f22a6810615f2967",
+    "scripts/j43c/client.sql": "44db5d74f68730fc1127e96c468dcc55825801445abd29fe08477a9807263d93",
+    "scripts/j43c/contracts.py": "db3f2834230ad17d649ef3ae2bfe6ac384b17f470e894853e52fe02589d8ba70",
+    "scripts/j43c/core.py": "e270d7dda8b5b5c8b115fa4ccd29077a779e766f20bbef89d407f257064a4708",
+    "scripts/j43c/core.sql": "3d48bb66285fd658a4c9b91941663fda79182b0b3eebb2aa9baea189aaae8a7b",
+    "scripts/j43c/lab.py": "f41fc3d091a85be58224fc1ff2b060af2ace4723fd3009dfcad22ce5fd109b1a",
+    "scripts/j43c/orchestrator.py": "ebb3d555f0570e105996dd5f4a40d18b32d137c9ffb9c9260939f8acfc47c320",
+    "scripts/j43c/run.py": "d1f33d904a81682e8e4ec627e9f69c1adc4f5f036b79e114dad0232d736663fc",
+    "scripts/j43c/security.py": "09908c68f3c70f7cde2d19f643d13d4bd92734d84223eefe2958998d18f3b2cf",
+    "scripts/j43c/test_distributed.py": "13737765be908405db6128cc0fbe3279ced31fd8a38ac283be0028390dc236d6",
+    "scripts/j43c/transport.py": "43cd44040d44423c5ad2f6694b3cfa17d54a9b4c64137bf7aa82d3c8d8a40425",
+    "scripts/j43d/__init__.py": "3e7ffb9a6f2466373de6a44e723bf4a3359ab5562fd6694548460840e42abdeb",
+    "scripts/j43d/adapter.py": "87d465d392de36f5ed9cc2752dfb648f57dc5afbb947f5335e47652228c82558",
+    "scripts/j43d/run.py": "5d071cce8cfb755585d4d443953d52f0576b1b3ef5b76c2c52f706cd34571ec1",
+    "scripts/j43d/test_adapter.py": "98ef33e0d2f0f469b2ca33b42fac9bba622adfe7e5103508c804693f026fbb47"
+  },
+  "instances": {
+    "core": {
+      "container": "c9db7907396dfe529ec39c7f9d07b3246fb594b45892ac15fd52317fa9fa076d",
+      "port": "51052",
+      "system_identifier": "7706498786310156339",
+      "server_version_num": "180006",
+      "roles": [
+        [
+          "j43c_core_runtime",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_core_worker",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_migrator",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_owner",
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      ],
+      "tables": [
+        [
+          "inventory",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "movements",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "outbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "receipts",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "reservations",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "schema_migrations",
+          false,
+          false,
+          "j43c_owner"
+        ]
+      ]
+    },
+    "online": {
+      "container": "8be2a4008b5a51753a95b5708ca72705400c4481c5437d8888d1de4c365b8081",
+      "port": "51058",
+      "system_identifier": "7706498790266322995",
+      "server_version_num": "180006",
+      "roles": [
+        [
+          "j43c_migrator",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_online_runtime",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_online_worker",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_owner",
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      ],
+      "tables": [
+        [
+          "inbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "orders",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "outbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "refund_outbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "schema_migrations",
+          false,
+          false,
+          "j43c_owner"
+        ]
+      ]
+    },
+    "shop": {
+      "container": "047ad2dd3af4ada46ba071c28276d8f117997679c2456459d15ed261ce770fed",
+      "port": "51065",
+      "system_identifier": "7706498794441027632",
+      "server_version_num": "180006",
+      "roles": [
+        [
+          "j43c_migrator",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_owner",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_payment_runtime",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_shop_runtime",
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          "j43c_shop_worker",
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      ],
+      "tables": [
+        [
+          "inbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "orders",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "outbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "provider_receipts",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "refund_outbox",
+          true,
+          true,
+          "j43c_owner"
+        ],
+        [
+          "schema_migrations",
+          false,
+          false,
+          "j43c_owner"
+        ]
+      ]
+    }
+  },
+  "exit_code": 0,
+  "containers_removed": true,
+  "elapsed_seconds": 36.59,
+  "tests": {
+    "tests": 95,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  }
+}

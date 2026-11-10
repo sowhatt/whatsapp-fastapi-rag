@@ -1,0 +1,18 @@
+{
+  "implementation_commit": "f538161ac1d9297b4123993cbb4d9702f6389307",
+  "tested_source_hashes_match_commit": true,
+  "protected_sources_still_unchanged": true,
+  "node_test_observed_result": "Service worker: cache, API exclusion, offline and Push deep links PASS",
+  "artifacts_sha256": {
+    "lab/invariants.jsonl": "8bace3b5cce4ccc228e7cbca8559e49b441a287b66daa7d7ccbedb20705b4459",
+    "lab/pytest.txt": "20905518c2cc5abc8c826ea4499c29b979c37bd826bc2d2170ff41b5724a7b52",
+    "lab/pytest.xml": "418a241a2b84904d778f5517c7e00c5f1ff65f6dfd457caece664f963e4ac8ee",
+    "lab/run.json": "b9274ad7afad583e8022dc32a282f9dacdee3d28f709c92cf213251f86f69bf2",
+    "references.json": "4ba2e9e838882b90d8fe6bb9cb3ea90e97b4cc000c353a5a8c744229f7af2f06",
+    "regression/pytest.txt": "c4a921561b6eda0ce679e6ad695fa592c38ada5f78dac8b6e02dbf5a375ddbdd",
+    "regression/pytest.xml": "df13fa61f081768dab2a1d0f6a10bd1400430a647df502be06328f9daada72ed",
+    "regression/run.json": "ce4adf33dd484de9c5f0bc24aaacc278340db7b1807f3e8f98eb81952ad7c8ae",
+    "sources_after.json": "79ae4a206b31860d1cd3f3dfa29268411579e86dc19faaaf178ca23428bdf1b8",
+    "sources_before.json": "49e5e95cf5c368588868a3693d9ef5344d493cebb47d602369c242a4620d978b"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-11-10",
+  "pull_requests": [
+    {
+      "url": "https://github.com/sowhatt/whatsapp-fastapi-rag/pull/8",
+      "number": 8,
+      "state": "open",
+      "merged": false,
+      "draft": true,
+      "base": "feat/whatzabi-online-j4-1-auth-v2-adapter",
+      "base_sha": "e34ea2f0d9c5f3270129e4b163e373f701f84520",
+      "head": "feat/whatzabi-online-j4-3a-db-isolation",
+      "head_sha": "d1e5dfa45d9678f792b199e68444347c7a79b6b5"
+    },
+    {
+      "url": "https://github.com/sowhatt/whatsapp-fastapi-rag/pull/9",
+      "number": 9,
+      "state": "open",
+      "merged": false,
+      "draft": true,
+      "base": "feat/whatzabi-online-j4-3a-db-isolation",
+      "base_sha": "d1e5dfa45d9678f792b199e68444347c7a79b6b5",
+      "head": "feat/whatzabi-online-j4-3c-distributed",
+      "head_sha": "aeacb36ee4571d8046118fa8da955b63185a99b6"
+    }
+  ]
+}
