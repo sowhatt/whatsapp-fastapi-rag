@@ -1,0 +1,634 @@
+{
+  "$defs": {
+    "CancelSale": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "command": {
+          "const": "CancelSale",
+          "default": "CancelSale",
+          "title": "Command",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "return_to_stock": {
+          "const": true,
+          "default": true,
+          "title": "Return To Stock",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "expected_version",
+        "reason"
+      ],
+      "title": "CancelSale",
+      "type": "object"
+    },
+    "ConfirmReservation": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "command": {
+          "const": "ConfirmReservation",
+          "default": "ConfirmReservation",
+          "title": "Command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "expected_version"
+      ],
+      "title": "ConfirmReservation",
+      "type": "object"
+    },
+    "ConsumeReservation": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "command": {
+          "const": "ConsumeReservation",
+          "default": "ConsumeReservation",
+          "title": "Command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "expected_version"
+      ],
+      "title": "ConsumeReservation",
+      "type": "object"
+    },
+    "GetStockAvailability": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "command": {
+          "const": "GetStockAvailability",
+          "default": "GetStockAvailability",
+          "title": "Command",
+          "type": "string"
+        },
+        "product_ids": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Product Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "product_ids"
+      ],
+      "title": "GetStockAvailability",
+      "type": "object"
+    },
+    "Line": {
+      "additionalProperties": false,
+      "properties": {
+        "product_id": {
+          "exclusiveMinimum": 0,
+          "title": "Product Id",
+          "type": "integer"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "product_id",
+        "quantity"
+      ],
+      "title": "Line",
+      "type": "object"
+    },
+    "RecordSale": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "command": {
+          "const": "RecordSale",
+          "default": "RecordSale",
+          "title": "Command",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "total_minor": {
+          "minimum": 0,
+          "title": "Total Minor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "expected_version",
+        "currency",
+        "total_minor"
+      ],
+      "title": "RecordSale",
+      "type": "object"
+    },
+    "ReleaseReservation": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "command": {
+          "const": "ReleaseReservation",
+          "default": "ReleaseReservation",
+          "title": "Command",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "cancelled",
+            "checkout_failed",
+            "expired"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "expected_version",
+        "reason"
+      ],
+      "title": "ReleaseReservation",
+      "type": "object"
+    },
+    "ReserveStock": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "exclusiveMinimum": 0,
+          "title": "Tenant Id",
+          "type": "integer"
+        },
+        "shop_id": {
+          "exclusiveMinimum": 0,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "online",
+            "shop"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "order_id": {
+          "format": "uuid",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "format": "uuid",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Id"
+        },
+        "command": {
+          "const": "ReserveStock",
+          "default": "ReserveStock",
+          "title": "Command",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/Line"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Lines",
+          "type": "array"
+        },
+        "ttl_seconds": {
+          "default": 600,
+          "maximum": 3600,
+          "minimum": 30,
+          "title": "Ttl Seconds",
+          "type": "integer"
+        },
+        "offline": {
+          "default": false,
+          "title": "Offline",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "shop_id",
+        "source",
+        "order_id",
+        "idempotency_key",
+        "lines"
+      ],
+      "title": "ReserveStock",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "CancelSale": "#/$defs/CancelSale",
+      "ConfirmReservation": "#/$defs/ConfirmReservation",
+      "ConsumeReservation": "#/$defs/ConsumeReservation",
+      "GetStockAvailability": "#/$defs/GetStockAvailability",
+      "RecordSale": "#/$defs/RecordSale",
+      "ReleaseReservation": "#/$defs/ReleaseReservation",
+      "ReserveStock": "#/$defs/ReserveStock"
+    },
+    "propertyName": "command"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ReserveStock"
+    },
+    {
+      "$ref": "#/$defs/ConfirmReservation"
+    },
+    {
+      "$ref": "#/$defs/ReleaseReservation"
+    },
+    {
+      "$ref": "#/$defs/ConsumeReservation"
+    },
+    {
+      "$ref": "#/$defs/RecordSale"
+    },
+    {
+      "$ref": "#/$defs/CancelSale"
+    },
+    {
+      "$ref": "#/$defs/GetStockAvailability"
+    }
+  ]
+}

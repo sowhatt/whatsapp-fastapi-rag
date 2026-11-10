@@ -1,0 +1,326 @@
+[
+  {
+    "path": "app/domains/core/contracts/__init__.py",
+    "sha256": "bb6b8fa80f8664bf8fd4ca5d723d178778921f45cea1826e13a4aaebc27049bc",
+    "lines": 1,
+    "review": "Paquet préparatoire sans import runtime ni effet."
+  },
+  {
+    "path": "app/domains/core/contracts/commands.py",
+    "sha256": "f2b065bce9e909db3a95b394b6e1164fc29d360b599136fbcdef41289bb3b06c",
+    "lines": 107,
+    "review": "Brouillon v1 typé ; pas de shop_id ni transport ; ne suffit pas à une bascule. v2 isolée en J4.3C."
+  },
+  {
+    "path": "docs/online/j43a/ADR-001-PHYSICAL-SEPARATION.md",
+    "sha256": "84208344403e9c168d8b84669bf11c1d6c79b7d7ab3d45ba420cd769b6a55d3e",
+    "lines": 69,
+    "review": "Décisions D1–D6 proposées, non activées ; frontière labo et absence de garantie globale explicites."
+  },
+  {
+    "path": "docs/online/j43a/CORE_CONTRACT.md",
+    "sha256": "24cb0c77495a195eb4448de855d3d33238a4459167b35ed02a4200020f36ee58",
+    "lines": 54,
+    "review": "Contrat v1 préparatoire, timeout ambigu et retry explicités ; boutique/transport à compléter."
+  },
+  {
+    "path": "docs/online/j43a/REPORT.md",
+    "sha256": "5df77a2cc2f1724f2bb44e190d064f11fef9d90a1ac67a4cf9403cb24dff83ce",
+    "lines": 77,
+    "review": "Rapport historique : preuves cohérentes et migration explicitement NO-GO ; périmètre local conservé."
+  },
+  {
+    "path": "docs/online/j43a/SECURITY_AND_RUNBOOK.md",
+    "sha256": "839682f1b564d3f8fc597a90b550b6b41b0615aecdc4f1c7c2584e0362824fda",
+    "lines": 110,
+    "review": "Rôles, limites GUC, rétention et rollback documentés ; aucune purge opérationnelle autorisée."
+  },
+  {
+    "path": "docs/online/j43a/TABLE_MATRIX.md",
+    "sha256": "c6a016001ba94c4e0caeb088115d8fb89d2ae22d6efd3ce40a036d98445bf0f8",
+    "lines": 136,
+    "review": "Tables, writers et dépendances FK inventoriés ; cible Core/Shop distincte de la source réelle."
+  },
+  {
+    "path": "docs/online/j43a/evidence/git_inventory.json",
+    "sha256": "8dacfb0f882dcb8cdf5a14854d19f535884fd2f48ca70ac2ca708e783f51e59a",
+    "lines": 63,
+    "shape": [
+      "captured_at",
+      "validated_base",
+      "branch",
+      "head_before_commits",
+      "local_branches",
+      "worktrees",
+      "remote_heads_readonly",
+      "shop_worktree_status_paths_only",
+      "auth_source_reference",
+      "notes"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a/evidence/pytest.txt",
+    "sha256": "210e02092d062d0847d730115c35636c4a516e49f5d9372251fc5a50d37a479d",
+    "lines": 14,
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a/evidence/pytest.xml",
+    "sha256": "fa5ba4d4edbacde327a5dc7997b6fb0d5bf30a9e96ebf7c202f8f17cd8e19413",
+    "lines": 1,
+    "suite": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "913",
+      "time": "13.396",
+      "timestamp": "2026-10-29T16:56:35.573730+01:00",
+      "hostname": "MacBook-Pro-de-rkjo.local"
+    },
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a/evidence/run.json",
+    "sha256": "89a0f4b04e78cbeb68f95f0ccc933cdb40b9f1eefa33588666ee1e3c75cc6e17",
+    "lines": 21,
+    "shape": [
+      "image",
+      "server_version_num",
+      "started_at",
+      "migration_sha256",
+      "pytest_exit_code",
+      "elapsed_seconds",
+      "containers_removed",
+      "tests",
+      "postgres_tests"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a/evidence/validation_manifest.json",
+    "sha256": "4abb1628ea0d6624511699894234ec90b24318af3a007a894e88b482e7bd5139",
+    "lines": 21,
+    "shape": [
+      "code_commit",
+      "versions",
+      "backup_restore",
+      "artifacts_sha256"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a/external_schema_inventory.json",
+    "sha256": "e53026940256ad39c39bbf9c8cc79e58372fce678ff442adcce452dc0e9e2710",
+    "lines": 958,
+    "shape": [
+      "reference",
+      "method",
+      "models",
+      "sql_tables"
+    ],
+    "review": "Inventaire externe committé ; utile pour shop_inventories/Auth, sans import ni écriture."
+  },
+  {
+    "path": "docs/online/j43a/orm_inventory.json",
+    "sha256": "5b710ca26f8f4e477ece1af6489979afb451df00afa9f5a7b453a408e3af5f2a",
+    "lines": 3272,
+    "shape": "34 entries",
+    "review": "Inventaire 34 tables ORM ; ne prétend pas refléter la base distante."
+  },
+  {
+    "path": "docs/online/j43a1/REPORT.md",
+    "sha256": "2aba309f8ca6ea78e6cacc9373e3daa8ac866f0e591ded09dd89a8c1721d25cd",
+    "lines": 54,
+    "review": "Rapport historique : preuves cohérentes et migration explicitement NO-GO ; périmètre local conservé."
+  },
+  {
+    "path": "docs/online/j43a1/STARTUP_SEPARATION.md",
+    "sha256": "6d58ed0669469ed49e3afb114d56e01d69b3e4af4e5627aa60ceb570a398ba5e",
+    "lines": 38,
+    "review": "DDL startup encore actif ; plan explicite et bloqueur de mise en service, aucun faux GO runtime."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/git_inventory.json",
+    "sha256": "1965c1385cce0fbd214225e4042346d97e27554f372d7bdebc9163fce6ef7304",
+    "lines": 142,
+    "shape": [
+      "captured_at",
+      "base_commit",
+      "branch",
+      "worktrees",
+      "online_initial_status",
+      "parent_status",
+      "parent_tracked_dirty_sha256",
+      "parent_untracked",
+      "note",
+      "parent_tracked_changes_during_task",
+      "parent_final_status",
+      "parent_status_stable"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/non_regression.txt",
+    "sha256": "3cff2343ea5207083522b5de8a34c5ce791e490e26b66266f83e1fb17a7f95f0",
+    "lines": 7,
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/pytest.txt",
+    "sha256": "8e70ac7deed0d51a88ac06e2cdcb54610b3e8eec1498f538dd4360acf871b36f",
+    "lines": 14,
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/pytest.xml",
+    "sha256": "346cf79d005ef7167c20aa2ebbb69058599b8e30b5cbc9725e9f45af3a7d3559",
+    "lines": 1,
+    "suite": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "929",
+      "time": "15.052",
+      "timestamp": "2026-11-09T20:50:08.611462+01:00",
+      "hostname": "mbp-de-rkjo.home"
+    },
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/run.json",
+    "sha256": "70ce2f5fa453224a8a5a3629720760213aaf8cfd37db4a16c5bc0f4c52ec836e",
+    "lines": 22,
+    "shape": [
+      "image",
+      "server_version_num",
+      "started_at",
+      "migration_sha256",
+      "pytest_exit_code",
+      "elapsed_seconds",
+      "containers_removed",
+      "tests",
+      "postgres_tests"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "docs/online/j43a1/evidence/validation_manifest.json",
+    "sha256": "4de2815fb69c56f916cacdb6112a1e16d4ebc3c8885a5d2b91dc34d121b54301",
+    "lines": 41,
+    "shape": [
+      "created_at",
+      "base_commit",
+      "versions",
+      "backup_restore",
+      "scope_checks",
+      "artifacts_sha256",
+      "validated_files_sha256"
+    ],
+    "review": "Artefact historique inspecté ; compteurs/empreintes vérifiés. Nouvelle recette dans pr8_regression, aucun résultat historique présenté comme nouvelle exécution."
+  },
+  {
+    "path": "migrations/j43a_lab/001_baseline.sql",
+    "sha256": "cbba426f470f92bcdec0e9320eb593c505a44d083ebc11f76391a482b1c88bfa",
+    "lines": 608,
+    "review": "Baseline ORM vide ; FK locales historiques ; jamais un upgrade de base existante."
+  },
+  {
+    "path": "migrations/j43a_lab/002_receipts.sql",
+    "sha256": "6393219c0df615cd22b7da0fbbeba719f8475ea8eb169228672ff50e55dba015",
+    "lines": 21,
+    "review": "PK tenant/source/clé et empreinte ; primitives préparatoires."
+  },
+  {
+    "path": "migrations/j43a_lab/003_security.sql",
+    "sha256": "b4f2f56a36385abdd239344711446493d9080b85948dc46820c398eb630b42b4",
+    "lines": 139,
+    "review": "ENABLE/FORCE RLS ; absence de bypass ; privilèges runtime explicites. Droits inbox initiaux retirés par 005."
+  },
+  {
+    "path": "migrations/j43a_lab/004_tenant_references.sql",
+    "sha256": "95729778be1c1fd3b779b7e20654fbfe4dbbeb1afda9ed44f1de889903b08e5c",
+    "lines": 37,
+    "review": "FK composites et quantités positives ; enfants Shop fermés. FK interdomaines à retirer dans une extraction future."
+  },
+  {
+    "path": "migrations/j43a_lab/005_inbox_retention.sql",
+    "sha256": "b95e90406e325e1e41174052028b3197577a84fd8f1eeb76aec7fdc73e2d757a",
+    "lines": 15,
+    "review": "Inbox append-only runtime, horodatage serveur, DELETE maintenance sous policy restrictive tenant ET âge."
+  },
+  {
+    "path": "migrations/j43a_lab/README.md",
+    "sha256": "fc830a51e2af94fac7d8a6c398431d22880b258135710b80279fc29ee792de38",
+    "lines": 8,
+    "review": "Périmètre laboratoire et ordre 001–005 explicitement indiqués."
+  },
+  {
+    "path": "scripts/j43a/__init__.py",
+    "sha256": "ae92407fbb19a253098510e42e9769d576638a4bae15bdb629d42d2f36af3419",
+    "lines": 1,
+    "review": "Paquet scripts ; aucun démarrage de service."
+  },
+  {
+    "path": "scripts/j43a/inventory.py",
+    "sha256": "d29fab1142e5a91b40babb499038e698b9ade6d1eb0afc72907052c57abce27b",
+    "lines": 47,
+    "review": "Inventaire ORM sans connexion DB ni startup ; couverture externe séparée."
+  },
+  {
+    "path": "scripts/j43a/lab.py",
+    "sha256": "b9e5a9c612ebe2dc95afd24cc34646256fe43281a403316b1f6de559660764b3",
+    "lines": 185,
+    "review": "Conteneurs possédés, daemon local, image fixée, migration atomique SHA/verrou, restauration cible distincte, snapshot cohérent."
+  },
+  {
+    "path": "scripts/j43a/pytest_guard.py",
+    "sha256": "af10118b4e915dbea7c0f13311b7f02c0efe8c23682e5c6594b49e41a72cbac7",
+    "lines": 29,
+    "review": "Refus egress sockets Python non loopback et refus skips ; pas un firewall général pour libpq/subprocess."
+  },
+  {
+    "path": "scripts/j43a/receipts.py",
+    "sha256": "52614abc08794eecf2bc32a3c3112d5413150b241ebb5885fd8e9600840e9b26",
+    "lines": 45,
+    "review": "Savepoint autour effet/reçu/outbox ; déduplication/conflit ; reste une primitive locale sans saga."
+  },
+  {
+    "path": "scripts/j43a/reconcile_readonly.sql",
+    "sha256": "4548c6223355d5c1951bfdf28b2b2d48ff791fc20fab7a6809eec5ecd50a3156",
+    "lines": 23,
+    "review": "REPEATABLE READ READ ONLY ; visibilité bornée par RLS ; pas de réparation."
+  },
+  {
+    "path": "scripts/j43a/run.py",
+    "sha256": "77ab613f399a58cc26021d49bf228d1d119617c90d9c02e19f844850b04457e6",
+    "lines": 60,
+    "review": "Deux instances jetables, env filtré, 18.6 obligatoire, preuve de restauration et suite complète."
+  },
+  {
+    "path": "scripts/j43a/verify_readonly.sql",
+    "sha256": "1578b103948d388fe863856ea00d144b5dace1d20e2a0d4c82855d420a9e4158",
+    "lines": 27,
+    "review": "Snapshot lecture seule ; ACL tables/colonnes, membres/rôles/policies inspectés."
+  },
+  {
+    "path": "tests/test_online_j42_postgres.py",
+    "sha256": "e0ffcbac10daa2958aff9e2a7ea2b10c3be6d3803bdb91526c0f405e123b1703",
+    "lines": 342,
+    "review": "Diff limité au mode 18.6 obligatoire ; ancien mode 16 préservé ; rôles non propriétaires."
+  },
+  {
+    "path": "tests/test_online_j43a_contracts.py",
+    "sha256": "d2a22fa08bea7dcdeaaa18ddd3df04078ee1989b634ce55c5077513b665fe08c",
+    "lines": 40,
+    "review": "Sept contrats et validation ; pas une preuve de transport ou de boutique."
+  },
+  {
+    "path": "tests/test_online_j43a_postgres.py",
+    "sha256": "8dad0d521e6bf958aad94fbcb3760e202fe84c4d56b15553a67f45f4b0dd57c3",
+    "lines": 409,
+    "review": "Refus ACL/RLS, rétention, snapshots concurrents, reçus, restauration ; 61 cas PG au total avec J4.2."
+  }
+]
