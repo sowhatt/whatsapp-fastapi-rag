@@ -1,86 +1,84 @@
-const CACHE = 'whatzabi-pwa-v35';
-
+const CACHE = 'whatzabi-pwa-v71-commercial-20261117';
 const ASSETS = [
+  '/auth/express-sale.css?v=2-cart-price-1',
   '/auth/app',
-  '/auth/styles.css?v=17',
-  '/auth/app.js?v=25',
-  '/auth/smart-catalog.js?v=45',
-  '/auth/purchases.js?v=5',
+  '/auth/styles.css?v=34-commercial-20261117',
+  '/auth/app.js?v=54-commercial-20261117',
+  '/auth/offline-sales.js?v=4-commercial-20261117',
+  '/auth/express-sale.js?v=18-commercial-20261117',
+  '/auth/smart-catalog.js?v=47-auth-rc1-20261115',
+  '/auth/quick-auth.js?v=2',
+  '/auth/passkeys.js?v=1',
+  '/auth/purchases.js?v=16-commercial-20261117',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
 
+
+// CacheStorage is only an asset store. Never touch IndexedDB or client outboxes.
+function generation(name) {
+  const match = /^whatzabi-pwa-v(\d+)-/.exec(name);
+  return match ? Number(match[1]) : null;
+}
+const GENERATION = generation(CACHE);
+
+async function pruneObsoleteAssets() {
+  const keys = await caches.keys();
+  await Promise.all(keys.filter(key => {
+    const version = generation(key);
+    return version !== null && version < GENERATION;
+  }).map(key => caches.delete(key)));
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    // Corrected releases never replace a newer installed generation.
+    // Operational rollback must also keep this worker (legacy code lacks this guard).
+    if ((await caches.keys()).some(key => generation(key) > GENERATION)) {
+      throw new Error('Refusing obsolete worker: newer generation exists');
+    }
+    try {
+      const cache = await caches.open(CACHE);
+      await cache.addAll(ASSETS.map(url =>
+        new Request(new URL(url, self.location.origin), { cache: 'reload' })
+      ));
+    } catch (error) {
+      await caches.delete(CACHE);
+      throw error;
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key !== CACHE)
-            .map((key) => caches.delete(key))
-        )
-      )
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    await pruneObsoleteAssets();
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
+  // A legacy worker can finish an untracked cache.put after our activation.
+  // Sweep again on controlled traffic; a stale cache is NEVER used for fallback.
+  const cleanup = pruneObsoleteAssets();
+  event.waitUntil(cleanup);
   const url = new URL(event.request.url);
-
-  if (
-    event.request.method !== 'GET' ||
-    url.pathname.startsWith('/pwa/') ||
-    url.pathname === '/auth/me'
-  ) {
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin ||
+      event.request.headers.has('Authorization') ||
+      url.pathname.startsWith('/auth/quick/') || url.pathname === '/auth/passkeys' ||
+      url.pathname.startsWith('/auth/passkeys/') ||
+      !ASSETS.includes(url.pathname + url.search)) {
     return;
   }
-
-  if (
-    url.pathname === '/auth/app' ||
-    url.pathname === '/auth/app.js' ||
-    url.pathname === '/auth/smart-catalog.js' ||
-    url.pathname === '/auth/purchases.js' ||
-    url.pathname === '/auth/styles.css'
-  ) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => {
-              cache.put(event.request, copy);
-            });
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
+  event.respondWith((async () => {
+    try {
+      // Precache is immutable for this generation: no asynchronous runtime writes
+      // that could resurrect a retired worker's cache or mix asset generations.
+      return await fetch(event.request, { cache: 'no-store' });
+    } catch (error) {
+      const cached = await caches.match(event.request, { cacheName: CACHE });
       if (cached) return cached;
-
-      return fetch(event.request).then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => {
-            cache.put(event.request, copy);
-          });
-        }
-        return response;
-      });
-    })
-  );
+      throw error;
+    }
+  })());
 });

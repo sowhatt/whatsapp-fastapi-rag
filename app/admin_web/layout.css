@@ -1,0 +1,219 @@
+/*
+ * WHATZABI ADMIN — LAYOUT SYSTEM V1
+ * Shared layout for Dashboard / New Pilot / Pilot Detail
+ */
+
+:root {
+  --admin-content-width: 1280px;
+  --admin-page-gutter: 32px;
+  --admin-card-gap: 24px;
+  --admin-card-padding: 24px;
+}
+
+/* Shared page foundation */
+body.admin-page,
+body.admin-body,
+body:has(> .admin-shell) {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Main content */
+.admin-container,
+.admin-main,
+.admin-shell {
+  width: min(
+    var(--admin-content-width),
+    calc(100% - 2 * var(--admin-page-gutter))
+  );
+  max-width: var(--admin-content-width);
+  margin-inline: auto;
+  padding-block: 32px 64px;
+}
+
+/* Dashboard already owns its main container */
+.admin-container {
+  padding-top: 32px;
+}
+
+/* Standard page headers */
+.admin-main > .admin-page-header,
+.admin-shell > .admin-topbar {
+  margin-bottom: 28px;
+}
+
+/* Pilot detail header is inside its main container */
+.admin-shell > .admin-topbar {
+  position: static;
+  min-height: auto;
+  padding: 0 0 24px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+/* Shared cards */
+.admin-card,
+.admin-form-card,
+.metric-card,
+.pilots-panel {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-card {
+  padding: var(--admin-card-padding);
+}
+
+/* Pilot detail */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--admin-card-gap);
+  margin-top: 0;
+}
+
+.detail-grid .admin-card h2 {
+  margin: 0;
+  font-size: var(--font-lg);
+  font-weight: var(--weight-semibold);
+}
+
+/* Danger zone */
+.admin-shell > .danger-zone {
+  margin-top: var(--admin-card-gap);
+}
+
+/* Prevent content overflow */
+.admin-card,
+.admin-form-card,
+.detail-grid > *,
+.admin-container,
+.admin-main,
+.admin-shell {
+  min-width: 0;
+}
+
+.detail-list dd {
+  overflow-wrap: anywhere;
+}
+
+/* Tablet */
+@media (max-width: 900px) {
+  :root {
+    --admin-page-gutter: 24px;
+    --admin-card-gap: 16px;
+    --admin-card-padding: 20px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 760px) {
+  :root {
+    --admin-page-gutter: 16px;
+  }
+
+  .admin-container,
+  .admin-main,
+  .admin-shell {
+    padding-block: 24px 48px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-shell > .admin-topbar {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+}
+
+/* WHATZABI ADMIN — PILOT DETAIL V2 */
+
+body:has(> .admin-shell) {
+  background: #f6f8fa;
+}
+
+body > .admin-shell {
+  box-sizing: border-box;
+  width: calc(100% - 64px);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 36px 0 72px;
+}
+
+body > .admin-shell > .admin-topbar {
+  position: static;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  margin: 0 0 28px;
+  padding: 0 0 24px;
+  background: transparent;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: none;
+}
+
+body > .admin-shell > .admin-topbar h1 {
+  margin: 12px 0 8px;
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #172b3a;
+}
+
+body > .admin-shell .detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  width: 100%;
+}
+
+body > .admin-shell .admin-card {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+body > .admin-shell .admin-card h2 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #172b3a;
+}
+
+body > .admin-shell > .danger-zone {
+  margin-top: 24px;
+}
+
+@media (max-width: 760px) {
+  body > .admin-shell {
+    width: calc(100% - 32px);
+    padding: 24px 0 48px;
+  }
+
+  body > .admin-shell .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  body > .admin-shell .admin-card {
+    padding: 20px;
+  }
+
+  body > .admin-shell > .admin-topbar {
+    flex-wrap: wrap;
+  }
+}

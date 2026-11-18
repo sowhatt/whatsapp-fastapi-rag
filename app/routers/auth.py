@@ -90,6 +90,25 @@ def pwa_script():
 
 
 
+@router.get("/quick-auth.js", include_in_schema=False)
+def pwa_quick_script():
+    return FileResponse(PWA_DIR / "quick-auth.js", media_type="application/javascript")
+
+
+@router.get("/passkeys.js", include_in_schema=False)
+def pwa_passkeys_script():
+    return FileResponse(PWA_DIR / "passkeys.js", media_type="application/javascript")
+
+
+
+@router.get("/offline-sales.js", include_in_schema=False)
+def pwa_offline_sales_script():
+    return FileResponse(
+        PWA_DIR / "offline-sales.js",
+        media_type="application/javascript",
+    )
+
+
 @router.get("/smart-catalog.js", include_in_schema=False)
 def pwa_smart_catalog_script():
     return FileResponse(
@@ -131,7 +150,7 @@ def pwa_service_worker():
     return FileResponse(
         PWA_DIR / "sw.js",
         media_type="application/javascript",
-        headers={"Service-Worker-Allowed": "/auth/"},
+        headers={"Service-Worker-Allowed": "/auth/", "Cache-Control": "no-store"},
     )
 
 
@@ -283,7 +302,8 @@ def login(payload: LoginPayload, db: Session = Depends(get_db)):
     if phone is not None:
         user = (
             db.query(MerchantUser)
-            .filter(MerchantUser.id == phone.user_id, MerchantUser.is_active.is_(True))
+            .filter(MerchantUser.id == phone.user_id, MerchantUser.merchant_id == phone.merchant_id,
+                MerchantUser.is_active.is_(True))
             .first()
         )
         if user is not None:
@@ -405,6 +425,12 @@ def select_shop(
             user_id=user.id,
             shop_id=payload.shop_id,
             role=role,
+            passkey_id=db.info.get("pwa_passkey_id"),
+            pin_session_id=db.info.get("pwa_pin_session_id"),
+            device_id=db.info.get("pwa_device_id"),
+            auth_expires_at=(db.info.get("pwa_auth_expires_at")
+                if db.info.get("pwa_passkey_id") or db.info.get("pwa_pin_session_id") else None),
+            auth_time=db.info.get("pwa_auth_time"),
         ),
         merchant=_merchant_read(
             db,
@@ -413,4 +439,20 @@ def select_shop(
             shop_id=payload.shop_id,
             role=role,
         ),
+    )
+
+
+@router.get("/activation", include_in_schema=False)
+def activation_page():
+    from fastapi.responses import Response
+
+    html = (PWA_DIR / "activation.html").read_text(encoding="utf-8")
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

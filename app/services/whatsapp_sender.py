@@ -2,15 +2,19 @@ import os
 import requests
 
 
+class WhatsAppNotConfigured(ValueError):
+    """Outbound delivery is unavailable; no provider request has been made."""
+
+
 def send_whatsapp_text_message(to: str, body: str):
-    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
-    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
+    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
 
     if not whatsapp_access_token:
-        raise ValueError("WHATSAPP_ACCESS_TOKEN manquant")
+        raise WhatsAppNotConfigured("WHATSAPP_ACCESS_TOKEN manquant")
 
     if not whatsapp_phone_number_id:
-        raise ValueError("WHATSAPP_PHONE_NUMBER_ID manquant")
+        raise WhatsAppNotConfigured("WHATSAPP_PHONE_NUMBER_ID manquant")
 
     url = f"https://graph.facebook.com/v20.0/{whatsapp_phone_number_id}/messages"
 

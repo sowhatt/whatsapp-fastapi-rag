@@ -1,16 +1,18 @@
+from datetime import datetime, timezone, timedelta
+from app.services.supplier_payment_transactions import reserve_supplier_payment, save_supplier_receipt
+from app.services.purchase_transactions import purchase_query
+from app.services.shop_context_service import get_current_shop_id
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.purchase import Purchase
 from app.models.purchase_item import PurchaseItem
-from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
 from app.models.supplier_payment_allocation import SupplierPaymentAllocation
-from app.models.shop_operation import ShopOperation
 from app.rbac import require_permission
 from app.schemas.supplier_payment import SupplierPaymentCreate, SupplierPaymentRead
-from app.services.shop_context_service import get_current_shop_id
+
+from app.services.purchase_transactions import lock_purchase, validate_purchase_balances
 
 router = APIRouter(tags=["paiements fournisseurs"])
 
@@ -42,26 +44,38 @@ def create_supplier_payment(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("supplier_payment.create")),
 ):
+    try:
+        if purchase_query(db).filter_by(id=payload.purchase_id).first() is None:
+            raise HTTPException(404, 'Achat introuvable')
+        request_id, replay = reserve_supplier_payment(db, payload)
+        if replay is not None:
+            db.commit()
+            return replay
+        # No new backdating permission. Replays bypass this first-send window.
+        if payload.effective_at and abs(datetime.now(timezone.utc) - payload.effective_at) > timedelta(minutes=5):
+            raise HTTPException(422, 'Le règlement doit être déclaré maintenant ; datation passée non autorisée')
+        payment = _create_supplier_payment(payload, db)
+        db.flush()
+        receipt = SupplierPaymentRead.model_validate(payment).model_copy(update={
+            'currency_code': purchase_query(db).filter_by(id=payload.purchase_id).one().currency_code, 'idempotency_key': payload.idempotency_key, 'shop_id': get_current_shop_id(db),
+            'allocations': [{'purchase_item_id': a.purchase_item_id, 'amount': a.allocated_amount} for a in
+                db.query(SupplierPaymentAllocation).filter_by(supplier_payment_id=payment.id).order_by(SupplierPaymentAllocation.id).all()]})
+        save_supplier_receipt(db, request_id, receipt)
+        db.commit()
+        return receipt
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _create_supplier_payment(payload, db):
     """Enregistre un paiement fournisseur et l’impute en FIFO sur les lignes d’achat."""
-    purchase_query = db.query(Purchase)
-    shop_id = get_current_shop_id(db)
-    if shop_id is not None:
-        purchase_query = purchase_query.join(
-            ShopOperation,
-            (ShopOperation.entity_type == "purchase")
-            & (ShopOperation.entity_id == Purchase.id),
-        ).filter(ShopOperation.shop_id == shop_id)
+    supplier, purchase = lock_purchase(db, payload.purchase_id)
+    if purchase.status == "cancelled":
+        raise HTTPException(400, "Cet achat est annulé")
 
-    purchase = purchase_query.filter(Purchase.id == payload.purchase_id).first()
-    if not purchase:
-        raise HTTPException(status_code=404, detail="Achat introuvable")
-
-    if payload.supplier_id is None:
-        raise HTTPException(status_code=400, detail="L'identifiant du fournisseur est obligatoire")
-
-    supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+    if supplier is None:
+        raise HTTPException(400, "Cet achat comptant sans fournisseur est déjà intégralement payé")
 
     if purchase.supplier_id != payload.supplier_id:
         raise HTTPException(
@@ -75,32 +89,39 @@ def create_supplier_payment(
     if payload.amount > purchase.remaining_amount:
         raise HTTPException(status_code=400, detail="Le montant du paiement dépasse le reste dû")
 
+    purchase_items = (
+        db.query(PurchaseItem)
+        .filter(
+            PurchaseItem.purchase_id == purchase.id,
+        )
+        .order_by(PurchaseItem.id.asc())
+        .populate_existing()
+        .with_for_update()
+        .all()
+    )
+
+    validate_purchase_balances(db, purchase, purchase_items)
+
     supplier_payment = SupplierPayment(
         purchase_id=payload.purchase_id,
         supplier_id=payload.supplier_id,
         amount=payload.amount,
         channel=payload.channel,
         reference=payload.reference,
+        effective_at=payload.effective_at or datetime.now(timezone.utc),
+        effective_at_source='declared_now' if payload.effective_at else 'server_now',
     )
     db.add(supplier_payment)
     db.flush()
 
     remaining_to_allocate = payload.amount
 
-    purchase_items = (
-        db.query(PurchaseItem)
-        .filter(
-            PurchaseItem.purchase_id == purchase.id,
-            PurchaseItem.remaining_amount > 0,
-        )
-        .order_by(PurchaseItem.id.asc())
-        .all()
-    )
-
     for item in purchase_items:
         if remaining_to_allocate <= 0:
             break
 
+        if item.remaining_amount == 0:
+            continue
         alloc_amount = min(remaining_to_allocate, item.remaining_amount)
 
         item.paid_amount += alloc_amount
@@ -121,6 +142,9 @@ def create_supplier_payment(
 
         remaining_to_allocate -= alloc_amount
 
+    if remaining_to_allocate != 0:
+        raise HTTPException(409, "Lignes d'achat incohérentes : rapprochement requis")
+
     purchase.paid_amount += payload.amount
     purchase.remaining_amount -= payload.amount
 
@@ -129,7 +153,9 @@ def create_supplier_payment(
     else:
         purchase.status = "partial"
 
-    supplier.debt = max(0, supplier.debt - payload.amount)
+    supplier.debt -= payload.amount
+    if supplier.debt < 0:
+        raise HTTPException(409, "Dette fournisseur incohérente : rapprochement requis")
 
     add_event(
         db,
@@ -140,6 +166,6 @@ def create_supplier_payment(
         note=f"Paiement fournisseur par {payload.channel}",
     )
 
-    db.commit()
-    db.refresh(supplier_payment)
+    db.flush()
+    validate_purchase_balances(db, purchase, purchase_items)
     return supplier_payment

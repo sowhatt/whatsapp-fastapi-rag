@@ -7,6 +7,8 @@ from app.db.base import Base
 class Purchase(Base):
     __tablename__ = "purchases"
 
+    currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)

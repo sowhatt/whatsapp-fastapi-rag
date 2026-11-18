@@ -1,0 +1,287 @@
+{
+  "postgres_major": 18,
+  "sql_sha256": {
+    "bi_01_materialized_views.sql": "5b083e0854b7374f6dc9a6db27ead1681edfc918302f3f56c9fece0283479fe8",
+    "bi_01_financial_position.sql": "9c8f05ff8d68caedd9490e326b542f8abd017448428ebe27cad200cd4c0d6270",
+    "bi_01_inventory_history.sql": "60dbc8b54559633e9d6c5e9c516b69a2dd474f53b39c100d827aa8017b05d8c0",
+    "bi_02_shop_analytics.sql": "2cad443e7fa59e9cd030cd10a2e8e32068947311c14bf74c699bca54fca7c479"
+  },
+  "relations": {
+    "fact_inventory_daily_snapshot": {
+      "kind": "table",
+      "columns": {
+        "id": "BIGINT",
+        "snapshot_date": "DATE",
+        "merchant_id": "BIGINT",
+        "product_id": "BIGINT",
+        "product_name": "TEXT",
+        "unit": "TEXT",
+        "stock_quantity": "NUMERIC",
+        "unit_cost": "NUMERIC",
+        "stock_value": "NUMERIC",
+        "potential_sales_value": "NUMERIC",
+        "quantity_sold_day": "NUMERIC",
+        "sales_revenue_day": "NUMERIC",
+        "cogs_day": "NUMERIC",
+        "created_at": "TIMESTAMP WITH TIME ZONE"
+      }
+    },
+    "mv_currency_purchase_exposure": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "month": "DATE",
+        "original_currency": "VARCHAR",
+        "purchase_count": "BIGINT",
+        "original_amount_total": "BIGINT",
+        "xof_amount_total": "BIGINT",
+        "average_exchange_rate": "NUMERIC"
+      },
+      "definition_sha256": "0ad7d5aab42458f2ab707b067d998c2e559258a9a8cc23e9b33eb747bf30158d",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "month",
+          "original_currency"
+        ]
+      ]
+    },
+    "mv_customer_financial_position": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "customer_id": "INTEGER",
+        "customer_name": "VARCHAR(100)",
+        "sales_count": "BIGINT",
+        "total_sales": "BIGINT",
+        "total_paid": "BIGINT",
+        "outstanding_amount": "INTEGER",
+        "overdue_amount": "BIGINT",
+        "last_sale_at": "TIMESTAMP WITHOUT TIME ZONE"
+      },
+      "definition_sha256": "0d6d33400c35d6eda1393e4afffac63502690bcd93f8943d31ff4c9f5e8402a1",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "customer_id"
+        ]
+      ]
+    },
+    "mv_customer_financial_position_by_shop": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "shop_id": "INTEGER",
+        "customer_id": "INTEGER",
+        "customer_name": "VARCHAR(100)",
+        "sales_count": "BIGINT",
+        "total_sales": "BIGINT",
+        "total_paid": "BIGINT",
+        "outstanding_amount": "BIGINT",
+        "overdue_amount": "BIGINT",
+        "next_due_date": "DATE"
+      },
+      "definition_sha256": "a23f16f4749b85549604728c6c5ddd9da77dbdd751c2611cd1b15ea74f861742",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "shop_id",
+          "customer_id"
+        ]
+      ]
+    },
+    "mv_daily_business_metrics": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "business_date": "DATE",
+        "sales_count": "BIGINT",
+        "sales_total": "BIGINT",
+        "sales_paid": "BIGINT",
+        "sales_credit": "BIGINT",
+        "purchases_count": "BIGINT",
+        "purchases_total": "BIGINT",
+        "purchases_paid": "BIGINT",
+        "purchases_credit": "BIGINT",
+        "expenses_total": "BIGINT",
+        "cogs": "BIGINT",
+        "gross_margin": "BIGINT",
+        "net_cash_flow": "BIGINT"
+      },
+      "definition_sha256": "54dd68894eba00083a32caab43541d464b04726443fb06357e141a22bfc4ccc9",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "business_date"
+        ]
+      ]
+    },
+    "mv_daily_business_metrics_by_shop": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "shop_id": "INTEGER",
+        "business_date": "DATE",
+        "sales_count": "BIGINT",
+        "sales_total": "BIGINT",
+        "sales_paid": "BIGINT",
+        "sales_credit": "BIGINT",
+        "purchases_count": "BIGINT",
+        "purchases_total": "BIGINT",
+        "purchases_paid": "BIGINT",
+        "purchases_credit": "BIGINT",
+        "expenses_total": "BIGINT",
+        "cogs": "BIGINT",
+        "gross_margin": "BIGINT",
+        "net_cash_flow": "BIGINT"
+      },
+      "definition_sha256": "85269af947997ba4bdf73b29371d79b2e7a27c579db619ddf6f5f499a2093b29",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "shop_id",
+          "business_date"
+        ]
+      ]
+    },
+    "mv_product_profitability": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "product_id": "INTEGER",
+        "product_name": "VARCHAR(100)",
+        "quantity_sold": "BIGINT",
+        "sales_revenue": "BIGINT",
+        "cogs": "BIGINT",
+        "gross_margin": "BIGINT",
+        "gross_margin_rate": "NUMERIC",
+        "current_stock": "INTEGER",
+        "current_stock_value": "INTEGER"
+      },
+      "definition_sha256": "1d4f609287eeaa0eb9f5e3bac0fd6eca17f4ddac1fe7b68ba7b1607d9e7c75cc",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "product_id"
+        ]
+      ]
+    },
+    "mv_product_profitability_by_shop": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "shop_id": "INTEGER",
+        "product_id": "INTEGER",
+        "product_name": "VARCHAR(100)",
+        "quantity_sold": "BIGINT",
+        "sales_revenue": "BIGINT",
+        "cogs": "BIGINT",
+        "gross_margin": "BIGINT",
+        "gross_margin_rate": "NUMERIC",
+        "current_stock": "INTEGER",
+        "current_stock_value": "INTEGER"
+      },
+      "definition_sha256": "1183205da67f49125e9aea714bb781e7778c3cffb9cc05337a896b419477cca2",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "shop_id",
+          "product_id"
+        ]
+      ]
+    },
+    "mv_stock_analytics": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "product_id": "INTEGER",
+        "product_name": "VARCHAR(100)",
+        "unit": "VARCHAR(30)",
+        "stock": "INTEGER",
+        "threshold": "INTEGER",
+        "purchase_price": "INTEGER",
+        "price": "INTEGER",
+        "stock_value": "INTEGER",
+        "potential_sales_value": "INTEGER",
+        "potential_gross_margin": "INTEGER",
+        "stock_status": "TEXT"
+      },
+      "definition_sha256": "7ebbc0fa2387b2cd0d2677812eb6b3a04a2208a0a443d88e51bf187fd9e56e86",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "product_id"
+        ]
+      ]
+    },
+    "mv_stock_analytics_by_shop": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "shop_id": "INTEGER",
+        "product_id": "INTEGER",
+        "product_name": "VARCHAR(100)",
+        "unit": "VARCHAR(30)",
+        "stock": "INTEGER",
+        "threshold": "INTEGER",
+        "purchase_price": "INTEGER",
+        "price": "INTEGER",
+        "stock_value": "INTEGER",
+        "potential_sales_value": "INTEGER",
+        "potential_gross_margin": "INTEGER",
+        "stock_status": "TEXT"
+      },
+      "definition_sha256": "f6371660d7e5ec090f15f4cf15bc50091957617bdeee66573e4e434ca482951d",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "shop_id",
+          "product_id"
+        ]
+      ]
+    },
+    "mv_supplier_financial_position": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "supplier_id": "INTEGER",
+        "supplier_name": "VARCHAR(100)",
+        "purchase_count": "BIGINT",
+        "total_purchases": "BIGINT",
+        "total_paid": "BIGINT",
+        "outstanding_amount": "INTEGER",
+        "last_purchase_at": "TIMESTAMP WITHOUT TIME ZONE"
+      },
+      "definition_sha256": "5d04d967e82bccb3098058ccedbb583a62b23e06d5d4e31249abbcd5e4704993",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "supplier_id"
+        ]
+      ]
+    },
+    "mv_supplier_financial_position_by_shop": {
+      "kind": "materialized_view",
+      "columns": {
+        "merchant_id": "INTEGER",
+        "shop_id": "INTEGER",
+        "supplier_id": "INTEGER",
+        "supplier_name": "VARCHAR(100)",
+        "purchases_count": "BIGINT",
+        "total_purchases": "BIGINT",
+        "total_paid": "BIGINT",
+        "outstanding_amount": "BIGINT",
+        "overdue_amount": "BIGINT",
+        "next_due_date": "DATE"
+      },
+      "definition_sha256": "4ca47ae1b04890cd1131b1b04e96fa7be6a309cf78297e5dd254540480cab0e3",
+      "unique_keys": [
+        [
+          "merchant_id",
+          "shop_id",
+          "supplier_id"
+        ]
+      ]
+    }
+  }
+}

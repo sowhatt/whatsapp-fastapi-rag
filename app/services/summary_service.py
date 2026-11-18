@@ -14,6 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.services.table_utils import render_table
+from app.services.expense_categories import EXPENSE_CATEGORY_LABELS
 
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
@@ -46,16 +47,7 @@ PERIOD_LABELS = {
     "month": "du mois",
 }
 
-EXPENSE_CATEGORY_LABELS = {
-    "marchandises": "Marchandises",
-    "transport": "Transport",
-    "livraison": "Livraison",
-    "loyer": "Loyer",
-    "electricite": "Électricité",
-    "eau": "Eau",
-    "salaire": "Salaire",
-    "autre": "Autre",
-}
+
 
 # Fuseau horaire cible des commerçants (Bénin, WAT = UTC+1, fixe toute
 # l'année, aucune heure d'été). Bug découvert en test : utiliser

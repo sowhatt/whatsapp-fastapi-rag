@@ -11,6 +11,7 @@ class FinancialEntryCreate(BaseModel):
 
 
 class FinancialEntryRead(BaseModel):
+    currency_code: str | None = None
     id: int
     entry_type: str
     amount: int

@@ -26,3 +26,5 @@ class Shop(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    business_timezone: Mapped[str | None] = mapped_column(String(80), nullable=True)

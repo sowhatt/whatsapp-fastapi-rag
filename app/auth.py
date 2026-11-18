@@ -7,12 +7,17 @@ import time
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.tenant import set_current_merchant
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
+from app.models.merchant_passkey import MerchantPasskey
+from app.models.merchant_auth_device import MerchantAuthDevice
+from app.models.merchant_auth_session import MerchantAuthSession
+from app.services.pilot_auth_service import QUICK_AUDIENCE, eligible
 from app.models.shop import Shop
 from app.models.user_phone import UserPhone
 from app.models.user_shop_membership import UserShopMembership
@@ -58,14 +63,23 @@ def create_access_token(
     user_id: int | None = None,
     shop_id: int | None = None,
     role: str | None = None,
+    passkey_id: int | None = None,
+    auth_expires_at: int | None = None,
+    auth_time: int | None = None,
+    pin_session_id: int | None = None,
+    device_id: int | None = None,
 ) -> str:
+    if pin_session_id is not None and passkey_id is not None:
+        raise ValueError("Ambiguous authentication method")
     now = int(time.time())
     ttl = int(os.getenv("PWA_JWT_TTL_SECONDS", "3600"))
+    if passkey_id is not None or pin_session_id is not None:
+        ttl = min(900, ttl)
     payload = {
         "sub": str(merchant.id),
         "merchant_id": merchant.id,
         "iat": now,
-        "exp": now + ttl,
+        "exp": min(now + ttl, auth_expires_at or now + ttl),
         "type": "access",
     }
     if user_id is not None:
@@ -74,6 +88,17 @@ def create_access_token(
         payload["shop_id"] = shop_id
     if role:
         payload["role"] = role
+    if passkey_id is not None:
+        payload["passkey_id"] = passkey_id
+        payload["amr"] = "webauthn"
+        if auth_time is not None:
+            payload["auth_time"] = auth_time
+        payload["exp"] = min(payload["exp"], now + 900, auth_expires_at or now + 900)
+    if pin_session_id is not None:
+        payload.update(amr="pin", pin_session_id=pin_session_id, device_id=device_id)
+    if passkey_id is not None or pin_session_id is not None:
+        # The pre-patch server rejects this audience rather than ignoring revocation claims.
+        payload["aud"] = QUICK_AUDIENCE
     return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 
 
@@ -131,7 +156,8 @@ def require_pwa_merchant(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Authentification requise")
     try:
-        payload = jwt.decode(credentials.credentials, _jwt_secret(), algorithms=["HS256"])
+        # Legacy password tokens have no audience. New tokens are checked explicitly below.
+        payload = jwt.decode(credentials.credentials, _jwt_secret(), algorithms=["HS256"], options={"verify_aud": False})
         if payload.get("type") != "access":
             raise ValueError("type de jeton invalide")
         merchant_id = int(payload["merchant_id"])
@@ -184,8 +210,64 @@ def require_pwa_merchant(
     elif shop_id is not None:
         raise HTTPException(status_code=401, detail="Contexte boutique invalide")
 
+    quick_method = payload.get("amr")
+    if quick_method in ("pin", "webauthn") or payload.get("aud") is not None:
+        if not eligible(merchant_id) or payload.get("aud") != QUICK_AUDIENCE or quick_method not in ("pin", "webauthn"):
+            raise HTTPException(status_code=401, detail="Connexion rapide désactivée")
+
+    pin_session_id = payload.get("pin_session_id")
+    device_id = payload.get("device_id")
+    if quick_method == "pin" or pin_session_id is not None or device_id is not None:
+        if (quick_method != "pin" or type(pin_session_id) is not int or type(device_id) is not int
+                or user_id is None or shop_id is None or payload.get("passkey_id") is not None):
+            raise HTTPException(status_code=401, detail="Session PIN invalide")
+        session = db.query(MerchantAuthSession).join(MerchantAuthDevice, MerchantAuthDevice.id == MerchantAuthSession.device_id).filter(
+            MerchantAuthSession.id == pin_session_id, MerchantAuthSession.device_id == device_id,
+            MerchantAuthSession.merchant_id == merchant_id, MerchantAuthSession.user_id == user_id,
+            MerchantAuthSession.purpose == "pin_access", MerchantAuthSession.is_active.is_(True),
+            MerchantAuthSession.revoked_at.is_(None), MerchantAuthSession.expires_at > func.clock_timestamp(),
+            MerchantAuthSession.created_at <= func.clock_timestamp(),
+            MerchantAuthDevice.merchant_id == merchant_id, MerchantAuthDevice.user_id == user_id,
+            MerchantAuthDevice.is_active.is_(True), MerchantAuthDevice.revoked_at.is_(None),
+            MerchantAuthDevice.origin == os.getenv("PWA_WEBAUTHN_ORIGIN", ""),
+            MerchantAuthDevice.public_key.is_not(None)).first()
+        if session is None:
+            raise HTTPException(status_code=401, detail="Session PIN révoquée ou expirée")
+
+    passkey_id = payload.get("passkey_id")
+    if passkey_id is not None or payload.get("amr") == "webauthn":
+        if type(passkey_id) is not int or user_id is None or payload.get("amr") != "webauthn":
+            raise HTTPException(status_code=401, detail="Jeton Passkey invalide")
+        key = db.query(MerchantPasskey).filter(
+            MerchantPasskey.id == passkey_id,
+            MerchantPasskey.merchant_id == merchant_id,
+            MerchantPasskey.user_id == user_id,
+            MerchantPasskey.revoked_at.is_(None),
+        ).first()
+        if key is None:
+            raise HTTPException(status_code=401, detail="Passkey révoquée ou introuvable")
+
     set_current_merchant(db, merchant.id)
     db.info["pwa_user_id"] = user_id
     db.info["pwa_shop_id"] = shop_id
     db.info["pwa_role"] = role
+    db.info["pwa_pin_session_id"] = pin_session_id
+    db.info["pwa_device_id"] = device_id
+    db.info["pwa_passkey_id"] = passkey_id
+    db.info["pwa_auth_time"] = payload.get("auth_time")
+    db.info["pwa_auth_expires_at"] = payload.get("exp")
+    return merchant
+
+
+def require_pwa_shop(
+    merchant: Merchant = Depends(require_pwa_merchant),
+    db: Session = Depends(get_db),
+) -> Merchant:
+    """Quick credentials select a shop; historical token semantics are preserved.
+
+    An older Passkey without an enrolled shop can select/recover through /auth,
+    but cannot act as a tenant-wide business credential.
+    """
+    if (db.info.get("pwa_passkey_id") is not None or db.info.get("pwa_pin_session_id") is not None) and db.info.get("pwa_shop_id") is None:
+        raise HTTPException(status_code=409, detail="Sélectionne d’abord une boutique.")
     return merchant

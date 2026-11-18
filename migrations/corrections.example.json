@@ -1,0 +1,14 @@
+{
+  "migration_id": "EXAMPLE-DO-NOT-APPLY-001",
+  "approved_by": "REPLACE_WITH_REVIEWER",
+  "changes": [
+    {
+      "table": "suppliers",
+      "id": 3,
+      "column": "merchant_id",
+      "expected": null,
+      "value": 1,
+      "evidence": "EXAMPLE ONLY: replace with the verified ownership evidence and real reviewed IDs"
+    }
+  ]
+}

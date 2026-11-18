@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta, datetime
 from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from app.services.finance_time import zone, bounds
 
 
 @dataclass
@@ -37,6 +38,19 @@ class FinancialOverview:
     estimated_current_liabilities: int
     estimated_net_position: int
 
+    refunds_paid: int = 0
+    refunds_due: int = 0
+    unknown_receipts_amount: int = 0
+    unknown_receipts_count: int = 0
+    unassessed_cancellations: int = 0
+    receipt_channels: dict | None = None
+    unknown_supplier_count: int = 0
+    unknown_supplier_amount: int = 0
+    unknown_cost_lines: int = 0
+    unknown_cost_revenue: int = 0
+    unknown_currency_count: int = 0
+    other_currency_count: int = 0
+
 
 def _integer(value) -> int:
     return int(value or 0)
@@ -60,148 +74,168 @@ def get_financial_overview(
         vue strictement limitée à la boutique sélectionnée.
     """
 
-    if shop_id is None:
-        daily_view = "mv_daily_business_metrics"
-        customer_view = "mv_customer_financial_position"
-        supplier_view = "mv_supplier_financial_position"
-        stock_view = "mv_stock_analytics"
-    else:
-        daily_view = "mv_daily_business_metrics_by_shop"
-        customer_view = "mv_customer_financial_position_by_shop"
-        supplier_view = "mv_supplier_financial_position_by_shop"
-        stock_view = "mv_stock_analytics_by_shop"
-
-    activity_conditions = [
-        "merchant_id = :merchant_id"
-    ]
-
-    position_conditions = [
-        "merchant_id = :merchant_id"
-    ]
-
-    params = {
-        "merchant_id": merchant_id,
-    }
-
+    # One statement gives activity and positions the same PostgreSQL snapshot.
+    # Read the committed source of truth, never a refresh-dependent BI snapshot.
+    # Revenue follows the sale date; receipts follow their explicit effective
+    # date, including cancelled sales. Unknown historical dates stay unknown.
+    params = {"merchant_id": merchant_id}
     if shop_id is not None:
-        activity_conditions.append(
-            "shop_id = :shop_id"
-        )
-        position_conditions.append(
-            "shop_id = :shop_id"
-        )
         params["shop_id"] = shop_id
 
+    def scope(alias: str, entity_type: str) -> str:
+        condition = f"{alias}.merchant_id = :merchant_id"
+        if shop_id is not None:
+            condition += f"""
+                AND EXISTS (
+                    SELECT 1 FROM shop_operations so
+                    WHERE so.merchant_id = {alias}.merchant_id
+                      AND so.shop_id = :shop_id
+                      AND so.entity_type = '{entity_type}'
+                      AND so.entity_id = {alias}.id
+                )
+            """
+        return condition
+
+    from app.models.shop import Shop
+    params['currency']=db.query(Shop.currency_code).filter(Shop.id==shop_id,Shop.merchant_id==merchant_id).scalar() if shop_id else None
+    tz=zone(db,shop_id)
+    params['business_today']=datetime.now(tz).date()
+    start,end = bounds(since,until,tz)
+    period = []
     if since is not None:
-        activity_conditions.append(
-            "business_date >= :since"
-        )
-        params["since"] = since
-
+        period.append("created_at AT TIME ZONE 'UTC' >= :since")
+        params["since"] = start
     if until is not None:
-        activity_conditions.append(
-            "business_date <= :until"
-        )
-        params["until"] = until
+        period.append("created_at AT TIME ZONE 'UTC' < :until_exclusive")
+        params["until_exclusive"] = end
+    period_where = " AND ".join(period) or "1 = 1"
 
-    activity_where = " AND ".join(
-        activity_conditions
-    )
+    effective_where = period_where.replace("created_at AT TIME ZONE 'UTC'", 'effective_at')
+    refund_scope = 'merchant_id = :merchant_id' + (' AND shop_id = :shop_id' if shop_id is not None else '')
+    if shop_id is None:
+        # Preserve the historical consolidated balance contract, including
+        # legacy balances that are not linked to a shop operation.
+        receivables_sql = """
+            SELECT COALESCE(SUM(debt), 0) AS receivables
+            FROM customers WHERE merchant_id = :merchant_id
+        """
+        payables_sql = """
+            SELECT COALESCE(SUM(debt), 0) AS payables
+            FROM suppliers WHERE merchant_id = :merchant_id
+        """
+        stock_sql = """
+            SELECT COALESCE(SUM(stock * COALESCE(purchase_price, 0)), 0) AS stock_value,
+                   COALESCE(SUM(stock * COALESCE(price, 0)), 0) AS potential_sales_value
+            FROM products WHERE merchant_id = :merchant_id
+        """
+    else:
+        receivables_sql = """
+            SELECT COALESCE(SUM(s.remaining_amount), 0) AS receivables
+            FROM scoped_sales s
+            JOIN customers c ON c.id = s.customer_id AND c.merchant_id = s.merchant_id
+            WHERE s.remaining_amount > 0
+        """
+        payables_sql = """
+            SELECT COALESCE(SUM(p.remaining_amount), 0) AS payables
+            FROM scoped_purchases p
+            JOIN suppliers s ON s.id = p.supplier_id AND s.merchant_id = p.merchant_id
+            WHERE p.remaining_amount > 0
+        """
+        stock_sql = """
+            SELECT COALESCE(SUM(i.stock * COALESCE(p.purchase_price, 0)), 0) AS stock_value,
+                   COALESCE(SUM(i.stock * COALESCE(p.price, 0)), 0) AS potential_sales_value
+            FROM shop_inventories i
+            JOIN products p ON p.id = i.product_id AND p.merchant_id = i.merchant_id
+            WHERE i.merchant_id = :merchant_id AND i.shop_id = :shop_id
+        """
 
-    position_where = " AND ".join(
-        position_conditions
-    )
-
-    activity = db.execute(
+    row = db.execute(
         text(f"""
-            SELECT
-                COALESCE(SUM(sales_total), 0)
-                    AS sales_total,
-
-                COALESCE(SUM(sales_paid), 0)
-                    AS sales_paid,
-
-                COALESCE(SUM(sales_credit), 0)
-                    AS customer_credit_generated,
-
-                COALESCE(SUM(purchases_total), 0)
-                    AS purchases_total,
-
-                COALESCE(SUM(purchases_paid), 0)
-                    AS purchases_paid,
-
-                COALESCE(SUM(purchases_credit), 0)
-                    AS supplier_credit_generated,
-
-                COALESCE(SUM(expenses_total), 0)
-                    AS expenses_total,
-
-                COALESCE(SUM(cogs), 0)
-                    AS cogs,
-
-                COALESCE(SUM(gross_margin), 0)
-                    AS gross_margin,
-
-                COALESCE(SUM(net_cash_flow), 0)
-                    AS net_cash_flow
-
-            FROM {daily_view}
-            WHERE {activity_where}
+            WITH currency_source AS (
+                SELECT s.currency_code FROM sales s WHERE {scope('s','sale')}
+                UNION ALL SELECT p.currency_code FROM purchases p WHERE {scope('p','purchase')}
+                UNION ALL SELECT f.currency_code FROM financial_entries f WHERE {scope('f','financial_entry')}
+            ), currency_quality AS (
+                SELECT COUNT(*) FILTER(WHERE currency_code IS NULL) AS unknown_currency_count,
+                    COUNT(*) FILTER(WHERE CAST(:currency AS VARCHAR) IS NOT NULL AND currency_code<>CAST(:currency AS VARCHAR)) AS other_currency_count FROM currency_source
+            ), scoped_sales AS (
+                SELECT s.* FROM sales s
+                WHERE {scope('s', 'sale')} AND s.status <> 'cancelled'
+            ), scoped_purchases AS (
+                SELECT p.* FROM purchases p
+                WHERE {scope('p', 'purchase')} AND p.status <> 'cancelled'
+            ), period_sales AS (
+                SELECT * FROM scoped_sales WHERE {period_where}
+            ), sales_activity AS (
+                SELECT COALESCE(SUM(total_amount), 0) AS sales_total,
+                       COALESCE(SUM(remaining_amount), 0) AS customer_credit_generated
+                FROM period_sales
+            ), receipt_source AS (
+                SELECT p.* FROM payments p JOIN sales s ON s.id=p.sale_id
+                WHERE {scope('s','sale')} AND (p.merchant_id=s.merchant_id OR p.merchant_id IS NULL)
+            ), receipts_period AS (
+                SELECT * FROM receipt_source WHERE effective_at IS NOT NULL AND {effective_where}
+            ), receipts AS (
+                SELECT COALESCE(SUM(amount),0) AS sales_paid FROM receipts_period
+            ), receipt_quality AS (
+                SELECT COALESCE(SUM(amount),0) AS unknown_receipts_amount, COUNT(*) AS unknown_receipts_count
+                FROM receipt_source WHERE effective_at IS NULL
+            ), channels AS (
+                SELECT COALESCE(json_object_agg(channel,amount),'{{}}'::json) AS receipt_channels
+                FROM (SELECT channel,SUM(amount) amount FROM receipts_period GROUP BY channel) q
+            ), refund_period AS (
+                SELECT COALESCE(SUM(amount),0) AS refunds_paid FROM customer_refunds
+                WHERE {refund_scope} AND {effective_where}
+            ), refund_due AS (
+                SELECT COALESCE(SUM(c.refundable_amount - COALESCE((SELECT SUM(r.amount) FROM customer_refunds r WHERE r.sale_id=c.sale_id),0)),0) AS refunds_due
+                FROM sale_cancellations c WHERE {refund_scope}
+            ), legacy_cancellations AS (
+                SELECT COUNT(*) AS unassessed_cancellations FROM sales s
+                WHERE {scope('s','sale')} AND s.status='cancelled'
+                AND NOT EXISTS(SELECT 1 FROM sale_cancellations c WHERE c.sale_id=s.id)
+            ), purchase_activity AS (
+                SELECT COALESCE(SUM(total_amount), 0) AS purchases_total,
+                       COALESCE(SUM(remaining_amount), 0) AS supplier_credit_generated
+                FROM scoped_purchases WHERE {period_where}
+            ), supplier_source AS (
+                SELECT sp.* FROM supplier_payments sp JOIN purchases p ON p.id=sp.purchase_id
+                WHERE {scope('p','purchase')} AND (sp.merchant_id=p.merchant_id OR sp.merchant_id IS NULL)
+            ), supplier_cash AS (
+                SELECT COALESCE(SUM(amount),0) AS purchases_paid FROM supplier_source
+                WHERE effective_at IS NOT NULL AND {effective_where}
+            ), supplier_quality AS (
+                SELECT COUNT(*) AS unknown_supplier_count, COALESCE(SUM(amount),0) AS unknown_supplier_amount
+                FROM supplier_source WHERE effective_at IS NULL
+            ), expense_activity AS (
+                SELECT COALESCE(SUM(f.amount), 0) AS expenses_total
+                FROM financial_entries f
+                WHERE {scope('f', 'financial_entry')}
+                  AND f.entry_type = 'expense' AND {period_where}
+            ), cost_activity AS (
+                SELECT COALESCE(SUM(si.quantity * COALESCE(si.unit_cost_snapshot, 0)), 0) AS cogs,
+                    COUNT(*) FILTER (WHERE si.unit_cost_snapshot IS NULL OR si.unit_cost_snapshot<=0) AS unknown_cost_lines,
+                    COALESCE(SUM(si.line_total) FILTER (WHERE si.unit_cost_snapshot IS NULL OR si.unit_cost_snapshot<=0),0) AS unknown_cost_revenue
+                FROM period_sales s JOIN sale_items si ON si.sale_id = s.id
+            ), receivables AS ({receivables_sql}),
+            overdue AS (
+                SELECT COALESCE(SUM(s.remaining_amount), 0) AS overdue
+                FROM scoped_sales s
+                JOIN customers c ON c.id = s.customer_id AND c.merchant_id = s.merchant_id
+                WHERE s.remaining_amount > 0 AND s.due_date < :business_today
+            ), payables AS ({payables_sql}), stock AS ({stock_sql})
+            SELECT currency_quality.*, supplier_cash.*, supplier_quality.*, s.*, p.*, e.*, c.*, r.*, o.*, l.*, i.*, cash.*, quality.*, channels.*, refund.*, due.*, legacy.*,
+                   s.sales_total - c.cogs AS gross_margin,
+                   cash.sales_paid - refund.refunds_paid - supplier_cash.purchases_paid - e.expenses_total AS net_cash_flow
+            FROM sales_activity s CROSS JOIN purchase_activity p CROSS JOIN supplier_cash CROSS JOIN supplier_quality CROSS JOIN currency_quality
+            CROSS JOIN expense_activity e CROSS JOIN cost_activity c
+            CROSS JOIN receivables r CROSS JOIN overdue o
+            CROSS JOIN payables l CROSS JOIN stock i
+            CROSS JOIN receipts cash CROSS JOIN receipt_quality quality CROSS JOIN channels
+            CROSS JOIN refund_period refund CROSS JOIN refund_due due CROSS JOIN legacy_cancellations legacy
         """),
         params,
     ).mappings().one()
-
-    customers = db.execute(
-        text(f"""
-            SELECT
-                COALESCE(
-                    SUM(outstanding_amount),
-                    0
-                ) AS receivables,
-
-                COALESCE(
-                    SUM(overdue_amount),
-                    0
-                ) AS overdue
-
-            FROM {customer_view}
-            WHERE {position_where}
-        """),
-        params,
-    ).mappings().one()
-
-    suppliers = db.execute(
-        text(f"""
-            SELECT
-                COALESCE(
-                    SUM(outstanding_amount),
-                    0
-                ) AS payables
-
-            FROM {supplier_view}
-            WHERE {position_where}
-        """),
-        params,
-    ).mappings().one()
-
-    stock = db.execute(
-        text(f"""
-            SELECT
-                COALESCE(
-                    SUM(stock_value),
-                    0
-                ) AS stock_value,
-
-                COALESCE(
-                    SUM(potential_sales_value),
-                    0
-                ) AS potential_sales_value
-
-            FROM {stock_view}
-            WHERE {position_where}
-        """),
-        params,
-    ).mappings().one()
+    activity = customers = suppliers = stock = row
 
     sales_total = _integer(
         activity["sales_total"]
@@ -243,7 +277,7 @@ def get_financial_overview(
         + receivables
     )
 
-    estimated_current_liabilities = payables
+    estimated_current_liabilities = payables + _integer(row["refunds_due"])
 
     estimated_net_position = (
         estimated_current_assets
@@ -252,6 +286,17 @@ def get_financial_overview(
 
     return FinancialOverview(
         merchant_id=merchant_id,
+        unknown_currency_count=_integer(row["unknown_currency_count"]),
+        other_currency_count=_integer(row["other_currency_count"]),
+        unknown_supplier_count=_integer(row["unknown_supplier_count"]),
+        unknown_supplier_amount=_integer(row["unknown_supplier_amount"]),
+        unknown_cost_lines=_integer(row["unknown_cost_lines"]),
+        unknown_cost_revenue=_integer(row["unknown_cost_revenue"]),
+        refunds_paid=_integer(row['refunds_paid']), refunds_due=_integer(row['refunds_due']),
+        unknown_receipts_amount=_integer(row['unknown_receipts_amount']),
+        unknown_receipts_count=_integer(row['unknown_receipts_count']),
+        unassessed_cancellations=_integer(row['unassessed_cancellations']),
+        receipt_channels=row['receipt_channels'],
 
         sales_total=sales_total,
         sales_paid=_integer(

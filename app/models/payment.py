@@ -15,3 +15,4 @@ class Payment(Base):
     channel: Mapped[str] = mapped_column(String(30), default="cash")
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     paid_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

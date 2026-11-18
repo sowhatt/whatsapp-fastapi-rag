@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 from app.agents.normalization_agent import normalize_transcription
 from app.business.parser.number_parser import parse_french_number
 from app.services.intent_parser import parse_message
+from app.services.expense_categories import (
+    EXPENSE_CATEGORY_LABELS,
+    OPERATING_EXPENSE_CATEGORY_PROMPT,
+)
 from app.services.fast_sale_intent_service import parse_fast_sale_intent
 
 
@@ -122,11 +126,13 @@ Règles impératives :
     et d'un montant, est une vente (type=sale) même sans verbe comme
     « vends » ou « vente ». Exemple : « Deux sacs de riz et trois cartons
     de tomates à Awa pour 150 000 » est une vente.
-16. Pour une expense, déduis category parmi : marchandises, transport,
-    livraison, loyer, electricite, eau, salaire, autre. Exemples :
+16. Pour une expense, déduis category parmi :
+    __OPERATING_EXPENSE_CATEGORIES__. Exemples :
     « j'ai payé 5 000 de taxi » -> transport ; « 3 000 pour livrer la
     commande » -> livraison ; « facture CEB 12 000 » -> electricite.
-    En cas de doute mets autre.
+    En cas de doute mets autre. Restauration concerne les repas consommés
+    pour le fonctionnement de l'activité. Des marchandises achetées pour
+    être revendues relèvent de purchase, même s'il s'agit d'aliments.
 17. Distingue prix unitaire et montant de ligne — pour une vente ET
     pour un achat, avec un seul produit ou plusieurs. Si le commerçant
     dit « prix unitaire X » ou « à X l'unité/le sac/le carton », X est
@@ -245,7 +251,7 @@ Règles impératives :
     Si aucune devise n'est mentionnée, utilise currency="XOF".
     Exemple : « Achat 20 cartons de tomates chez Chinedu à 500 000 nairas »
     -> amount=500000, currency="NGN".
-""".strip()
+""".strip().replace("__OPERATING_EXPENSE_CATEGORIES__", OPERATING_EXPENSE_CATEGORY_PROMPT)
 
 
 class IntentAgentError(Exception):
@@ -669,10 +675,7 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
         return action
 
     if parsed.type == "expense":
-        allowed = {
-            "marchandises", "transport", "livraison", "loyer",
-            "electricite", "eau", "salaire", "autre",
-        }
+        allowed = EXPENSE_CATEGORY_LABELS
         category = str(parsed.category or "autre").strip().lower()
         category = (
             category.replace("é", "e").replace("è", "e").replace("ê", "e")

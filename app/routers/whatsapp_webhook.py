@@ -1,5 +1,9 @@
+import hashlib
+import hmac
 import json
+import logging
 import os
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -21,9 +25,10 @@ from app.services.whatsapp_media import (
     download_whatsapp_media,
     get_whatsapp_media_url,
 )
-from app.services.whatsapp_sender import send_whatsapp_text_message
+from app.services.whatsapp_sender import WhatsAppNotConfigured, send_whatsapp_text_message
 
 router = APIRouter(tags=["whatsapp webhook"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/webhooks/whatsapp")
@@ -43,12 +48,46 @@ def verify_whatsapp_webhook(
     )
 
 
+async def verified_webhook_body(request: Request) -> bytes:
+    """Authenticate Meta's raw payload before parsing or resolving a tenant.
+
+    WHATSAPP_APP_SECRET is the Meta application secret, not the GET challenge
+    token or an access token. Missing configuration closes the POST endpoint.
+    """
+    secret = os.getenv("WHATSAPP_APP_SECRET", "")
+    signatures = request.headers.getlist("x-hub-signature-256")
+    if (
+        not secret.strip()
+        or len(signatures) != 1
+        or not re.fullmatch(r"sha256=[0-9a-fA-F]{64}", signatures[0])
+    ):
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    raw_body = await request.body()
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+    supplied = bytes.fromhex(signatures[0][7:])
+    if not hmac.compare_digest(expected, supplied):
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    return raw_body
+
+
 @router.post("/webhooks/whatsapp")
 async def receive_whatsapp_webhook(
-    request: Request,
+    raw_body: bytes = Depends(verified_webhook_body),
     db: Session = Depends(get_db),
 ):
-    raw_body = await request.body()
+    unsent_replies = 0
+
+    def send_reply(to: str, text: str) -> bool:
+        nonlocal unsent_replies
+        try:
+            send_whatsapp_text_message(to, text)
+        except WhatsAppNotConfigured:
+            # Receiving a signed event does not imply that a reply was delivered.
+            # Never include credentials, recipient, body or exception text here.
+            unsent_replies += 1
+            logger.warning("whatsapp_reply_not_sent reason=configuration_missing")
+            return False
+        return True
 
     if not raw_body:
         return {
@@ -128,7 +167,7 @@ async def receive_whatsapp_webhook(
                                 "reason": access_error.code,
                             },
                         )
-                        send_whatsapp_text_message(
+                        send_reply(
                             from_number,
                             access_error.user_message,
                         )
@@ -152,7 +191,7 @@ async def receive_whatsapp_webhook(
                         )
 
                         if not audio_id:
-                            send_whatsapp_text_message(
+                            send_reply(
                                 from_number,
                                 "🎙️ Je n’ai pas pu lire ce vocal.",
                             )
@@ -236,7 +275,7 @@ async def receive_whatsapp_webhook(
                                 str(exc),
                             )
 
-                            send_whatsapp_text_message(
+                            send_reply(
                                 from_number,
                                 "🎙️ Je n’ai détecté aucune "
                                 "parole claire.\n"
@@ -251,7 +290,7 @@ async def receive_whatsapp_webhook(
                                 str(exc),
                             )
 
-                            send_whatsapp_text_message(
+                            send_reply(
                                 from_number,
                                 "🎙️ Je n’ai pas pu télécharger "
                                 "ce vocal.\n"
@@ -309,9 +348,12 @@ async def receive_whatsapp_webhook(
                                 f"{reply_text}"
                             )
 
-                        send_whatsapp_text_message(
+                        reply_accepted = send_reply(
                             from_number,
                             reply_text,
+                        )
+                        _perf["reply_delivery"] = (
+                            "provider_accepted" if reply_accepted else "not_sent"
                         )
                         _t7 = time.monotonic()
                         _perf["send_reply_s"] = round(
@@ -344,6 +386,15 @@ async def receive_whatsapp_webhook(
                             },
                         )
 
+        if unsent_replies:
+            return {
+                "status": "received",
+                "outbound": {
+                    "status": "not_sent",
+                    "reason": "whatsapp_not_configured",
+                    "count": unsent_replies,
+                },
+            }
         return {"status": "received"}
 
     except Exception as exc:

@@ -292,7 +292,9 @@ def build_purchase_create_payload(resolved: ResolvedPurchase) -> PurchaseCreate:
 
 
 def create_purchase_from_intent(intent: dict[str, Any], db: Session, create_purchase_func: Callable[[PurchaseCreate, Session], Any]) -> Any:
-    return create_purchase_func(build_purchase_create_payload(resolve_purchase_intent(intent, db)), db)
+    payload = build_purchase_create_payload(resolve_purchase_intent(intent, db))
+    payload.idempotency_key = intent.get("idempotency_key")
+    return create_purchase_func(payload, db)
 
 
 def preview_purchase_from_intent(intent: dict[str, Any], db: Session) -> dict[str, Any]:

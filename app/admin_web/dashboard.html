@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Whatzabi Admin — Pilotes</title>
+
+  <link
+    rel="stylesheet"
+    href="/admin-web/admin.css"
+  >
+  <link rel="stylesheet" href="/admin-web/tokens.css">
+  <link rel="stylesheet" href="/admin-web/components.css">
+  <link rel="stylesheet" href="/admin-web/layout.css">
+</head>
+
+<body class="admin-page">
+
+  <header class="admin-topbar">
+
+    <div class="admin-brand">
+      <div class="brand-mark">W</div>
+
+      <div>
+        <strong>Whatzabi</strong>
+        <span>Administration</span>
+      </div>
+    </div>
+
+    <div class="admin-account">
+      <div>
+        <strong id="admin-name">
+          Super Admin
+        </strong>
+
+        <span id="admin-email"></span>
+      </div>
+
+      <button
+        id="logout-button"
+        class="secondary-button"
+        type="button"
+      >
+        Déconnexion
+      </button>
+    </div>
+
+  </header>
+
+
+  <main class="admin-container">
+
+    <section class="page-heading">
+
+      <div>
+        <p class="eyebrow">
+          PILOTAGE
+        </p>
+
+        <h1>
+          Pilotes Whatzabi
+        </h1>
+
+        <p>
+          Suivez les commerçants participant au pilote
+          et leur état d'activation.
+        </p>
+      </div>
+
+      <button
+        id="create-pilot-button"
+        class="action-button"
+        type="button"
+      >
+        + Donner accès
+      </button>
+
+    </section>
+
+
+    <section
+      class="metrics-grid"
+      aria-label="Indicateurs pilotes"
+    >
+
+      <article class="metric-card">
+        <span>Total pilotes</span>
+
+        <strong id="metric-total">
+          —
+        </strong>
+      </article>
+
+
+      <article class="metric-card">
+        <span>Actifs</span>
+
+        <strong id="metric-active">
+          —
+        </strong>
+      </article>
+
+
+      <article class="metric-card">
+        <span>En attente</span>
+
+        <strong id="metric-pending">
+          —
+        </strong>
+      </article>
+
+
+      <article class="metric-card">
+        <span>Suspendus</span>
+
+        <strong id="metric-suspended">
+          —
+        </strong>
+      </article>
+
+
+      <article class="metric-card">
+        <span>Expirent bientôt</span>
+
+        <strong id="metric-expiring">
+          —
+        </strong>
+      </article>
+
+    </section>
+
+
+    <section class="pilots-panel">
+
+      <div class="panel-heading">
+
+        <div>
+          <h2>
+            Commerçants pilotes
+          </h2>
+
+          <p id="pilots-count">
+            Chargement…
+          </p>
+        </div>
+
+
+        <div class="pilot-search">
+
+          <label
+            for="pilot-search-input"
+            class="sr-only"
+          >
+            Rechercher un pilote
+          </label>
+
+          <input
+            id="pilot-search-input"
+            type="search"
+            placeholder="Rechercher commerçant, boutique…"
+          >
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="dashboard-error"
+        class="form-error"
+        role="alert"
+        hidden
+      ></div>
+
+
+      <div class="table-wrapper">
+
+        <table class="pilots-table">
+
+          <thead>
+            <tr>
+              <th>Commerçant</th>
+              <th>Boutique</th>
+              <th>Téléphone</th>
+              <th>Pays</th>
+              <th>Statut</th>
+              <th>Fin pilote</th>
+              <th></th>
+            </tr>
+          </thead>
+
+          <tbody id="pilots-table-body">
+
+            <tr>
+              <td
+                colspan="7"
+                class="table-empty"
+              >
+                Chargement des pilotes…
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <script src="/admin-web/admin.js"></script>
+  <script src="/admin-web/dashboard.js"></script>
+
+</body>
+</html>

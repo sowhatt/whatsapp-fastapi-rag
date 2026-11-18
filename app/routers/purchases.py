@@ -1,4 +1,5 @@
-from datetime import datetime
+from app.services.operation_currency import operation_currency
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -15,19 +16,14 @@ from app.rbac import require_permission
 from app.schemas.purchase import PurchaseCreate, PurchaseRead, CancelPurchasePayload
 from app.services.shop_context_service import adjust_stock, get_current_shop_id, get_effective_stock, record_shop_operation
 
+from app.services.purchase_idempotency import reserve_purchase, save_receipt
+from app.services.purchase_transactions import lock_supplier, lock_purchase, lock_products, purchase_query
+
 router = APIRouter(tags=["achats"])
 
 
 def _purchases_query(db: Session):
-    query = db.query(Purchase)
-    shop_id = get_current_shop_id(db)
-    if shop_id is None:
-        return query
-    return query.join(
-        ShopOperation,
-        (ShopOperation.entity_type == "purchase")
-        & (ShopOperation.entity_id == Purchase.id),
-    ).filter(ShopOperation.shop_id == shop_id)
+    return purchase_query(db)
 
 
 def _purchase_in_current_shop(db: Session, purchase_id: int):
@@ -87,16 +83,37 @@ def list_purchases(
     return _purchases_query(db).order_by(Purchase.created_at.desc(), Purchase.id.desc()).all()
 
 
+@router.post("/v2/purchases", response_model=PurchaseRead)
 @router.post("/purchases", response_model=PurchaseRead)
 def create_purchase(
     payload: PurchaseCreate,
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("purchase.create")),
 ):
+    """v2 requires a durable client key; legacy route fails closed without one."""
+    try:
+        request_id, receipt = reserve_purchase(db, payload)
+        if receipt is not None:
+            db.rollback()  # release the read transaction, never refresh the immutable receipt
+            return receipt
+        if payload.payment_effective_at and abs(datetime.now(timezone.utc)-payload.payment_effective_at)>timedelta(minutes=5):
+            raise HTTPException(422,'Le paiement initial doit être déclaré maintenant')
+        purchase = _create_purchase(payload, db)
+        db.flush()
+        db.refresh(purchase)
+        receipt = save_receipt(db, request_id, purchase)
+        db.commit()
+        return receipt
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _create_purchase(payload: PurchaseCreate, db: Session):
     """Crée un achat multi-produits, augmente le stock et met à jour la dette fournisseur."""
-    supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+    # A named supplier is still locked first. Anonymous purchases can only be
+    # fully paid; nullable supplier columns already exist in the deployed schema.
+    supplier = lock_supplier(db, payload.supplier_id) if payload.supplier_id is not None else None
 
     if not payload.items:
         raise HTTPException(status_code=400, detail="Au moins une ligne produit est requise")
@@ -104,6 +121,7 @@ def create_purchase(
     total_amount = 0
     resolved_items = []
 
+    products = lock_products(db, [item.product_id for item in payload.items])
     for item in payload.items:
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="La quantité doit être supérieure à zéro")
@@ -111,7 +129,7 @@ def create_purchase(
         if item.unit_cost < 0:
             raise HTTPException(status_code=400, detail="Le coût unitaire ne peut pas être négatif")
 
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+        product = products[item.product_id]
         if not product:
             raise HTTPException(status_code=404, detail=f"Produit introuvable : {item.product_id}")
 
@@ -142,6 +160,9 @@ def create_purchase(
 
     remaining_amount = total_amount - paid_amount
 
+    if remaining_amount > 0 and supplier is None:
+        raise HTTPException(400, "Choisis un fournisseur pour le montant restant à payer")
+
     if remaining_amount > 0 and payload.due_date is None:
         raise HTTPException(
             status_code=400,
@@ -156,7 +177,7 @@ def create_purchase(
         status = "partial"
 
     purchase = Purchase(
-        supplier_id=payload.supplier_id,
+        currency_code=operation_currency(db),        supplier_id=payload.supplier_id,
         total_amount=total_amount,
         paid_amount=paid_amount,
         remaining_amount=remaining_amount,
@@ -180,10 +201,12 @@ def create_purchase(
     if paid_amount > 0:
         supplier_payment = SupplierPayment(
             purchase_id=purchase.id,
-            supplier_id=supplier.id,
+            supplier_id=supplier.id if supplier else None,
             amount=paid_amount,
             channel=payload.payment_channel,
             reference=None,
+            effective_at=payload.payment_effective_at or datetime.now(timezone.utc),
+            effective_at_source='initial_declared_now' if payload.payment_effective_at else 'initial_server_now',
         )
         db.add(supplier_payment)
         db.flush()
@@ -234,10 +257,11 @@ def create_purchase(
             quantity=quantity,
             reference_type="purchase",
             reference_id=purchase.id,
-            note=f"Achat chez le fournisseur {supplier.name}",
+            note=f"Achat chez le fournisseur {supplier.name}" if supplier else "Achat comptant sans fournisseur",
         )
 
-    supplier.debt += remaining_amount
+    if supplier:
+        supplier.debt += remaining_amount
 
     add_event(
         db,
@@ -248,8 +272,6 @@ def create_purchase(
         note="Achat créé",
     )
 
-    db.commit()
-    db.refresh(purchase)
     return purchase
 
 
@@ -278,7 +300,11 @@ def get_purchase_payments(
     if not purchase:
         raise HTTPException(status_code=404, detail="Achat introuvable")
 
-    return db.query(SupplierPayment).filter(SupplierPayment.purchase_id == purchase_id).all()
+    payments=db.query(SupplierPayment).filter(SupplierPayment.purchase_id == purchase_id).order_by(SupplierPayment.id).all()
+    allocations=db.query(SupplierPaymentAllocation).filter(SupplierPaymentAllocation.supplier_payment_id.in_([p.id for p in payments])).all() if payments else []
+    return [{**{c.name:getattr(p,c.name) for c in SupplierPayment.__table__.columns},
+             'currency_code':purchase.currency_code,
+             'allocations':[{'purchase_item_id':a.purchase_item_id,'amount':a.allocated_amount} for a in allocations if a.supplier_payment_id==p.id]} for p in payments]
 
 
 @router.post("/purchases/{purchase_id}/cancel", response_model=PurchaseRead)
@@ -288,10 +314,20 @@ def cancel_purchase(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("purchase.cancel")),
 ):
+    try:
+        purchase = _cancel_purchase(purchase_id, payload, db)
+        db.flush()
+        receipt = PurchaseRead.model_validate(purchase)
+        db.commit()
+        return receipt
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _cancel_purchase(purchase_id, payload, db):
     """Annule un achat sans le supprimer, corrige le stock et la dette fournisseur."""
-    purchase = _purchase_in_current_shop(db, purchase_id)
-    if not purchase:
-        raise HTTPException(status_code=404, detail="Achat introuvable")
+    supplier, purchase = lock_purchase(db, purchase_id)
 
     if purchase.status == "cancelled":
         raise HTTPException(status_code=400, detail="Cet achat est déjà annulé")
@@ -300,16 +336,15 @@ def cancel_purchase(
     if not purchase_items:
         raise HTTPException(status_code=400, detail="Cet achat ne contient aucune ligne")
 
-    supplier = None
-    if purchase.supplier_id:
-        supplier = db.query(Supplier).filter(Supplier.id == purchase.supplier_id).first()
+    products = lock_products(db, [item.product_id for item in purchase_items])
 
     for item in purchase_items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+        product = products[item.product_id]
         if not product:
             continue
 
-        if get_effective_stock(product, db) < item.quantity:
+        db.flush()
+        if get_effective_stock(product, db, lock=True) < item.quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Impossible d’annuler l’achat : stock insuffisant pour le produit {product.name}",
@@ -328,7 +363,9 @@ def cancel_purchase(
         )
 
     if supplier:
-        supplier.debt = max(0, supplier.debt - purchase.remaining_amount)
+        supplier.debt -= purchase.remaining_amount
+        if supplier.debt < 0:
+            raise HTTPException(409, "Dette fournisseur incohérente : rapprochement requis")
 
     purchase.status = "cancelled"
     purchase.remaining_amount = 0
@@ -344,6 +381,4 @@ def cancel_purchase(
         note=payload.reason,
     )
 
-    db.commit()
-    db.refresh(purchase)
     return purchase

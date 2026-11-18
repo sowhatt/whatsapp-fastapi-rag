@@ -546,6 +546,9 @@ def get_pending_action(sender_id: str) -> dict[str, Any] | None:
 
 
 def set_pending_action(sender_id: str, action: dict[str, Any]) -> None:
+    if action.get("type") == "purchase":
+        from uuid import uuid4
+        action.setdefault("idempotency_key", str(uuid4()))
     action["_touched_at"] = time.time()
     pending_actions[sender_id] = action
 

@@ -7,7 +7,7 @@
   function showDetected(code){detectedBarcode=code;$('barcodeDetectedValue').textContent=`EAN / GTIN : ${code}`;$('barcodeDetectedBox').hidden=false;$('barcodeTarget')?.classList.add('detected');sessionStorage.setItem('whatzabi_pending_barcode',code)}
   function loadZXing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://unpkg.com/@zxing/browser@0.2.1';s.async=true;s.onload=()=>window.ZXingBrowser?ok(window.ZXingBrowser):no();s.onerror=no;document.head.appendChild(s)});return zxingPromise}
   function captureFrame(){const video=$('barcodeLiveVideo');if(!video?.videoWidth)return null;const c=document.createElement('canvas');const max=1280,scale=Math.min(1,max/video.videoWidth);c.width=Math.round(video.videoWidth*scale);c.height=Math.round(video.videoHeight*scale);c.getContext('2d').drawImage(video,0,0,c.width,c.height);return c}
-  async function lookup(code){showDetected(code);setStatus('Recherche du produit…');navigator.vibrate?.(80);const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}`,{headers:{Authorization:`Bearer ${token}`}});let b=null;try{b=await r.json()}catch{}if(!r.ok)throw new Error(b?.detail||'Produit absent du référentiel.');return b}
+  async function lookup(code){showDetected(code);setStatus('Recherche du produit…');navigator.vibrate?.(80);const token=window.whatzabiAccessToken()||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}`,{headers:{Authorization:`Bearer ${token}`}});let b=null;try{b=await r.json()}catch{}if(!r.ok)throw new Error(b?.detail||'Produit absent du référentiel.');return b}
   function renderResult(b){
     try{catalogAnalysis=b}catch{}
 
@@ -134,7 +134,7 @@
     if(saleBarcodeMode){
       setStatus('Ajout du produit au panier…');
       try{
-        const token=localStorage.getItem('whatzabi_token')||'';
+        const token=window.whatzabiAccessToken()||'';
         const response=await fetch('/pwa/sales/barcode/'+encodeURIComponent(code),{
           headers:{Authorization:'Bearer '+token}
         });
@@ -167,7 +167,7 @@
       $('barcodeUnknownActions').hidden=false;
     }
   }
-  async function aiReadFrame(){if(!scanning||aiBusy)return;const canvas=captureFrame();if(!canvas)return;aiBusy=true;$('barcodeTarget')?.classList.add('locking');setStatus('Capture automatique — l’IA cherche le numéro…');try{const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.88));const fd=new FormData();fd.append('image',blob,'barcode.jpg');fd.append('source','barcode');const token=localStorage.getItem('whatzabi_token')||'';const r=await fetch('/pwa/catalog/analyze',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});if(r.ok){const b=await r.json(),candidate=(b.candidates||[]).find(c=>normalizeCode(c.barcode));const code=normalizeCode(candidate?.barcode);if(code){const data=canvas.toDataURL('image/jpeg',.88);$('barcodeAutoCapture').src=data;$('barcodeAutoCapture').hidden=false;sessionStorage.setItem('whatzabi_barcode_capture',data);await onDetected(code);return}}}catch{}finally{aiBusy=false;$('barcodeTarget')?.classList.remove('locking')}if(scanning)setStatus('Aucun EAN lisible — rapproche le code, je continue automatiquement.')}
+  async function aiReadFrame(){if(!scanning||aiBusy)return;const canvas=captureFrame();if(!canvas)return;aiBusy=true;$('barcodeTarget')?.classList.add('locking');setStatus('Capture automatique — l’IA cherche le numéro…');try{const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.88));const fd=new FormData();fd.append('image',blob,'barcode.jpg');fd.append('source','barcode');const token=window.whatzabiAccessToken()||'';const r=await fetch('/pwa/catalog/analyze',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});if(r.ok){const b=await r.json(),candidate=(b.candidates||[]).find(c=>normalizeCode(c.barcode));const code=normalizeCode(candidate?.barcode);if(code){const data=canvas.toDataURL('image/jpeg',.88);$('barcodeAutoCapture').src=data;$('barcodeAutoCapture').hidden=false;sessionStorage.setItem('whatzabi_barcode_capture',data);await onDetected(code);return}}}catch{}finally{aiBusy=false;$('barcodeTarget')?.classList.remove('locking')}if(scanning)setStatus('Aucun EAN lisible — rapproche le code, je continue automatiquement.')}
   function startAILoop(){if(aiTimer)clearInterval(aiTimer);setTimeout(()=>aiReadFrame(),700);aiTimer=setInterval(()=>aiReadFrame(),2200)}
   async function openCamera(){nativeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});const video=$('barcodeLiveVideo');video.srcObject=nativeStream;await video.play();const track=nativeStream.getVideoTracks()[0];try{const caps=track.getCapabilities?.()||{},advanced=[];if(caps.focusMode?.includes('continuous'))advanced.push({focusMode:'continuous'});if(advanced.length)await track.applyConstraints({advanced})}catch{}setStatus('Recherche du code-barres…');startAILoop()}
   async function startNativeDetector(){if(!('BarcodeDetector'in window))return;const formats=await BarcodeDetector.getSupportedFormats(),wanted=['ean_13','ean_8','upc_a','upc_e','code_128'].filter(f=>formats.includes(f));if(!wanted.length)return;const detector=new BarcodeDetector({formats:wanted}),video=$('barcodeLiveVideo');const scan=async()=>{if(!scanning)return;try{const codes=await detector.detect(video);if(codes?.[0]?.rawValue){onDetected(codes[0].rawValue);return}}catch{}nativeTimer=setTimeout(scan,140)};scan()}
@@ -233,7 +233,7 @@
   }
 
   function exactExistingMatch(body,index,candidate){const matches=body?.matches?.[String(index)]||body?.matches?.[index]||[];const target=String(candidate?.name||'').trim().toLocaleLowerCase();return matches.find(m=>m.score>=0.99&&String(m.name||'').trim().toLocaleLowerCase()===target)||null}
-  async function createValidatedProduct(candidate){const payload={name:String(candidate?.name||'').trim(),product_type:null,brand:candidate?.brand||null,variant:candidate?.variant||null,packaging:candidate?.packaging||null,unit:candidate?.unit||'unité',stock:Number(candidate?.quantity||0),purchase_price:Number(candidate?.purchase_price||0),price:0,threshold:0};if(!payload.name)throw new Error('Nom du produit manquant.');const token=localStorage.getItem('whatzabi_token')||'',r=await fetch('/pwa/products',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');return body}
+  async function createValidatedProduct(candidate){const payload={name:String(candidate?.name||'').trim(),product_type:null,brand:candidate?.brand||null,variant:candidate?.variant||null,packaging:candidate?.packaging||null,unit:candidate?.unit||'unité',stock:Number(candidate?.quantity||0),purchase_price:Number(candidate?.purchase_price||0),price:0,threshold:0};if(!payload.name)throw new Error('Nom du produit manquant.');const token=window.whatzabiAccessToken()||'',r=await fetch('/pwa/products',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible de créer le produit.');return body}
   async function addSelectedPhotoProduct(e){
     if(e){
       e.preventDefault();
@@ -316,7 +316,7 @@
       return output;
     }
 
-    const token=localStorage.getItem('whatzabi_token')||'';
+    const token=window.whatzabiAccessToken()||'';
     const started=performance.now();
 
     const response=await fetch('/pwa/currencies/convert-batch',{
@@ -451,8 +451,8 @@
     }
   }
 
-  async function associateValidatedBarcode(code,productId){const token=localStorage.getItem('whatzabi_token')||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
-  async function validatePendingBarcode(e){const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(!code)return;if(e){e.preventDefault();e.stopImmediatePropagation()}if(validationBusy)return;let body=null;try{body=catalogAnalysis}catch{}if(!body){try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}}const candidates=body?.candidates||[];if(!candidates.length){toast?.('Photographie ou saisis d’abord le produit.');return}const index=Math.min(selectedIndex(),candidates.length-1),candidate=candidates[index];validationBusy=true;const btn=$('catalogPrepareBtn');if(btn){btn.disabled=true;btn.textContent='Validation…'}try{const match=exactExistingMatch(body,index,candidate);const product=match?{id:match.product_id}:await createValidatedProduct(candidate);const learned=await associateValidatedBarcode(code,product.id);sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));try{await refresh()}catch{}try{toast(`Produit validé — EAN ${code} mémorisé par Whatzabi`)}catch{}renderResult(learned);if(btn){btn.textContent='✓ Produit mémorisé';btn.disabled=true}}catch(err){try{toast(err.message)}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}}finally{validationBusy=false}}
+  async function associateValidatedBarcode(code,productId){const token=window.whatzabiAccessToken()||'',r=await fetch(`/pwa/catalog/barcode/${encodeURIComponent(code)}/associate`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({product_id:Number(productId)})});let body=null;try{body=await r.json()}catch{}if(!r.ok)throw new Error(body?.detail||'Impossible d’associer le code-barres.');return body}
+  async function validatePendingBarcode(e){const code=normalizeCode(sessionStorage.getItem('whatzabi_pending_barcode'));if(!code)return;if(e){e.preventDefault();e.stopImmediatePropagation()}if(validationBusy)return;let body=null;try{body=catalogAnalysis}catch{}if(!body){try{body=JSON.parse(sessionStorage.getItem('whatzabi_catalog_draft')||'null')}catch{}}const candidates=body?.candidates||[];if(!candidates.length){toast?.('Photographie ou saisis d’abord le produit.');return}const index=Math.min(selectedIndex(),candidates.length-1),candidate=candidates[index];validationBusy=true;const btn=$('catalogPrepareBtn');if(btn){btn.disabled=true;btn.textContent='Validation…'}try{const match=exactExistingMatch(body,index,candidate);if(match){const learned=await associateValidatedBarcode(code,match.product_id);sessionStorage.removeItem('whatzabi_pending_barcode');sessionStorage.removeItem('whatzabi_catalog_selected');sessionStorage.setItem('whatzabi_catalog_draft',JSON.stringify(learned));try{await refresh()}catch{}try{toast(`Produit déjà présent — EAN ${code} associé`)}catch{}renderResult(learned);if(btn){btn.textContent='✓ Produit mémorisé';btn.disabled=true}return}sessionStorage.setItem('whatzabi_product_form_barcode',code);const sheet=$('catalogSheet');if(sheet)sheet.hidden=true;if(typeof window.whatzabiOpenProductDraft!=='function')throw new Error('Le formulaire produit est indisponible.');window.whatzabiOpenProductDraft(candidate);try{toast('Produit reconnu. Complète le stock et les prix avant de l’ajouter.')}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}return;}catch(err){try{toast(err.message)}catch{}if(btn){btn.disabled=false;btn.textContent='✓ Valider et ajouter au catalogue'}}finally{validationBusy=false}}
   document.addEventListener('click',e=>{const b=e.target.closest('[data-catalog-source="barcode"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();startLiveScanner()},true);
 
   function openCatalogMenu(){
@@ -730,7 +730,7 @@
       );
       fd.append('source', catalogSource);
 
-      const token = localStorage.getItem('whatzabi_token') || '';
+      const token = window.whatzabiAccessToken() || '';
 
       const networkStarted=performance.now();
       const response = await fetch('/pwa/catalog/analyze', {

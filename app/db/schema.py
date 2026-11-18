@@ -7,6 +7,7 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     category,
     currency,
     customer,
+    customer_refund,
     exchange_rate,
     financial_entry,
     merchant,
@@ -14,12 +15,14 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     open_tab,
     payment,
     payment_allocation,
+    payment_request,
     product,
     product_barcode,
     product_image,
     product_publication,
     product_reference,
     purchase,
+    purchase_request,
     purchase_item,
     sale,
     sale_item,
@@ -29,6 +32,7 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
     stock_movement,
     supplier,
     supplier_payment,
+    supplier_payment_request,
     supplier_payment_allocation,
     transaction_event,
     user_phone,
@@ -38,4 +42,9 @@ from app.models import (  # noqa: F401 - register every table in Base.metadata
 
 def create_base_schema(engine: Engine) -> None:
     """Create the current schema before applying legacy compatibility patches."""
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(engine, tables=[
+        table for table in Base.metadata.sorted_tables
+        if not table.name.startswith(("merchant_auth_", "merchant_pin_", "merchant_passkey"))
+    ])
+
+from app.models import sale_photo_import  # noqa: F401

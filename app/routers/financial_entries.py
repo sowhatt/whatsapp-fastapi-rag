@@ -1,3 +1,4 @@
+from app.services.operation_currency import operation_currency
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -106,7 +107,7 @@ def create_financial_entry(payload: FinancialEntryCreate, db: Session = Depends(
         )
 
     entry = FinancialEntry(
-        entry_type=payload.entry_type,
+        currency_code=operation_currency(db),        entry_type=payload.entry_type,
         amount=payload.amount,
         channel=payload.channel,
         label=payload.label,

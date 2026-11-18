@@ -1,18 +1,36 @@
+# Local configuration and credentials
 .env
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.env
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-
-# Local database backups and script cache
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.codex/
+.recette/
+# Runtime data, backups and private reports
 *.dump
-before_merchant_merge.sql
-scripts/__pycache__/
-
-# One-off production data migration
+*.sqlite
+*.sqlite3
+*.db
+*.fernet
+*.tar.gz
+*.zip
+backups/
+backup_*/
+private/
+reports/
+qa-artifacts/
+playwright-report/
+test-results/
+# Generated development files
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+.vscode/
+# Never publish the one-off production migration
 scripts/merge_legacy_merchant.py
+before_merchant_merge.sql

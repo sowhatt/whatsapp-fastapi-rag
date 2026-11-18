@@ -1,0 +1,30 @@
+WHATZABI SHOP — SOURCE RECOVERY — QUALIFIED COMMERCIAL CANDIDATE
+
+Base: GitHub sowhatt/whatsapp-fastapi-rag, feat/s2-5-home-drilldowns,
+commit 093d4fc3dc1ea447dd6b1575b0e2ca9974a8d6df.
+The app/runtime files match the 247-file RECETTE archive byte for byte.
+source-provenance/recette.json identifies every byte of that runtime set.
+source-provenance/pilot.json records the previous 242-file pilot release.
+DEPLOYMENT.json is preserved historical input metadata, not a description
+of this commercial candidate or evidence of its current deployment.
+
+The dependency constraints and Auth components are preserved. The only
+new commercial schema step relative to the pilot is the already qualified
+app.db.commercial_payments migration; no startup schema mutation is added.
+No migration, installation, functional audit, deployment or data change is
+part of this source recovery.
+
+README.md, pytest.ini, tests/, .env.example and .vscode/settings.json are inherited from the identified GitHub
+base. They are not part of either deployment archive and are not presented
+as newly qualified tests. The environment example contains no credentials.
+The nine files under backup_avant_sync_20260727_163603 are excluded: no
+application, deployment or test references this historical backup directory.
+All other inherited files remain unchanged.
+
+The later timezone revision 8e4d3a9b27ffef9594d20e83d750819759125c725e5140ba5c3e8d44ead8fa6f
+is separately preserved locally; it is not the candidate identified by
+Railway deployment 1c6e9f4c-cd05-4180-b191-1f55a4b9e1c7.
+
+Publication is limited to the dedicated source-recovery branch on
+sowhatt/whatsapp-fastapi-rag after source and security validation.
+No main update, merge, Railway action or database operation is included.

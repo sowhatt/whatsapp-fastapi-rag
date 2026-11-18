@@ -6,6 +6,10 @@ from datetime import datetime
 from openai import OpenAI
 
 from app.schemas.expense_scan import ExpenseScanResult
+from app.services.expense_categories import (
+    OPERATING_EXPENSE_CATEGORY_CODES,
+    OPERATING_EXPENSE_CATEGORY_PROMPT,
+)
 
 
 class ExpenseScanError(Exception):
@@ -14,17 +18,7 @@ class ExpenseScanError(Exception):
 
 _client: OpenAI | None = None
 
-ALLOWED_CATEGORIES = {
-    "transport",
-    "loyer",
-    "electricite",
-    "salaire",
-    "carburant",
-    "livraison",
-    "fournitures",
-    "taxes",
-    "autre",
-}
+ALLOWED_CATEGORIES = OPERATING_EXPENSE_CATEGORY_CODES
 
 ALLOWED_CHANNELS = {
     "cash",
@@ -125,8 +119,7 @@ Tu dois extraire :
 - amount : montant TOTAL réellement payé ou à payer, sous forme d'entier ;
 - currency : code ISO 4217, par exemple XOF, EUR, USD, NGN, GHS ;
 - category : une seule valeur parmi
-  transport, loyer, electricite, salaire, carburant,
-  livraison, fournitures, taxes, autre ;
+  __OPERATING_EXPENSE_CATEGORIES__ ;
 - payment_channel : une seule valeur parmi
   cash, mtn_momo, moov_money, bank ;
 - reference : numéro de ticket, facture ou transaction s'il est lisible ;
@@ -155,7 +148,10 @@ Règles impératives :
 10. Pour les francs CFA BCEAO, utilise XOF.
 11. La catégorie peut être suggérée à partir de la nature clairement
     identifiable de la dépense. En cas d'incertitude, utilise autre.
-12. Un justificatif illisible doit produire des champs null et une
+12. Restauration désigne les repas consommés pour le fonctionnement de
+    l'activité. Des aliments achetés pour être revendus sont des marchandises,
+    à traiter dans le parcours achat de stock, jamais comme restauration.
+13. Un justificatif illisible doit produire des champs null et une
     confiance faible plutôt que des valeurs inventées.
 
 Retourne uniquement un objet JSON de cette forme :
@@ -171,7 +167,7 @@ Retourne uniquement un objet JSON de cette forme :
   "note": null,
   "confidence": 0.0
 }
-""".strip()
+""".strip().replace("__OPERATING_EXPENSE_CATEGORIES__", OPERATING_EXPENSE_CATEGORY_PROMPT)
 
     try:
         response = _get_client().chat.completions.create(

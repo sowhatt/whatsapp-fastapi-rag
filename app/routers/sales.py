@@ -1,13 +1,23 @@
+from app.services.operation_currency import operation_currency
+from datetime import datetime
+from datetime import timezone
+from app.services.payment_transactions import lock_payment_target
+from app.models.customer_refund import SaleCancellation
+import hashlib
+import json
 import time
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
+from app.auth import _effective_shop_role, require_pwa_merchant
 from app.db.session import get_db
 from app.db.tenant import get_current_merchant
 from app.models.customer import Customer
 from app.models.merchant import Merchant
+from app.models.merchant_user import MerchantUser
 from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.product import Product
@@ -16,15 +26,74 @@ from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.shop_inventory import ShopInventory
 from app.models.shop_operation import ShopOperation
-from app.rbac import require_permission
+from app.rbac import has_permission, require_permission
 from app.schemas.cancel_sale import CancelSalePayload
-from app.schemas.sale import SaleCreate, SaleRead
+from app.schemas.sale import (
+    OfflineSaleSyncCreate,
+    SaleCreate,
+    SaleRead,
+)
 from app.services.shop_context_service import (
     adjust_stock,
     get_current_shop_id,
     get_effective_stock,
     record_shop_operation,
 )
+
+
+def _offline_sale_payload_hash(payload: SaleCreate) -> str:
+    """
+    Empreinte déterministe du contenu métier d'une vente offline.
+
+    L'ordre des lignes ne doit pas modifier l'empreinte :
+    les items sont triés avant sérialisation.
+    """
+
+    items = [
+        {
+            "product_id": int(item.product_id),
+            "quantity": int(item.quantity),
+            "unit_price": item.unit_price,
+            "line_total": item.line_total,
+        }
+        for item in payload.items
+    ]
+
+    items.sort(
+        key=lambda item: (
+            item["product_id"],
+            item["quantity"],
+            item["unit_price"]
+            if item["unit_price"] is not None
+            else -1,
+            item["line_total"]
+            if item["line_total"] is not None
+            else -1,
+        )
+    )
+
+    canonical = {
+        "customer_id": payload.customer_id,
+        "items": items,
+        "paid_amount": payload.paid_amount,
+        "payment_channel": payload.payment_channel,
+        "due_date": (
+            payload.due_date.isoformat()
+            if payload.due_date is not None
+            else None
+        ),
+    }
+
+    if payload.occurred_at is not None:
+        canonical['occurred_at'] = payload.occurred_at.isoformat()
+    encoded = json.dumps(
+        canonical,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    return hashlib.sha256(encoded).hexdigest()
 
 
 router = APIRouter(tags=["ventes"])
@@ -234,10 +303,56 @@ def create_sale(
     _allowed: None = Depends(require_permission("sale.create")),
 ):
     _sale_audit_started = time.monotonic()
+
+    merchant_id = get_current_merchant(db)
+
     _sale_audit: dict[str, float | int | None] = {
-        "merchant_id": get_current_merchant(db),
+        "merchant_id": merchant_id,
         "item_count": len(payload.items),
     }
+
+    # --------------------------------------------------
+    # P3 OFFLINE — replay safe
+    # --------------------------------------------------
+    #
+    # Un même offline_sale_id peut être présenté plusieurs fois
+    # après une coupure réseau. Si la vente existe déjà pour ce
+    # commerçant, on retourne la vente existante sans recréer :
+    # - la vente,
+    # - le paiement,
+    # - les SaleItem,
+    # - les mouvements de stock.
+    #
+    offline_payload_hash = None
+
+    if payload.offline_sale_id:
+        offline_payload_hash = _offline_sale_payload_hash(
+            payload
+        )
+
+        existing_offline_sale = (
+            db.query(Sale)
+            .filter(
+                Sale.merchant_id == merchant_id,
+                Sale.offline_sale_id == payload.offline_sale_id,
+            )
+            .first()
+        )
+
+        if existing_offline_sale is not None:
+            if (
+                existing_offline_sale.offline_payload_hash
+                != offline_payload_hash
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Conflit d'idempotence : cette vente "
+                        "offline existe déjà avec un contenu différent"
+                    ),
+                )
+
+            return existing_offline_sale
 
     _stage_started = time.monotonic()
     cached_customer = db.info.get("_whatzabi_resolved_sale_customer")
@@ -289,7 +404,18 @@ def create_sale(
             )
 
         unit_price = item.unit_price if item.unit_price is not None else product.price
-        line_total = item.line_total if item.line_total is not None else unit_price * item.quantity
+        if unit_price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Le prix unitaire doit être supérieur à zéro",
+            )
+
+        line_total = unit_price * item.quantity
+        if item.line_total is not None and item.line_total != line_total:
+            raise HTTPException(
+                status_code=400,
+                detail="Le total de ligne doit correspondre au prix unitaire multiplié par la quantité",
+            )
         total_amount += line_total
         resolved_items.append(
             (
@@ -330,15 +456,18 @@ def create_sale(
     else:
         status = "partial"
 
-    merchant_id = get_current_merchant(db) or getattr(customer, "merchant_id", None)
+    if merchant_id is None:
+        merchant_id = getattr(customer, "merchant_id", None)
 
     _stage_started = time.monotonic()
     sale_number = allocate_sale_number(db, merchant_id)
     _sale_audit["number_allocation_s"] = round(time.monotonic() - _stage_started, 3)
 
     sale = Sale(
-        merchant_id=merchant_id,
+        currency_code=operation_currency(db),        merchant_id=merchant_id,
         sale_number=sale_number,
+        offline_sale_id=payload.offline_sale_id,
+        offline_payload_hash=offline_payload_hash,
         customer_id=payload.customer_id,
         total_amount=total_amount,
         paid_amount=paid_amount,
@@ -346,9 +475,50 @@ def create_sale(
         status=status,
         due_date=payload.due_date,
     )
+    if payload.occurred_at is not None:
+        sale.created_at = payload.occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
     _stage_started = time.monotonic()
     db.add(sale)
-    db.flush()
+
+    try:
+        db.flush()
+    except IntegrityError:
+        # Deux synchronisations concurrentes peuvent présenter
+        # exactement le même offline_sale_id.
+        #
+        # La contrainte UNIQUE protège la base ; après rollback,
+        # on retourne simplement la vente créée par l'autre requête.
+        if not payload.offline_sale_id:
+            raise
+
+        db.rollback()
+
+        existing_offline_sale = (
+            db.query(Sale)
+            .filter(
+                Sale.merchant_id == merchant_id,
+                Sale.offline_sale_id == payload.offline_sale_id,
+            )
+            .first()
+        )
+
+        if existing_offline_sale is None:
+            raise
+
+        if (
+            existing_offline_sale.offline_payload_hash
+            != offline_payload_hash
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Conflit d'idempotence : cette vente "
+                    "offline existe déjà avec un contenu différent"
+                ),
+            )
+
+        return existing_offline_sale
+
     record_shop_operation("sale", sale.id, db)
     _sale_audit["sale_flush_s"] = round(time.monotonic() - _stage_started, 3)
 
@@ -412,6 +582,7 @@ def create_sale(
             amount=paid_amount,
             channel=payload.payment_channel,
             reference=None,
+            effective_at=payload.occurred_at or (None if db.info.get('offline_sync') else datetime.now(timezone.utc)),
         )
         db.add(payment)
         db.flush()
@@ -457,6 +628,95 @@ def create_sale(
     return sale
 
 
+@router.post(
+    "/sales/offline-sync",
+    response_model=SaleRead,
+)
+def sync_offline_sale(
+    payload: OfflineSaleSyncCreate,
+    merchant: Merchant = Depends(require_pwa_merchant),
+    db: Session = Depends(get_db),
+):
+    """
+    Synchronise une vente créée hors ligne dans sa boutique d'origine.
+
+    La boutique portée dans le JWT courant peut avoir changé depuis
+    la création offline. On revalide donc explicitement la boutique
+    historique et le rôle de l'utilisateur sur cette boutique.
+    """
+
+    user_id = db.info.get("pwa_user_id")
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Compte utilisateur requis pour synchroniser une vente offline",
+        )
+
+    user = (
+        db.query(MerchantUser)
+        .filter(
+            MerchantUser.id == int(user_id),
+            MerchantUser.merchant_id == merchant.id,
+            MerchantUser.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Utilisateur inactif ou introuvable",
+        )
+
+    # Réutilise exactement la même règle de sécurité que select-shop.
+    target_role = _effective_shop_role(
+        db,
+        merchant_id=merchant.id,
+        user=user,
+        shop_id=payload.shop_id,
+    )
+
+    if not has_permission(
+        target_role,
+        "sale.create",
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Permission requise : sale.create",
+        )
+
+    # Sauvegarder le contexte JWT courant.
+    previous_shop_id = db.info.get("pwa_shop_id")
+    previous_role = db.info.get("pwa_role")
+
+    try:
+        # La vente doit être imputée à la boutique dans laquelle
+        # elle a réellement été créée, et non à la boutique
+        # actuellement ouverte lors du retour du réseau.
+        db.info["pwa_shop_id"] = payload.shop_id
+        db.info["pwa_role"] = target_role
+        db.info["offline_sync"] = True
+
+        return create_sale(
+            payload.sale,
+            db,
+            None,
+        )
+
+    finally:
+        db.info.pop("offline_sync", None)
+        if previous_shop_id is None:
+            db.info.pop("pwa_shop_id", None)
+        else:
+            db.info["pwa_shop_id"] = previous_shop_id
+
+        if previous_role is None:
+            db.info.pop("pwa_role", None)
+        else:
+            db.info["pwa_role"] = previous_role
+
+
 @router.get("/sales/{sale_id}/items")
 def get_sale_items(
     sale_id: int,
@@ -488,7 +748,7 @@ def cancel_sale(
     db: Session = Depends(get_db),
     _allowed: None = Depends(require_permission("sale.cancel")),
 ):
-    sale = _sale_in_current_shop(db, sale_id)
+    customer, sale, locked_items = lock_payment_target(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
     if sale.status == "cancelled":
@@ -502,9 +762,13 @@ def cancel_sale(
     if sale.customer_id:
         customer = db.query(Customer).filter(Customer.id == sale.customer_id).first()
 
+    from app.models.sale_photo_import import SalePhotoImport
+    imported = db.query(SalePhotoImport).filter(SalePhotoImport.sale_id == sale.id).first()
+    stock_applied = imported is None or imported.stock_applied
+
     for item in sale_items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
-        if product:
+        if product and stock_applied:
             adjust_stock(product, item.quantity, db)
             add_stock_movement(
                 db=db,
@@ -519,6 +783,10 @@ def cancel_sale(
     if customer:
         customer.debt = max(0, customer.debt - sale.remaining_amount)
 
+    db.add(SaleCancellation(sale_id=sale.id, merchant_id=sale.merchant_id,
+        shop_id=get_current_shop_id(db), actor_user_id=db.info.get('pwa_user_id'),
+        receivable_waived=sale.remaining_amount, refundable_amount=sale.paid_amount,
+        reason=payload.reason))
     sale.status = "cancelled"
     sale.remaining_amount = 0
 

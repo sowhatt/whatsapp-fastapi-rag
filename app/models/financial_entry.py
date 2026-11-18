@@ -7,6 +7,8 @@ from app.db.base import Base
 class FinancialEntry(Base):
     __tablename__ = "financial_entries"
 
+    currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     entry_type: Mapped[str] = mapped_column(String(20))  # income, expense, transfer, adjustment

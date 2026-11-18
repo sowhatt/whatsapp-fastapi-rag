@@ -14,4 +14,6 @@ class SupplierPayment(Base):
     amount: Mapped[int] = mapped_column(Integer, default=0)
     channel: Mapped[str] = mapped_column(String(30), default="cash")
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effective_at_source: Mapped[str | None] = mapped_column(String(40), nullable=True)
     paid_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

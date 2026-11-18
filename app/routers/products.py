@@ -1,20 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.db.session import get_db
+from app.db.tenant import get_current_merchant
 from app.models.category import Category
 from app.models.product import Product
+from app.models.stock_movement import StockMovement
 from app.rbac import require_permission
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
 from app.services.shop_context_service import (
+    adjust_stock,
     get_current_shop_id,
     get_effective_stock,
+    record_shop_operation,
     set_initial_shop_stock,
+    set_shop_stock,
 )
 
 router = APIRouter(tags=["produits"])
+
+
+class ProductRestockRequest(BaseModel):
+    quantity: int = Field(gt=0)
+    purchase_price: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=255)
+    source: str = "manual"
 
 
 def _apply_shop_stock_view(products: list[Product], db: Session) -> list[Product]:
@@ -50,9 +63,24 @@ def create_product(
     if payload.price < 0 or payload.purchase_price < 0:
         raise HTTPException(status_code=400, detail="Les prix doivent être positifs")
 
-    existing = db.query(Product).filter(func.lower(Product.name) == name.lower()).first()
+    merchant_id = get_current_merchant(db)
+
+    existing_query = db.query(Product).filter(
+        func.lower(Product.name) == name.lower(),
+    )
+
+    if merchant_id is not None:
+        existing_query = existing_query.filter(
+            Product.merchant_id == merchant_id,
+        )
+
+    existing = existing_query.first()
+
     if existing:
-        raise HTTPException(status_code=400, detail="Ce produit existe déjà")
+        raise HTTPException(
+            status_code=409,
+            detail="Ce produit existe déjà dans votre catalogue.",
+        )
 
     if payload.category_id is not None and not db.get(Category, payload.category_id):
         raise HTTPException(status_code=404, detail="Catégorie introuvable")
@@ -84,6 +112,90 @@ def create_product(
     return product
 
 
+@router.post("/products/{product_id}/restock", response_model=ProductRead)
+def restock_product(
+    product_id: int,
+    payload: ProductRestockRequest,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("product.update")),
+):
+    product = db.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Produit introuvable")
+
+    quantity = int(payload.quantity)
+
+    if quantity <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="La quantité de réapprovisionnement doit être supérieure à zéro",
+        )
+
+    source = str(payload.source or "manual").strip().lower()
+
+    if source not in {"manual", "invoice"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Source de réapprovisionnement invalide",
+        )
+
+    old_stock = get_effective_stock(product, db)
+
+    try:
+        new_stock = adjust_stock(product, quantity, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.purchase_price is not None:
+        product.purchase_price = int(payload.purchase_price)
+
+    merchant_id = (
+        get_current_merchant(db)
+        or getattr(product, "merchant_id", None)
+    )
+
+    reference_type = (
+        "invoice_restock"
+        if source == "invoice"
+        else "manual_restock"
+    )
+
+    movement = StockMovement(
+        merchant_id=merchant_id,
+        product_id=product.id,
+        movement_type="restock_in",
+        quantity=quantity,
+        reference_type=reference_type,
+        reference_id=product.id,
+        note=(
+            payload.note
+            or f"Réapprovisionnement : {old_stock} → {new_stock}"
+        ),
+    )
+
+    db.add(movement)
+    db.flush()
+
+    if get_current_shop_id(db) is not None:
+        record_shop_operation(
+            "stock_movement",
+            movement.id,
+            db,
+        )
+
+    db.commit()
+    db.refresh(product)
+
+    if get_current_shop_id(db) is not None:
+        set_committed_value(
+            product,
+            "stock",
+            get_effective_stock(product, db),
+        )
+
+    return product
+
+
 @router.patch("/products/{product_id}", response_model=ProductRead)
 def update_product(
     product_id: int,
@@ -104,15 +216,35 @@ def update_product(
         if price_field in changes and changes[price_field] is not None and changes[price_field] < 0:
             raise HTTPException(status_code=400, detail="Les prix doivent être positifs")
 
-    if "name" in changes and changes["name"]:
-        new_name = " ".join(changes["name"].split()).strip()
-        duplicate = (
-            db.query(Product)
-            .filter(func.lower(Product.name) == new_name.lower(), Product.id != product_id)
-            .first()
+    if "name" in changes:
+        new_name = " ".join(str(changes["name"] or "").split()).strip()
+
+        if not new_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Le nom du produit est obligatoire",
+            )
+
+        merchant_id = get_current_merchant(db)
+
+        duplicate_query = db.query(Product).filter(
+            func.lower(Product.name) == new_name.lower(),
+            Product.id != product_id,
         )
+
+        if merchant_id is not None:
+            duplicate_query = duplicate_query.filter(
+                Product.merchant_id == merchant_id,
+            )
+
+        duplicate = duplicate_query.first()
+
         if duplicate:
-            raise HTTPException(status_code=400, detail="Un autre produit porte déjà ce nom")
+            raise HTTPException(
+                status_code=409,
+                detail="Un autre produit porte déjà ce nom dans votre catalogue.",
+            )
+
         changes["name"] = new_name[:1].upper() + new_name[1:]
 
     shop_id = get_current_shop_id(db)
@@ -122,10 +254,31 @@ def update_product(
         setattr(product, field, value)
 
     if shop_id is not None and requested_stock is not None:
-        set_initial_shop_stock(product, int(requested_stock), db)
+        set_shop_stock(
+            product,
+            int(requested_stock),
+            db,
+        )
 
     db.commit()
     db.refresh(product)
     if shop_id is not None:
         set_committed_value(product, "stock", get_effective_stock(product, db))
     return product
+
+
+@router.post('/products/{product_id}/internal-barcode')
+def generate_internal_barcode(product_id: int, db: Session = Depends(get_db),
+        _allowed: None = Depends(require_permission('product.update'))):
+    from app.services.internal_barcode import generate
+    merchant_id = get_current_merchant(db)
+    if merchant_id is None:
+        raise HTTPException(403, 'Contexte marchand obligatoire')
+    product = db.query(Product).filter(Product.id == product_id, Product.merchant_id == merchant_id).first()
+    if product is None:
+        raise HTTPException(404, 'Produit introuvable')
+    try:
+        return generate(product, merchant_id, db)
+    except Exception:
+        db.rollback()
+        raise

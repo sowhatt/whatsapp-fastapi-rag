@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.models.sale import Sale
 from app.schemas.payment import PaymentCreate
+from app.services.payment_transactions import sale_query
 
 
 class PaymentServiceError(Exception):
@@ -66,7 +67,7 @@ def find_open_sales_for_customer(customer_id: int, db: Session) -> list[Sale]:
     un commerçant qui règle ses dettes dans l'ordre).
     """
     return (
-        db.query(Sale)
+        sale_query(db)
         .filter(
             Sale.customer_id == customer_id,
             Sale.remaining_amount > 0,
@@ -146,17 +147,23 @@ def create_payment_from_intent(
     db: Session,
     create_payment_func: Callable[[PaymentCreate, Session], Any],
 ) -> Any:
-    resolved = resolve_payment_intent(intent, db)
-    payloads = build_payment_create_payloads(resolved)
-
-    if len(payloads) == 1:
-        return create_payment_func(payloads[0], db)
-
-    sale_ids = []
-    for payload in payloads:
-        item = create_payment_func(payload, db)
-        sale_ids.append(item.sale_id)
-    return _PaymentBatchResult(amount=resolved.amount, sale_ids=sale_ids)
+    transactional = getattr(create_payment_func, 'transactional', None)
+    if transactional is None:
+        raise PaymentServiceError('Atomic payment writer required')
+    try:
+        # Same lock order as single-sale payments: customer before ordered sales.
+        customer = find_customer_by_name(str(intent['customer']), db)
+        db.query(Customer).filter(Customer.id == customer.id).populate_existing().with_for_update().one()
+        resolved = resolve_payment_intent(intent, db)
+        payloads = build_payment_create_payloads(resolved)
+        receipts = [transactional(payload, db) for payload in payloads]
+        result = receipts[0] if len(receipts) == 1 else _PaymentBatchResult(
+            amount=resolved.amount, sale_ids=[r.sale_id for r in receipts])
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
 
 
 def preview_payment_from_intent(intent: dict[str, Any], db: Session) -> dict[str, Any]:

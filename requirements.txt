@@ -1,3 +1,4 @@
+-c constraints-pilot.txt
 fastapi
 uvicorn[standard]
 sqlalchemy
@@ -9,3 +10,4 @@ python-multipart
 requests
 openai
 PyJWT>=2.9,<3
+webauthn==3.0.1

@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Whatzabi</title>
   <link rel="manifest" href="/auth/manifest.webmanifest">
-  <link rel="stylesheet" href="/auth/styles.css?v=17">
-  <link rel="stylesheet" href="/auth/express-sale.css?v=2">
+  <link rel="stylesheet" href="/auth/styles.css?v=34-commercial-20261117">
+  <link rel="stylesheet" href="/auth/express-sale.css?v=2-cart-price-1">
 </head>
 <body>
   <main class="shell">
@@ -22,6 +22,14 @@
         <label>Mot de passe<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
         <button type="submit">Se connecter</button>
       </form>
+      <form id="pinLoginForm" class="stack" hidden>
+        <label>Appareil et boutique<select id="pinDevice"></select></label>
+        <label>PIN Whatzabi<input id="pinLogin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label>
+        <button type="submit">Se connecter avec mon PIN</button>
+      </form>
+      <button id="passkeyLoginBtn" type="button" class="ghost" hidden>Se connecter avec une Passkey</button>
+      <p id="passkeyLoginHint" class="muted small" hidden>Face ID, Touch ID ou verrouillage de l’appareil.</p>
+      <button id="changeAccountBtn" type="button" class="ghost">Changer de compte</button>
       <p id="loginError" class="error"></p>
     </section>
 
@@ -46,6 +54,13 @@
         <div class="identity-meta">
           <span id="userName">Compte commerçant</span>
           <span id="roleBadge" class="badge">PROPRIÉTAIRE</span>
+          <span
+            id="offlineSyncBadge"
+            class="badge offline-sync-badge"
+            hidden
+          >
+            En ligne
+          </span>
         </div>
       </section>
 
@@ -82,7 +97,7 @@
 
         <div class="grid home-stats">
           <article class="card home-stat">
-            <span>Chiffre d'affaires</span>
+            <span>CA actif révisé</span>
             <strong id="statRevenue">0 FCFA</strong>
             <small>Boutique active</small>
           </article>
@@ -114,12 +129,11 @@
             id="statLowStockCard"
             type="button"
             class="card home-stat home-stat-alert home-stat-clickable"
-            data-open-tab="catalog"
-            data-scroll-target="criticalStockList"
+            data-open-tab="stockIntelligence"
           >
-            <span>Stock faible</span>
-            <strong id="statLowStock">0</strong>
-            <small>Voir les produits critiques ›</small>
+            <span>Stock intelligent 360</span>
+            <strong id="statLowStock">—</strong>
+            <small id="statStockInsight">Analyse de la boutique…</small>
           </button>
 
           <button id="statSupplierDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="purchases" data-scroll-target="supplierPayablesList" hidden>
@@ -140,7 +154,7 @@
               <span>Nouvelle vente</span>
             </button>
 
-            <button id="quickAddPurchase" type="button" class="home-action">
+            <button id="quickAddPurchase" type="button" aria-controls="purchases" hidden class="home-action">
               <span class="home-action-icon">📦</span>
               <span>Nouvel achat</span>
             </button>
@@ -155,9 +169,9 @@
               <span>Scanner produit</span>
             </button>
 
-            <button id="quickStock" data-open-tab="activity" class="home-action">
+            <button id="quickStock" data-open-tab="stockIntelligence" class="home-action">
               <span class="home-action-icon">📊</span>
-              <span>Voir le stock</span>
+              <span>Stock intelligent 360</span>
             </button>
           </div>
         </section>
@@ -169,6 +183,174 @@
           </div>
           <div id="recentActivity" class="card recent-activity"></div>
         </section>
+      </section>
+
+
+      <section id="stockIntelligence"
+               class="panel stock-intelligence-panel">
+
+        <div class="stock-v2-header">
+          <div>
+            <span class="eyebrow">Pilotage des stocks</span>
+            <h2>Stock intelligent</h2>
+            <p class="muted small" id="stockIntelligenceShop">
+              Boutique active · 30 derniers jours
+            </p>
+          </div>
+
+          <button id="stockIntelligenceRefresh"
+                  type="button"
+                  class="stock-v2-refresh"
+                  aria-label="Actualiser">
+            ↻
+          </button>
+        </div>
+
+        <article id="stockPriorityCard"
+                 class="stock-priority-card">
+          <div class="stock-priority-icon">!</div>
+          <div class="stock-priority-copy">
+            <span>Priorité du jour</span>
+            <strong id="stockPriorityTitle">Analyse en cours…</strong>
+            <small id="stockPriorityText">
+              Whatzabi analyse le stock de cette boutique.
+            </small>
+          </div>
+        </article>
+
+        <div class="stock-v2-kpis">
+          <article>
+            <span>À traiter</span>
+            <strong id="stockIntelligenceToOrder">—</strong>
+          </article>
+
+          <article>
+            <span>Dormants</span>
+            <strong id="stockIntelligenceDormant">—</strong>
+          </article>
+
+          <article class="stock-v2-kpi-wide">
+            <span>Valeur du stock</span>
+            <strong id="stockIntelligenceValue">—</strong>
+          </article>
+        </div>
+
+        <section class="stock-360-section">
+          <div class="stock-360-heading">
+            <div>
+              <span class="eyebrow">Vue opérationnelle</span>
+              <h3>Stock 360</h3>
+              <small>
+                Stock initial, mouvements, niveau actuel et valeur
+              </small>
+            </div>
+          </div>
+
+          <div class="stock-360-kpis">
+            <article>
+              <span>Alertes stock</span>
+              <strong id="stock360Alerts">—</strong>
+              <small id="stock360AlertsDetail">
+                Analyse en cours…
+              </small>
+            </article>
+
+            <article>
+              <span>Valeur au coût</span>
+              <strong id="stock360CostValue">—</strong>
+              <small>Capital immobilisé</small>
+            </article>
+
+            <article>
+              <span>Valeur de vente</span>
+              <strong id="stock360RetailValue">—</strong>
+              <small>CA potentiel du stock</small>
+            </article>
+
+            <article>
+              <span>Marge potentielle</span>
+              <strong id="stock360Margin">—</strong>
+              <small>Si tout le stock est vendu</small>
+            </article>
+          </div>
+
+          <div class="stock-360-table-wrap">
+            <table class="stock-360-table">
+              <thead>
+                <tr>
+                  <th>Feu</th>
+                  <th>Produit</th>
+                  <th>Initial</th>
+                  <th>Entrées</th>
+                  <th>Ventes</th>
+                  <th>Autres sorties</th>
+                  <th>Ajust.</th>
+                  <th>Actuel</th>
+                  <th>Seuil</th>
+                  <th>Couverture</th>
+                  <th>Valeur</th>
+                </tr>
+              </thead>
+
+              <tbody id="stock360Body">
+                <tr>
+                  <td colspan="11">
+                    Chargement du stock…
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            id="stock360Toggle"
+            type="button"
+            class="ghost stock-360-toggle"
+            hidden
+          >
+            Voir les autres produits
+          </button>
+
+          <p id="stock360Note"
+             class="stock-360-note">
+            * Le stock initial V1 est reconstitué à partir
+            du stock actuel et des mouvements connus.
+          </p>
+        </section>
+
+        <div class="stock-intelligence-filters"
+             role="group"
+             aria-label="Filtrer les produits">
+          <button type="button"
+                  class="active"
+                  data-stock-filter="replenish">
+            À traiter
+          </button>
+          <button type="button"
+                  data-stock-filter="fast">
+            Rapides
+          </button>
+          <button type="button"
+                  data-stock-filter="slow">
+            Lents
+          </button>
+          <button type="button"
+                  data-stock-filter="dormant">
+            Dormants
+          </button>
+        </div>
+
+        <p id="stockIntelligenceStatus"
+           class="muted small"
+           role="status">Chargement…</p>
+
+        <div id="stockIntelligenceList"
+             class="stock-intelligence-list"></div>
+
+        <p class="stock-intelligence-note">
+          Recommandations calculées à partir de l'activité récente
+          de la boutique. À utiliser comme aide à la décision.
+        </p>
       </section>
 
       <section id="activity" class="panel">
@@ -202,6 +384,36 @@
       </section>
 
       <section id="more" class="panel">
+      <article id="pinCard" class="card" hidden>
+        <h2>PIN de cet appareil</h2>
+        <p>Sur votre appareil personnel, choisissez un PIN Whatzabi à six chiffres. Le mot de passe reste votre accès de secours.</p>
+        <form id="pinEnrollForm" class="stack">
+          <label>Nom de l’appareil<input id="pinName" maxlength="150" value="Mon appareil" required></label>
+          <label>Mot de passe actuel<input id="pinPassword" type="password" autocomplete="current-password" minlength="8" required></label>
+          <label>Nouveau PIN<input id="pinSetup" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label>
+          <label>Confirmer le PIN<input id="pinConfirmation" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label>
+          <label><input type="checkbox" id="pinPersonal" required> Ceci est mon appareil personnel.</label>
+          <button type="submit" id="pinEnrollBtn">Activer mon PIN</button>
+        </form>
+        <p id="pinStatus" role="status" aria-live="polite"></p>
+        <ul id="pinDeviceList"></ul>
+        <button type="button" id="pinRecover" class="ghost">PIN oublié / révoquer mes appareils PIN</button>
+        <p class="muted small">Renseignez le mot de passe actuel pour révoquer un appareil ou récupérer votre accès.</p>
+      </article>
+        <article id="passkeyCard" class="card" hidden>
+          <h2>Mes Passkeys</h2>
+          <p class="muted">Connectez-vous avec Face ID, Touch ID ou le verrouillage de votre appareil. Votre mot de passe reste utilisable en cas de perte.</p>
+          <form id="passkeyEnrollForm" class="stack">
+            <label>Nom de la Passkey<input id="passkeyName" maxlength="150" value="Mon appareil" required></label>
+            <label>Mot de passe pour ajouter ou supprimer une Passkey<input id="passkeyPassword" type="password" autocomplete="current-password" minlength="8" maxlength="200" required></label>
+            <button id="passkeyEnrollBtn" type="submit">Ajouter une Passkey</button>
+          </form>
+          <p id="passkeyStatus" class="muted" role="status" aria-live="polite"></p>
+          <ul id="passkeyList" class="stack" aria-label="Passkeys enregistrées"></ul>
+          <button id="passkeyRefreshBtn" type="button" class="ghost">Actualiser la liste</button>
+          <button id="passkeyRecoverBtn" type="button" class="ghost">Appareil perdu : révoquer toutes mes Passkeys</button>
+        </article>
+
         <article class="card more-menu">
           <h2>Gestion</h2>
 
@@ -253,6 +465,21 @@
 
         <article class="card more-menu">
           <h2>Outils</h2>
+
+          <button id="moreSalePhoto" type="button" class="more-menu-item" hidden>
+  <span class="more-menu-icon" aria-hidden="true">↑</span>
+  <span><strong>Importer les ventes</strong><small>Photo du registre papier</small></span>
+  <span aria-hidden="true">›</span>
+</button>
+
+<button id="moreExports" type="button" class="more-menu-item" hidden>
+            <span class="more-menu-icon" aria-hidden="true">↓</span>
+            <span>
+              <strong>Export comptabilité</strong>
+              <small>Ventes, achats et dépenses en CSV</small>
+            </span>
+            <span aria-hidden="true">›</span>
+          </button>
 
           <button id="moreFinancial" type="button" class="more-menu-item">
             <span class="more-menu-icon">📈</span>
@@ -311,6 +538,7 @@
           </div>
 
           <form id="commerceSettingsForm" class="settings-form">
+            <label>Fuseau métier de la boutique (IANA)<input id="settingsTimezone" placeholder="Africa/Porto-Novo" required></label>
             <label>
               <span>Nom du commerce</span>
               <input
@@ -563,10 +791,12 @@
 
             <label>
               Catégorie
-              <select id="expenseCategory" name="category">
+              <select id="expenseCategory" name="category" aria-describedby="expenseCategoryHelp">
                 <option value="transport">Transport</option>
                 <option value="loyer">Loyer</option>
                 <option value="electricite">Électricité</option>
+                <option value="eau">Eau</option>
+                <option value="restauration">Restauration</option>
                 <option value="salaire">Salaire</option>
                 <option value="carburant">Carburant</option>
                 <option value="livraison">Livraison</option>
@@ -575,6 +805,8 @@
                 <option value="autre" selected>Autre</option>
               </select>
             </label>
+
+            <p id="expenseCategoryHelp" class="muted small">Dépenses de fonctionnement. Pour des marchandises destinées au stock, utilise « Nouvel achat ».</p>
 
             <label>
               Libellé
@@ -659,13 +891,33 @@
           </button>
         </div>
 
+        <label>Date de référence des périodes<input id="financeAsOf" type="date"></label>
+        <p id="financeTimezone"></p>
+        <h2 id="financeCurrentLabel">Encours actuel</h2>
+        <p id="financeQuality" role="status" hidden></p>
+        <article class="card">
+          <p>Restitutions dues <strong id="financeRefundsDue">0</strong></p>
+          <p>Remboursements effectivement confirmés sur la période <strong id="financeRefundsPaid">0</strong></p>
+          <button id="financeCashExport" type="button">Exporter encaissements et remboursements</button>
+          <div id="refundDueList"></div>
+          <form id="refundForm" hidden>
+            <p>Enregistrer un remboursement déjà effectué. Cette action ne réalise aucun transfert bancaire.</p>
+            <label>Montant<input id="refundAmount" type="number" min="1" required></label>
+            <label>Canal<select id="refundChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option></select></label>
+            <label>Date effective avec décalage UTC<input id="refundEffectiveAt" type="text" required></label>
+            <label>Référence du remboursement<input id="refundReference" maxlength="100"></label>
+            <label><input id="refundConfirmed" type="checkbox" required>Je confirme que le remboursement a été effectué</label>
+            <button id="refundSubmit" type="submit">Enregistrer le remboursement confirmé</button>
+          </form>
+          <p id="refundReceipt" role="status"></p>
+        </article>
         <div id="financeStatus"
              class="card finance-status"
              hidden>
         </div>
 
         <article class="card finance-hero">
-          <span>Chiffre d'affaires</span>
+          <span>CA actif révisé</span>
           <strong id="financeRevenue">0</strong>
           <small id="financePeriodLabel">
             Ce mois
@@ -673,6 +925,7 @@
         </article>
 
         <div class="finance-grid">
+          <article class="card finance-metric"><span>Décaissements fournisseurs</span><strong id="financeSupplierPaid">—</strong></article>
           <article class="card finance-metric">
             <span>Marge brute</span>
             <strong id="financeGrossMargin">0</strong>
@@ -716,7 +969,7 @@
           <article class="card finance-metric">
             <span>Flux net</span>
             <strong id="financeCashflow">0</strong>
-            <small>Trésorerie estimée</small>
+            <small>Flux de la période, hors solde de caisse</small>
           </article>
         </div>
 
@@ -799,8 +1052,10 @@
           <form id="supplierForm" class="form-grid">
             <input id="supplierName" placeholder="Nom du fournisseur" required>
             <input id="supplierPhone" placeholder="Téléphone">
-            <button type="submit">Ajouter le fournisseur</button>
+            <button id="supplierSubmitBtn" type="submit">Ajouter le fournisseur</button>
           </form>
+          <p id="supplierCreateStatus" role="status" aria-live="polite"></p>
+          <button id="purchaseSupplierBackBtn" type="button" hidden>Revenir à l’achat</button>
         </article>
 
         <article class="card">
@@ -813,73 +1068,64 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">Approvisionnement</span>
-            <h2>Nouvel achat</h2>
+            <h2 id="purchaseFormTitle" tabindex="-1">Nouvel achat</h2>
           </div>
         </div>
 
         <article class="card purchase-builder">
-          <label class="field">
-            <span>Fournisseur</span>
-            <select id="purchaseSupplier"></select>
-          </label>
-
-          <p id="purchaseSupplierHint" class="muted small">
-            Choisis d’abord un fournisseur pour préparer l’achat.
-          </p>
-
-          <div id="purchaseDetails" hidden>
-          <div class="purchase-add-line">
-            <label class="field">
-              <span>Produit</span>
-              <select id="purchaseProduct"></select>
+          <p class="muted small">Ajoute tes produits, puis indique le paiement.</p>
+          <button id="purchaseOpenProductsBtn" type="button" class="primary-action" aria-expanded="false" aria-controls="purchaseProductEditor">Ajouter un produit</button>
+          <div id="purchaseProductEditor" hidden>
+            <label class="field"><span>Rechercher un produit</span>
+              <input id="purchaseProductSearch" type="search" placeholder="Nom du produit" autocomplete="off">
             </label>
-            <label class="field">
-              <span>Quantité</span>
-              <input id="purchaseQty" type="number" min="1" value="1">
-            </label>
-            <label class="field">
-              <span>Coût unitaire</span>
-              <input id="purchaseUnitCost" type="number" min="0" value="0">
-            </label>
-            <button id="purchaseAddLineBtn" type="button">Ajouter la ligne</button>
-          </div>
-
-          <div id="purchaseCart" class="purchase-cart"></div>
-          <div class="purchase-total">
-            <span>Total achat</span>
-            <strong id="purchaseTotal">0</strong>
-          </div>
-
-          <label class="field">
-            <span>Montant payé maintenant</span>
-            <input id="purchasePaidAmount" type="number" min="0" value="0">
-          </label>
-
-          <label class="field">
-            <span>Mode de paiement</span>
-            <select id="purchasePaymentChannel">
-              <option value="cash">Espèces</option>
-              <option value="mobile_money">Mobile Money</option>
-              <option value="card">Carte</option>
-              <option value="bank_transfer">Virement</option>
-            </select>
-          </label>
-
-          <div id="purchaseDueWrap" class="express-credit-fields">
-            <label>
-              <span>Échéance si reste à payer</span>
-              <input id="purchaseDueDate" type="date">
-            </label>
-            <div class="express-due-presets">
-              <button type="button" data-purchase-due-days="7">+7 j</button>
-              <button type="button" data-purchase-due-days="15">+15 j</button>
-              <button type="button" data-purchase-due-days="30">+30 j</button>
+            <p id="purchaseCatalogStatus" role="status" aria-live="polite"></p>
+            <div class="purchase-add-line">
+              <label class="field"><span>Produit existant</span><select id="purchaseProduct"></select></label>
+              <label class="field"><span>Quantité (<span id="purchaseUnit">unité</span>)</span><input id="purchaseQty" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+              <label class="field"><span>Prix d’achat unitaire</span><input id="purchaseUnitCost" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+              <button id="purchaseAddLineBtn" type="button">Ajouter au panier</button>
+            </div>
+            <div class="actions">
+              <button id="purchaseRefreshProductsBtn" type="button" class="ghost">Actualiser les produits</button>
+              <button id="purchaseCreateProductBtn" type="button" class="ghost" hidden>Créer un produit absent</button>
+            </div>
+            <div id="purchaseNewProduct" hidden>
+              <p class="muted small">Le produit sera créé avec un stock nul. L’achat enregistré ajoutera les quantités.</p>
+              <label class="field"><span>Nom du nouveau produit</span><input id="purchaseNewProductName" maxlength="150" autocomplete="off"></label>
+              <label class="field"><span>Unité</span><input id="purchaseNewProductUnit" value="unité" maxlength="50"></label>
+              <label class="field"><span>Prix d’achat unitaire du nouveau produit</span><input id="purchaseNewProductCost" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+              <button id="purchaseSaveProductBtn" type="button">Créer et sélectionner le produit</button>
+              <button id="purchaseCancelProductBtn" type="button" class="ghost">Annuler la création</button>
+              <p id="purchaseNewProductStatus" role="status" aria-live="polite"></p>
             </div>
           </div>
-
-          <button id="purchaseSubmitBtn" type="button" class="primary-action">
-            Enregistrer l’achat
-          </button>
+          <div id="purchaseCart" class="purchase-cart"></div>
+          <div id="purchaseDetails">
+            <label class="field"><span>Paiement de l’achat</span>
+              <select id="purchasePaymentMode"><option value="paid">Intégralement payé</option><option value="partial">Une partie payée</option><option value="credit">À payer plus tard</option></select>
+            </label>
+            <label class="field"><span>Montant payé maintenant</span><input id="purchasePaidAmount" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+            <label class="field"><span>Mode de paiement</span><select id="purchasePaymentChannel">
+              <option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option><option value="bank_transfer">Virement</option>
+            </select></label>
+            <label class="field"><span>Fournisseur <span id="purchaseSupplierRequirement">(facultatif si tout est payé)</span></span><select id="purchaseSupplier"></select></label>
+            <p id="purchaseSupplierHint" class="muted small"></p>
+            <div class="actions">
+              <button id="purchaseCreateSupplierBtn" type="button" class="ghost" hidden>Ajouter un fournisseur</button>
+              <button id="purchaseRefreshSuppliersBtn" type="button" class="ghost">Actualiser les fournisseurs</button>
+            </div>
+            <div id="purchaseDueWrap" class="express-credit-fields" hidden>
+              <label><span>Échéance du reste à payer</span><input id="purchaseDueDate" type="date" aria-describedby="purchaseValidationMessage"></label>
+              <div class="express-due-presets"><button type="button" data-purchase-due-days="7">+7 j</button><button type="button" data-purchase-due-days="15">+15 j</button><button type="button" data-purchase-due-days="30">+30 j</button></div>
+            </div>
+          </div>
+          <p id="purchaseValidationMessage" role="status" aria-live="polite"></p>
+          <div class="purchase-checkout">
+            <div class="purchase-total"><span>Total achat</span><strong id="purchaseTotal">0</strong></div>
+            <div class="purchase-remaining"><span>Reste à payer</span><strong id="purchaseRemaining">0</strong></div>
+            <button id="purchaseRetryBtn" type="button" class="primary-action" hidden>Reprendre l’achat en attente</button>
+            <button id="purchaseSubmitBtn" type="button" class="primary-action">Enregistrer l’achat</button>
           </div>
         </article>
 
@@ -963,10 +1209,31 @@
               <input id="productStock" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
             </label>
 
-            <label class="field">
-              <span>Unité</span>
-              <input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required>
-            </label>
+            <div class="field product-unit-field">
+              <label for="productUnit">Unité</label>
+              <select id="productUnitPreset" aria-label="Choisir une unité courante" aria-describedby="productUnitHelp">
+                <option value="">Choisir une unité courante…</option>
+                <option value="pièce">pièce</option>
+                <option value="unité">unité</option>
+                <option value="paire">paire</option>
+                <option value="carton">carton</option>
+                <option value="sac">sac</option>
+                <option value="paquet">paquet</option>
+                <option value="boîte">boîte</option>
+                <option value="bouteille">bouteille</option>
+                <option value="bidon">bidon</option>
+                <option value="sachet">sachet</option>
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="litre">litre</option>
+                <option value="mètre">mètre</option>
+                <option value="casier">casier</option>
+                <option value="bassine">bassine</option>
+                <option value="tas">tas</option>
+              </select>
+              <input id="productUnit" placeholder="Ou saisir une autre unité" value="unité" aria-describedby="productUnitHelp" required>
+              <small id="productUnitHelp" class="muted">Choisis une unité ou saisis la tienne.</small>
+            </div>
 
             <input id="productType" type="hidden">
             <input id="productBrand" type="hidden">
@@ -982,20 +1249,124 @@
             </label>
 
             <button id="productSubmitBtn" type="submit" class="primary-action">Ajouter le produit</button>
+            <button id="productBarcodeBtn" type="button" class="ghost" hidden>Étiquette interne</button>
+            <section id="internalBarcodeLabel" hidden aria-label="Étiquette interne">
+              <strong id="internalBarcodeName"></strong>
+              <img id="internalBarcodeImage" alt="Code-barres interne" width="357" height="195">
+              <small>Usage interne au catalogue du marchand</small>
+              <button id="internalBarcodePrint" type="button">Imprimer l’étiquette</button>
+            </section>
             <button id="productCancelEditBtn" type="button" class="ghost" hidden>Annuler la modification</button>
           </form>
         </article>
 
+        <article id="productRestockCard" class="card" hidden>
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Stock</span>
+              <h2 id="productRestockTitle">Réapprovisionner</h2>
+            </div>
+            <button
+              id="productRestockCloseBtn"
+              type="button"
+              class="ghost"
+            >
+              Fermer
+            </button>
+          </div>
+
+          <p id="productRestockCurrent" class="muted small"></p>
+
+          <form id="productRestockForm" class="product-form">
+            <label class="field">
+              <span>Quantité à ajouter</span>
+              <input
+                id="productRestockQuantity"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                value="1"
+                required
+              >
+            </label>
+
+            <label class="field">
+              <span>Prix d'achat unitaire</span>
+              <div class="input-with-suffix">
+                <input
+                  id="productRestockPurchasePrice"
+                  type="number"
+                  min="0"
+                  inputmode="decimal"
+                  value="0"
+                >
+                <span id="productRestockCurrency">FCFA</span>
+              </div>
+            </label>
+
+            <label class="field field-wide">
+              <span>Note</span>
+              <input
+                id="productRestockNote"
+                maxlength="255"
+                placeholder="Ex. Réassort fournisseur"
+              >
+            </label>
+
+            <button
+              id="productRestockSubmitBtn"
+              type="submit"
+              class="primary-action"
+            >
+              Ajouter au stock
+            </button>
+          </form>
+        </article>
+
+        <button
+          id="productStockIntelligenceLink"
+          type="button"
+          class="card product-stock-intelligence-link"
+        >
+          <div>
+            <span class="eyebrow">Recommandations Whatzabi</span>
+            <strong>Stock intelligent</strong>
+            <small>
+              Voir les produits à traiter, rapides, lents et dormants
+            </small>
+          </div>
+
+          <span class="product-stock-intelligence-arrow">›</span>
+        </button>
+
         <section id="criticalStockList" class="card">
           <div class="panel-heading">
             <div>
-              <span class="eyebrow">Inventaire</span>
-              <h3>Stock critique</h3>
+              <span class="eyebrow">Seuil manuel</span>
+              <h3>Alertes de stock</h3>
             </div>
             <strong id="criticalStockCount">0 produit</strong>
           </div>
           <div id="criticalStockItems" class="list"></div>
         </section>
+
+        <article class="card product-stock-search-card">
+          <div class="product-stock-search-head">
+            <div>
+              <span class="eyebrow">Catalogue</span>
+              <h3>Rechercher dans le stock</h3>
+            </div>
+            <strong id="productSearchCount">0 produit</strong>
+          </div>
+
+          <input
+            id="productSearch"
+            type="search"
+            placeholder="Nom, marque, variante, conditionnement…"
+            autocomplete="off"
+          >
+        </article>
 
         <div id="productList" class="list"></div>
       </section>
@@ -1070,6 +1441,13 @@
           </div>
         </div>
 
+        <p class="express-voice-hint">
+          🎙️ Dites « Coca » pour rechercher ou
+          « 2 Coca et 1 Fanta » pour ajouter au panier.
+        </p>
+
+        <div id="expressCatalogStep" class="express-catalog-step">
+
         <input
           id="expressSearch"
           class="express-search"
@@ -1078,15 +1456,30 @@
           autocomplete="off"
         >
 
+        <div
+          id="expressSuggestions"
+          class="express-suggestions"
+          hidden
+        ></div>
+
         <section id="expressFrequentSection" hidden>
           <div class="express-section-title">
-            <strong>Produits fréquents</strong>
-            <small>Les plus vendus</small>
+            <strong>Top 10 produits</strong>
+            <small>Vos produits les plus vendus</small>
           </div>
           <div id="expressFrequentGrid" class="express-product-grid express-frequent-grid"></div>
+
+          <button
+            id="expressFrequentMore"
+            type="button"
+            class="ghost express-frequent-more"
+            hidden
+          >
+            Voir plus
+          </button>
         </section>
 
-        <section>
+        <section id="expressAllProductsSection" hidden>
           <div class="express-section-title">
             <strong>Produits</strong>
             <small>Boutique active</small>
@@ -1094,44 +1487,111 @@
           <div id="expressProductGrid" class="express-product-grid"></div>
         </section>
 
-        <article class="card express-cart-card">
-          <div class="express-section-title">
-            <strong>Panier</strong>
-            <strong id="expressTotal" class="express-total">0 FCFA</strong>
+        </div>
+
+        <button id="expressCartBar" type="button"
+          class="express-cart-bar" hidden>
+          <span class="express-cart-bar-main">
+            <span class="express-cart-bar-icon">🛒</span>
+            <span>
+              <strong id="expressCartBarCount">0 produit</strong>
+              <small id="expressCartBarUnits">0 unité</small>
+            </span>
+          </span>
+          <span class="express-cart-bar-end">
+            <strong id="expressCartBarTotal">0 FCFA</strong>
+            <small>Voir panier →</small>
+          </span>
+        </button>
+
+        <article id="expressCartStep"
+          class="card express-cart-card" hidden>
+
+          <button id="expressBackToProducts" type="button"
+            class="express-back-button">
+            ← Ajouter des produits
+          </button>
+
+          <div class="express-cart-heading">
+            <div>
+              <span class="eyebrow">Vente Express</span>
+              <h2>Panier</h2>
+            </div>
+            <strong id="expressTotal"
+              class="express-total">0 FCFA</strong>
           </div>
 
           <div id="expressCart" class="express-cart"></div>
 
-          <select id="expressCustomer">
-            <option value="">Vente comptoir — sans client</option>
-          </select>
+          <div class="express-cart-summary">
+            <span id="expressCartSummary">0 unité</span>
+            <strong id="expressCartSummaryTotal">0 FCFA</strong>
+          </div>
 
-          <select id="expressChannel">
-            <option value="cash">Espèces</option>
-            <option value="mobile_money">Mobile Money</option>
-            <option value="credit">Crédit client</option>
-            <option value="partial">Paiement partiel</option>
-          </select>
+          <button id="expressValidateCart" type="button"
+            class="express-validate-cart" disabled>
+            Panier vide
+          </button>
+        </article>
 
-          <div id="expressCreditFields" class="express-credit-fields" hidden>
+        <article id="expressPaymentStep"
+          class="card express-payment-card" hidden>
+
+          <button id="expressBackToCart" type="button"
+            class="express-back-button">
+            ← Retour au panier
+          </button>
+
+          <div class="express-payment-heading">
+            <span class="eyebrow">Finalisation</span>
+            <h2>Paiement</h2>
+            <strong id="expressPaymentTotal">0 FCFA</strong>
+          </div>
+
+          <label class="express-payment-field">
+            <span>Client</span>
+            <select id="expressCustomer">
+              <option value="">Vente comptoir — sans client</option>
+            </select>
+          </label>
+
+          <label class="express-payment-field">
+            <span>Situation</span>
+            <select id="expressChannel">
+              <option value="cash">Tout payé</option>
+              <option value="credit">À payer plus tard</option>
+              <option value="partial">Une partie payée</option>
+            </select>
+          </label>
+
+          <label id="expressDepositField" class="express-payment-field" hidden>
+            <span>Canal du paiement</span>
+            <select id="expressDepositChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select>
+          </label>
+          <label class="express-payment-field" id="expressPaidField" hidden><span>Montant payé maintenant</span><input id="expressPaidAmount" type="number" min="0" step="1" inputmode="numeric" value="0"></label>
+          <label class="express-payment-field" id="expressTenderedField"><span>Espèces remises (facultatif : total par défaut)</span><input id="expressTendered" type="number" min="0" step="1" inputmode="numeric"></label>
+          <p id="expressAmounts" role="status"></p>
+          <button id="expressNewCustomer" type="button">Nouveau client</button>
+          <div id="expressCreditFields"
+            class="express-credit-fields" hidden>
             <label>
               <span>Échéance de paiement</span>
               <input id="expressDueDate" type="date">
             </label>
+
             <div class="express-due-presets">
               <button type="button" data-due-days="7">+7 j</button>
               <button type="button" data-due-days="15">+15 j</button>
               <button type="button" data-due-days="30">+30 j</button>
             </div>
-            <small class="muted">Client + échéance obligatoires pour crédit ou paiement partiel.</small>
+
+            <small class="muted">
+              Client + échéance obligatoires pour crédit ou paiement partiel.
+            </small>
           </div>
 
-          <button
-            id="expressCheckout"
-            type="button"
-            class="express-checkout"
-            disabled
-          >
+          <button id="expressCheckout" type="button"
+            class="express-checkout" disabled>
             Panier vide
           </button>
         </article>
@@ -1149,7 +1609,7 @@
             <input id="saleQty" type="number" min="1" value="1" required>
             <input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé">
             <select id="saleChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select>
-            <button type="submit">Enregistrer la vente</button>
+            <button type="submit">Préparer et vérifier la vente</button>
           </form>
         </article>
         </details>
@@ -1161,10 +1621,13 @@
       <div id="toast" class="toast" hidden></div>
     </section>
   </main>
-  <script src="/auth/app.js?v=25" defer></script>
-  <script src="/auth/smart-catalog.js?v=45" defer></script>
-  <script src="/auth/express-sale.js?v=6" defer></script>
-  <script src="/auth/purchases.js?v=5" defer></script>
+  <script src="/auth/quick-auth.js?v=2" defer></script>
+  <script src="/auth/passkeys.js?v=1" defer></script>
+  <script src="/auth/app.js?v=54-commercial-20261117" defer></script>
+  <script src="/auth/offline-sales.js?v=4-commercial-20261117" defer></script>
+  <script src="/auth/smart-catalog.js?v=47-auth-rc1-20261115" defer></script>
+  <script src="/auth/express-sale.js?v=18-commercial-20261117" defer></script>
+  <script src="/auth/purchases.js?v=16-commercial-20261117" defer></script>
 
 
   <div id="catalogSheet" class="catalog-sheet" hidden>
@@ -1383,5 +1846,54 @@
           </div>
         </div>
       </div>
+
+  <dialog id="accountingExportDialog" class="accounting-export-dialog"
+          aria-labelledby="accountingExportTitle">
+    <div class="accounting-export-heading">
+      <h2 id="accountingExportTitle">Export comptabilité</h2>
+      <button id="accountingExportClose" type="button" class="ghost"
+              aria-label="Fermer">Fermer</button>
+    </div>
+    <p id="accountingExportShop" class="muted"></p>
+    <form id="accountingExportForm">
+      <div class="accounting-export-dates">
+        <label>Du
+          <input id="accountingExportSince" type="date" required>
+        </label>
+        <label>Au
+          <input id="accountingExportUntil" type="date" required>
+        </label>
+      </div>
+      <small class="muted">Les dates suivent les dates UTC des opérations.</small>
+      <label class="accounting-export-field">
+        Contenu des ventes et achats
+        <select id="accountingExportMode">
+          <option value="summary">Récapitulatif par vente ou achat</option>
+          <option value="details">Détail des produits</option>
+        </select>
+      </label>
+      <label class="accounting-export-checkbox">
+        <input id="accountingExportCancelled" type="checkbox">
+        Inclure les ventes et achats annulés
+      </label>
+      <p class="muted">
+        Les montants payés et restants correspondent à leur état actuel.
+        Les dépenses sont exportées une par ligne.
+      </p>
+      <div class="accounting-export-actions">
+        <button type="submit" name="kind" value="sales" class="primary">
+          Exporter les ventes
+        </button>
+        <button type="submit" name="kind" value="purchases">
+          Exporter les achats
+        </button>
+        <button type="submit" name="kind" value="expenses">
+          Exporter les dépenses
+        </button>
+      </div>
+      <p id="accountingExportStatus" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+
 </body>
 </html>

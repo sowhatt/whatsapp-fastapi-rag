@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class PurchaseItemCreate(BaseModel):
@@ -13,7 +13,11 @@ class PurchaseItemCreate(BaseModel):
 
 
 class PurchaseCreate(BaseModel):
-    supplier_id: int
+    payment_effective_at: datetime | None = None
+    from app.services.finance_time import aware as _aware
+    _effective = field_validator('payment_effective_at')(_aware)
+    idempotency_key: str | None = Field(default=None, min_length=16, max_length=128, pattern=r"^[A-Za-z0-9:_-]+$")
+    supplier_id: int | None = None
     items: list[PurchaseItemCreate]
     paid_amount: int = 0
     payment_channel: str = "cash"
@@ -26,6 +30,7 @@ class PurchaseCreate(BaseModel):
 
 
 class PurchaseRead(BaseModel):
+    currency_code: str | None = None
     id: int
     supplier_id: int | None
     total_amount: int

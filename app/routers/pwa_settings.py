@@ -27,6 +27,7 @@ BusinessType = Literal[
 
 
 class CommerceSettingsRead(BaseModel):
+    business_timezone: str | None = None
     shop_name: str | None
     business_type: str
     country_code: str | None
@@ -39,6 +40,7 @@ class CommerceSettingsRead(BaseModel):
 
 
 class CommerceSettingsUpdate(BaseModel):
+    business_timezone: str | None = Field(default=None, max_length=80)
     shop_name: str = Field(min_length=1, max_length=150)
     business_type: BusinessType
     country_code: str | None = Field(default=None, min_length=2, max_length=2)
@@ -79,6 +81,7 @@ def _serialize(
     db: Session,
 ) -> CommerceSettingsRead:
     return CommerceSettingsRead(
+        business_timezone=shop.business_timezone,
         shop_name=merchant.shop_name,
         business_type=merchant.business_type or "general_retail",
         country_code=(merchant.country_code.upper() if merchant.country_code else None),
@@ -116,6 +119,11 @@ def update_commerce_settings(
 
     shop = _active_shop(db, merchant)
 
+    if payload.business_timezone is not None:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try: ZoneInfo(payload.business_timezone)
+        except (ZoneInfoNotFoundError, ValueError): raise HTTPException(422, 'Fuseau IANA invalide')
+        shop.business_timezone = payload.business_timezone
     merchant.shop_name = payload.shop_name.strip()
     merchant.business_type = payload.business_type
     merchant.country_code = (
