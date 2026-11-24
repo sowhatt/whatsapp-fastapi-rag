@@ -19,6 +19,7 @@ from app.models.product import Product
 from app.domains.core.public.transactions import TransactionStatus, update_commerce_transaction
 from app.domains.online.internal.mutation import tenant_mutation
 from app.domains.online.internal.stock_policy import resolve_stock_policy
+from app.domains.online.internal.shop_stock_settlement import settle_order_stock
 from app.shared.tenancy.rls import apply_rls_context
 
 
@@ -66,7 +67,7 @@ def _reservation_status(order: OnlineOrder, *, db: Session) -> str:
     # Historical expired rows are preserved for auditability. Once a rebuilt
     # reservation reaches a terminal state, that current state must win over
     # older expired rows from the same order.
-    if "consumed" in statuses:
+    if "consumed" in statuses or "settled" in statuses:
         return "consumed"
     if "released" in statuses:
         return "released"
@@ -320,6 +321,13 @@ def update_order_status(
         return _order_payload(order, db=db)
 
     order.status = target
+
+    if target == "completed":
+        settle_order_stock(
+            merchant_id=merchant_id, order_id=order.id,
+            order_reference=order.reference,
+            quantities=_order_quantities(order, db=db), db=db,
+        )
 
     if target == "cancelled":
         release_reservations(

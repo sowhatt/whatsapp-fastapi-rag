@@ -80,12 +80,12 @@ def check_reservation_set(
         .order_by(StockReservation.id).populate_existing().with_for_update().all()
     )
     now = datetime.utcnow()
-    current = [row for row in rows if row.status in {"active", "consumed"}]
-    expected_status = "consumed" if completed else "active"
+    current = [row for row in rows if row.status in {"active", "consumed", "settled"}]
+    expected_status = {"consumed", "settled"} if completed else {"active"}
     actual: dict[int, int] = {}
     for row in current:
         if (
-            row.status != expected_status or row.quantity <= 0
+            row.status not in expected_status or row.quantity <= 0
             or (not completed and row.expires_at <= now)
         ):
             raise ReservationSetError(
@@ -114,7 +114,7 @@ def has_consumed_reservations(
         StockReservation.merchant_id == merchant_id,
         StockReservation.source_type == source_type,
         StockReservation.source_id == source_id,
-        StockReservation.status == "consumed",
+        StockReservation.status.in_(["consumed", "settled"]),
     ).first() is not None
 
 
@@ -249,6 +249,27 @@ def release_reservations(
     for row in rows:
         row.status = "released"
         row.released_at = now
+    return len(rows)
+
+
+def settle_reservations(
+    *, merchant_id: int, source_type: str, source_id: int, db: Session,
+) -> int:
+    """consumed -> settled : la sortie est comptabilisée dans le stock de la boutique,
+    la réservation ne doit donc plus être déduite une seconde fois du disponible."""
+    db.flush()  # le passage à `consumed` de la même transaction doit être visible de la requête
+    rows = (
+        db.query(StockReservation)
+        .filter(
+            StockReservation.merchant_id == merchant_id,
+            StockReservation.source_type == source_type,
+            StockReservation.source_id == source_id,
+            StockReservation.status == "consumed",
+        )
+        .all()
+    )
+    for row in rows:
+        row.status = "settled"
     return len(rows)
 
 
