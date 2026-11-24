@@ -137,18 +137,65 @@ let invoiceDraftQueue = [];
 let invoiceDraftPosition = 0;
 
 async function api(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (token) headers.Authorization = 'Bearer ' + token;
-  const response = await fetch(path, { ...options, headers });
-  if (response.status === 401 && path !== '/auth/login') {
-    logout();
-    throw new Error('Session expirée');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers.Authorization = 'Bearer ' + token;
   }
+
+  /*
+   * Une erreur levée directement par fetch() correspond
+   * à une vraie erreur réseau : elle n'est volontairement
+   * pas transformée ici.
+   */
+  const response = await fetch(
+    path,
+    {
+      ...options,
+      headers,
+    }
+  );
+
   let body = null;
+
   try {
     body = await response.json();
   } catch {}
-  if (!response.ok) throw new Error(body?.detail || 'Erreur serveur');
+
+  if (!response.ok) {
+    const detail =
+      typeof body?.detail === 'string'
+        ? body.detail
+        : (
+            body?.detail
+              ? JSON.stringify(body.detail)
+              : 'Erreur serveur'
+          );
+
+    const error = new Error(
+      response.status === 401 &&
+      path !== '/auth/login'
+        ? 'Session expirée'
+        : detail
+    );
+
+    error.status = response.status;
+    error.isHttpError = true;
+    error.body = body;
+
+    if (
+      response.status === 401 &&
+      path !== '/auth/login'
+    ) {
+      logout();
+    }
+
+    throw error;
+  }
+
   return body;
 }
 
@@ -160,6 +207,17 @@ function toast(message) {
 }
 
 function showTab(name) {
+  if (
+    name === 'stockIntelligence' &&
+    !stockIntelligenceLoading &&
+    (
+      !stockIntelligenceData ||
+      stockIntelligenceShopKey !== String(state.merchant?.shop_id)
+    )
+  ) {
+    void loadStockIntelligence();
+  }
+
   document.querySelectorAll('.panel').forEach((element) =>
     element.classList.toggle('active', element.id === name),
   );
@@ -284,6 +342,19 @@ function renderFinanceOverview(data) {
   renderFinancePeriodButtons();
 }
 
+let financeRequestId = 0;
+function invalidateFinanceOverview() {
+  financeRequestId++;
+  state.finance = null;
+  for (const id of ['financeShopName', 'financeRevenue', 'financeGrossMargin',
+    'financeMarginRate', 'financeSalesPaid', 'financeReceivables', 'financeOverdue',
+    'financePayables', 'financeExpenses', 'financeCashflow', 'financeStockValue',
+    'financePotentialSales', 'financeAssets', 'financeLiabilities', 'financeNetPosition']) {
+    if ($(id)) $(id).textContent = '—';
+  }
+  setFinanceStatus();
+}
+
 async function loadFinanceOverview(
   period = state.financePeriod || 'month',
 ) {
@@ -295,6 +366,11 @@ async function loadFinanceOverview(
     return;
   }
 
+  invalidateFinanceOverview();
+  const requestId = financeRequestId;
+  const origin = {token, merchant:state.merchant?.id, shop:state.merchant?.shop_id};
+  const current = () => requestId === financeRequestId && origin.token === token &&
+    origin.merchant === state.merchant?.id && origin.shop === state.merchant?.shop_id;
   state.financePeriod = period;
   renderFinancePeriodButtons();
 
@@ -305,13 +381,16 @@ async function loadFinanceOverview(
   try {
     const data = await api(
       '/pwa/finance/overview?period=' +
-        encodeURIComponent(period)
+        encodeURIComponent(period),
+      {cache:'no-store'},
     );
 
+    if (!current()) return;
     state.finance = data;
     renderFinanceOverview(data);
     setFinanceStatus();
   } catch (error) {
+    if (!current()) return;
     console.error(
       'Finance overview error:',
       error
@@ -328,6 +407,7 @@ async function loadFinanceOverview(
 function resetProductForm() {
   editingProductId = null;
   $('productForm').reset();
+  $('productStock').disabled = false;
   $('productUnit').value = 'unité';
   $('productStock').value = '0';
   $('productPrice').value = '0';
@@ -380,6 +460,9 @@ window.whatzabiEditProduct = function(productId) {
 
   editingProductId = product.id;
   fillProductForm(product);
+
+  $('productStock').disabled = true;
+
   $('productFormTitle').textContent = 'Modifier le produit';
   $('productSubmitBtn').textContent = 'Enregistrer les modifications';
   $('productCancelEditBtn').hidden = false;
@@ -413,10 +496,18 @@ function openInvoiceDraftItem() {
       variant: candidate.variant || existing.variant,
       packaging: candidate.packaging || existing.packaging,
       purchase_price: candidate.purchase_price ?? existing.purchase_price ?? 0,
-      stock: Number(existing.stock || 0) + quantity,
+      stock: Number(existing.stock || 0),
     });
-    $('productFormTitle').textContent = 'Facture · Mettre à jour ' + existing.name;
-    $('productSubmitBtn').textContent = 'Valider la ligne et continuer';
+
+    $('productStock').disabled = true;
+
+    $('productFormTitle').textContent =
+      'Facture · Réapprovisionner ' + existing.name;
+
+    $('productSubmitBtn').textContent =
+      quantity > 0
+        ? `Valider et ajouter ${quantity} au stock`
+        : 'Valider la ligne et continuer';
   } else {
     fillProductForm({
       ...candidate,
@@ -442,7 +533,11 @@ function openInvoiceDraftItem() {
   setSmartCatalogStatus(
     'Facture : ligne ' + (invoiceDraftPosition + 1) + '/' + invoiceDraftQueue.length + '. ' +
     (existing
-      ? 'Le stock proposé inclut la quantité achetée. Vérifie avant de valider.'
+      ? (
+          quantity > 0
+            ? `${quantity} ${existing.unit || 'unité'} seront ajoutés au stock après validation.`
+            : 'Aucune quantité positive à ajouter au stock.'
+        )
       : 'Complète notamment le prix de vente avant de créer le produit.') +
     conversionInfo
   );
@@ -474,6 +569,10 @@ function logout() {
   state = { products: [], customers: [], sales: [], merchant: null, shops: [], currencyContext: null, finance: null, financePeriod: 'month' };
   $('appView').hidden = true;
   $('loginView').hidden = false;
+
+  if ($('offlineSyncBadge')) {
+    $('offlineSyncBadge').hidden = true;
+  }
 }
 
 function renderCurrencyPanel() {
@@ -550,15 +649,38 @@ function renderIdentity() {
     .join('');
 }
 
+function normalizeProductSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('fr')
+    .trim();
+}
+
+
 function render() {
+  const activeStockShop = state.merchant?.shop_id;
+  if (
+    activeStockShop &&
+    stockIntelligenceShopKey !== String(activeStockShop) &&
+    !stockIntelligenceLoading
+  ) {
+    void loadStockIntelligence(true);
+  }
+
   const products = state.products;
   const customers = state.customers;
   const sales = state.sales;
 
+  const validSales = sales.filter(
+    (sale) => String(sale.status) !== 'cancelled',
+  );
+
   renderIdentity();
   renderPermissions();
   renderCurrencyPanel();
-  const revenue = sales.reduce(
+
+  const revenue = validSales.reduce(
     (sum, sale) => sum + Number(sale.total_amount || 0),
     0,
   );
@@ -572,16 +694,19 @@ function render() {
     (customer) => Number(customer.debt || 0) > 0,
   ).length;
 
-  const lowStockProducts = products.filter(
-    (product) => Number(product.stock || 0) <= Number(product.threshold || 0),
-  );
+  const lowStockProducts = products.filter((product) => {
+    const stock = Number(product.stock || 0);
+    const threshold = Number(product.threshold || 0);
+
+    return stock <= 0 || (threshold > 0 && stock <= threshold);
+  });
 
   $('statRevenue').textContent = fmt(revenue);
-  $('statSales').textContent = sales.length;
+  $('statSales').textContent = validSales.length;
   $('statDebt').textContent = fmt(customerDebt);
   $('statDebtCustomers').textContent =
     customersWithDebt + (customersWithDebt > 1 ? ' clients' : ' client');
-  $('statLowStock').textContent = lowStockProducts.length;
+  // KPI désormais alimenté par Stock Intelligent V1.
 
   if ($('criticalStockCount')) {
     $('criticalStockCount').textContent =
@@ -614,13 +739,13 @@ function render() {
             return `<article class="activity-row">
               <div>
                 <strong>${esc(product.name)}</strong>
-                <span>Stock ${stock} ${esc(product.unit)} · seuil ${threshold}</span>
+                <span>Stock ${stock} ${esc(product.unit)} · seuil configuré ${threshold}</span>
               </div>
               ${status}
             </article>`;
           })
           .join('')
-      : '<p class="muted empty-state">Aucun produit en stock critique.</p>';
+      : '<p class="muted empty-state">Aucune alerte selon les seuils configurés.</p>';
   }
 
   $('activityRevenue').textContent = fmt(revenue);
@@ -685,22 +810,73 @@ function render() {
         .join('')
     : '<p class="muted empty-state">Aucune vente.</p>';
 
-  $('productList').innerHTML = products.length
-    ? products
+  const productSearchValue = normalizeProductSearch(
+    $('productSearch')?.value || '',
+  );
+
+  const filteredProducts = productSearchValue
+    ? products.filter((product) => {
+        const searchable = normalizeProductSearch([
+          product.name,
+          product.brand,
+          product.variant,
+          product.packaging,
+          product.unit,
+        ].filter(Boolean).join(' '));
+
+        return searchable.includes(productSearchValue);
+      })
+    : products;
+
+  if ($('productSearchCount')) {
+    $('productSearchCount').textContent =
+      filteredProducts.length +
+      (filteredProducts.length > 1 ? ' produits' : ' produit');
+  }
+
+  $('productList').innerHTML = filteredProducts.length
+    ? filteredProducts
         .map(
-          (product) => `<article class="item">
+          (product) => `<article class="item product-stock-row">
             <div class="item-main">
               <div class="item-title">${esc(product.name)}</div>
-              <div class="item-meta">Stock boutique: ${product.stock} ${esc(product.unit)} · Seuil: ${product.threshold}</div>
+              <div class="item-meta">
+                Stock boutique: ${product.stock} ${esc(product.unit)}
+                · Seuil: ${product.threshold}
+              </div>
             </div>
-            <div>
+
+            <div class="product-stock-end">
               <div class="money">${fmt(product.price)}</div>
-              ${can('product.update') ? `<button type="button" class="ghost" data-edit-product="${product.id}">Modifier</button>` : ''}
+
+              ${can('product.update') ? `
+                <div class="product-stock-actions">
+                  <button
+                    type="button"
+                    class="primary product-stock-action"
+                    data-restock-product="${product.id}"
+                  >
+                    Réapprovisionner
+                  </button>
+
+                  <button
+                    type="button"
+                    class="ghost product-stock-action"
+                    data-edit-product="${product.id}"
+                  >
+                    Modifier
+                  </button>
+                </div>
+              ` : ''}
             </div>
           </article>`,
         )
         .join('')
-    : '<article class="card muted">Aucun produit.</article>';
+    : (
+        productSearchValue
+          ? '<article class="card muted">Aucun produit trouvé.</article>'
+          : '<article class="card muted">Aucun produit.</article>'
+      );
 
 
   const todayKey = localDateKey();
@@ -1305,6 +1481,24 @@ async function selectShop(shopId, { silent = false } = {}) {
   token = data.access_token;
   localStorage.setItem('whatzabi_token', token);
   state.merchant = data.merchant;
+
+  // Invalider immédiatement les indicateurs de l'ancienne boutique.
+  invalidateFinanceOverview();
+  stockIntelligenceRequestId++;
+  stockIntelligenceData = null;
+  stock360Data = null;
+  stock360ShowAll = false;
+  stockIntelligenceShopKey = null;
+  stockIntelligenceLoading = false;
+
+  if ($('statLowStock')) $('statLowStock').textContent = '—';
+  if ($('statStockInsight')) {
+    $('statStockInsight').textContent = 'Actualisation du stock…';
+  }
+  if ($('stockIntelligenceList')) {
+    $('stockIntelligenceList').innerHTML = '';
+  }
+
   if (!silent) toast('Boutique active : ' + (data.merchant.active_shop_name || 'boutique sélectionnée'));
 }
 
@@ -1318,9 +1512,245 @@ async function loadContext() {
     shops = await api('/auth/shops');
   }
 
+  const previousShop = state.merchant?.shop_id;
+  const previousMerchant = state.merchant?.id;
+
   state.merchant = merchant;
   state.shops = shops;
+
+  if (String(previousShop) !== String(merchant.shop_id) || previousMerchant !== merchant.id) {
+    invalidateFinanceOverview();
+    stockIntelligenceRequestId++;
+    stockIntelligenceData = null;
+    stockIntelligenceShopKey = null;
+    stockIntelligenceLoading = false;
+
+    if ($('statLowStock')) {
+      $('statLowStock').textContent = '—';
+    }
+    if ($('statStockInsight')) {
+      $('statStockInsight').textContent = 'Actualisation du stock…';
+    }
+    if ($('stockIntelligenceList')) {
+      $('stockIntelligenceList').innerHTML = '';
+    }
+  }
 }
+
+async function updateOfflineSyncBadge() {
+  const badge = $('offlineSyncBadge');
+
+  if (!badge) return;
+
+  const manager =
+    window.WhatzabiOfflineSales;
+
+  const merchantId =
+    state.merchant?.id;
+
+  if (!manager || !merchantId) {
+    badge.hidden = true;
+    return;
+  }
+
+  try {
+    const queue =
+      await manager.summary(
+        merchantId
+      );
+
+    badge.hidden = false;
+
+    badge.classList.remove(
+      'is-offline',
+      'has-pending',
+      'has-conflict',
+      'has-blocked'
+    );
+
+    if (!navigator.onLine) {
+      badge.classList.add(
+        'is-offline'
+      );
+
+      badge.textContent =
+        queue.pending > 0
+          ? (
+              'Hors ligne · ' +
+              queue.pending +
+              (
+                queue.pending > 1
+                  ? ' ventes en attente'
+                  : ' vente en attente'
+              )
+            )
+          : 'Hors ligne';
+
+      return;
+    }
+
+    if (queue.conflict > 0) {
+      badge.classList.add(
+        'has-conflict'
+      );
+
+      badge.textContent =
+        queue.conflict +
+        (
+          queue.conflict > 1
+            ? ' ventes à vérifier'
+            : ' vente à vérifier'
+        );
+
+      return;
+    }
+
+    if (queue.blocked > 0) {
+      badge.classList.add(
+        'has-blocked'
+      );
+
+      badge.textContent =
+        queue.blocked +
+        (
+          queue.blocked > 1
+            ? ' ventes bloquées'
+            : ' vente bloquée'
+        );
+
+      return;
+    }
+
+    if (queue.pending > 0) {
+      badge.classList.add(
+        'has-pending'
+      );
+
+      badge.textContent =
+        queue.pending +
+        (
+          queue.pending > 1
+            ? ' ventes à synchroniser'
+            : ' vente à synchroniser'
+        );
+
+      return;
+    }
+
+    badge.textContent = 'En ligne';
+  } catch {
+    badge.hidden = true;
+  }
+}
+
+
+let offlineSyncUiRunning = false;
+
+
+async function syncOfflineSales() {
+  const manager =
+    window.WhatzabiOfflineSales;
+
+  if (
+    offlineSyncUiRunning ||
+    !manager ||
+    !token ||
+    !state.merchant?.id ||
+    !navigator.onLine
+  ) {
+    await updateOfflineSyncBadge();
+    return;
+  }
+
+  offlineSyncUiRunning = true;
+
+  try {
+    const result =
+      await manager.sync();
+
+    await updateOfflineSyncBadge();
+
+    if (result?.synced > 0) {
+      const count =
+        Number(result.synced);
+
+      /*
+       * La vente synchronisée modifie le stock,
+       * les ventes et potentiellement les créances.
+       * On recharge donc le contexte serveur.
+       *
+       * refresh() ne rappelle pas syncOfflineSales(),
+       * ce qui évite une boucle.
+       */
+      await refresh();
+
+      toast(
+        count +
+        (
+          count > 1
+            ? ' ventes hors ligne synchronisées'
+            : ' vente hors ligne synchronisée'
+        )
+      );
+
+      await updateOfflineSyncBadge();
+    }
+
+    if (result?.conflicts > 0) {
+      toast(
+        result.conflicts +
+        (
+          result.conflicts > 1
+            ? ' ventes hors ligne sont à vérifier'
+            : ' vente hors ligne est à vérifier'
+        )
+      );
+    }
+
+    if (result?.blocked > 0) {
+      toast(
+        result.blocked +
+        (
+          result.blocked > 1
+            ? ' ventes hors ligne sont bloquées'
+            : ' vente hors ligne est bloquée'
+        )
+      );
+    }
+  } finally {
+    offlineSyncUiRunning = false;
+  }
+}
+
+
+window.addEventListener(
+  'offline',
+  () => {
+    void updateOfflineSyncBadge();
+  }
+);
+
+
+window.addEventListener(
+  'online',
+  () => {
+    window.setTimeout(
+      () => {
+        void syncOfflineSales();
+      },
+      500
+    );
+  }
+);
+
+
+window.addEventListener(
+  'whatzabi:offline-sales-changed',
+  () => {
+    void updateOfflineSyncBadge();
+  }
+);
+
 
 async function refresh() {
   await loadContext();
@@ -1336,6 +1766,13 @@ async function refresh() {
   state.sales = sales;
   render();
 
+  if (
+    typeof window.whatzabiExpressRefreshFrequentProducts ===
+    'function'
+  ) {
+    await window.whatzabiExpressRefreshFrequentProducts();
+  }
+
   /*
    * Les dépenses ne sont chargées que pour les rôles disposant
    * de report.read. Un vendeur ne doit donc pas faire échouer refresh().
@@ -1349,6 +1786,9 @@ async function refresh() {
     state.expenses = [];
     renderExpenses();
   }
+  if (state.finance && can('report.read')) {
+    await loadFinanceOverview(state.financePeriod || 'month');
+  }
 }
 
 async function boot() {
@@ -1357,6 +1797,9 @@ async function boot() {
     await refresh();
     $('loginView').hidden = true;
     $('appView').hidden = false;
+
+    await updateOfflineSyncBadge();
+    await syncOfflineSales();
   } catch {
     logout();
   }
@@ -1379,6 +1822,9 @@ $('loginForm').addEventListener('submit', async (event) => {
     await refresh();
     $('loginView').hidden = true;
     $('appView').hidden = false;
+
+    await updateOfflineSyncBadge();
+    await syncOfflineSales();
   } catch (error) {
     $('loginError').textContent = error.message;
   }
@@ -1390,6 +1836,9 @@ $('shopSelector').addEventListener('change', async (event) => {
     await selectShop(event.target.value);
     await refresh();
     showTab('dashboard');
+
+    await updateOfflineSyncBadge();
+    await syncOfflineSales();
   } catch (error) {
     if (previousShopId) event.target.value = String(previousShopId);
     toast(error.message);
@@ -1443,6 +1892,154 @@ document.querySelectorAll('[data-open-tab]').forEach((button) =>
 );
 
 
+let restockProductId = null;
+
+function closeProductRestock() {
+  restockProductId = null;
+
+  if ($('productRestockCard')) {
+    $('productRestockCard').hidden = true;
+  }
+
+  if ($('productRestockForm')) {
+    $('productRestockForm').reset();
+  }
+
+  if ($('productRestockQuantity')) {
+    $('productRestockQuantity').value = '1';
+  }
+}
+
+function openProductRestock(productId) {
+  if (!can('product.update')) {
+    toast('Ton rôle ne permet pas de réapprovisionner un produit.');
+    return;
+  }
+
+  const product = state.products.find(
+    (item) => Number(item.id) === Number(productId)
+  );
+
+  if (!product) {
+    toast('Produit introuvable dans la boutique active.');
+    return;
+  }
+
+  restockProductId = product.id;
+
+  $('productRestockTitle').textContent =
+    'Réapprovisionner ' + product.name;
+
+  $('productRestockCurrent').textContent =
+    'Stock actuel : ' +
+    Number(product.stock || 0) +
+    ' ' +
+    (product.unit || 'unité');
+
+  $('productRestockQuantity').value = '1';
+
+  $('productRestockPurchasePrice').value =
+    String(Number(product.purchase_price || 0));
+
+  $('productRestockNote').value = '';
+
+  $('productRestockCard').hidden = false;
+
+  showTab('products');
+
+  $('productRestockCard').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  });
+
+  $('productRestockQuantity').focus();
+}
+
+$('productSearch')?.addEventListener(
+  'input',
+  () => render(),
+);
+
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-restock-product]');
+  if (!button) return;
+
+  openProductRestock(
+    Number(button.dataset.restockProduct)
+  );
+});
+
+$('productRestockCloseBtn')?.addEventListener(
+  'click',
+  closeProductRestock,
+);
+
+$('productRestockForm')?.addEventListener(
+  'submit',
+  async (event) => {
+    event.preventDefault();
+
+    if (!restockProductId) {
+      toast('Produit introuvable.');
+      return;
+    }
+
+    const quantity = Number(
+      $('productRestockQuantity').value || 0
+    );
+
+    const purchasePrice = Number(
+      $('productRestockPurchasePrice').value || 0
+    );
+
+    const note = String(
+      $('productRestockNote').value || ''
+    ).trim();
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      toast('Saisis une quantité entière supérieure à zéro.');
+      return;
+    }
+
+    const button = $('productRestockSubmitBtn');
+
+    try {
+      button.disabled = true;
+      button.textContent = 'Ajout au stock…';
+
+      const product = await api(
+        `/pwa/products/${restockProductId}/restock`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            quantity,
+            purchase_price: purchasePrice,
+            note: note || null,
+            source: 'manual',
+          }),
+        },
+      );
+
+      closeProductRestock();
+      await refresh();
+
+      toast(
+        `Stock mis à jour : ${product.name} · ` +
+        `${product.stock} ${product.unit}`
+      );
+    } catch (error) {
+      toast(
+        error.message ||
+        'Réapprovisionnement impossible.'
+      );
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Ajouter au stock';
+    }
+  },
+);
+
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-edit-product]');
   if (!button) return;
@@ -1454,12 +2051,34 @@ $('productCancelEditBtn').addEventListener('click', () => {
   invoiceDraftQueue = [];
   invoiceDraftPosition = 0;
   resetProductForm();
+  sessionStorage.removeItem('whatzabi_product_form_barcode');
+  sessionStorage.removeItem('whatzabi_pending_barcode');
+  sessionStorage.removeItem('whatzabi_catalog_selected');
   setSmartCatalogStatus('');
   if (hadInvoiceQueue) toast('Traitement de la facture annulé.');
 });
 
 $('productForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+
+  const wasEditing = editingProductId !== null;
+
+  const processingInvoice = invoiceDraftQueue.length > 0;
+  const currentInvoiceItem = processingInvoice
+    ? invoiceDraftQueue[invoiceDraftPosition]
+    : null;
+
+  const invoiceCandidate =
+    currentInvoiceItem?.candidate || currentInvoiceItem || null;
+
+  const invoiceExistingProductId = Number(
+    currentInvoiceItem?.existing_product_id || 0
+  );
+
+  const invoiceRestockQuantity = Math.max(
+    0,
+    Number(invoiceCandidate?.quantity || 0)
+  );
 
   const payload = {
     name: $('productName').value,
@@ -1468,25 +2087,124 @@ $('productForm').addEventListener('submit', async (event) => {
     variant: $('productVariant').value || null,
     packaging: $('productPackaging').value || null,
     unit: $('productUnit').value,
-    stock: Number($('productStock').value),
     price: Number($('productPrice').value),
     purchase_price: Number($('productPurchasePrice').value),
     threshold: Number($('productThreshold').value),
   };
 
-  const wasEditing = editingProductId !== null;
+  if (!wasEditing) {
+    payload.stock = Number($('productStock').value);
+  }
   const path = wasEditing
     ? `/pwa/products/${editingProductId}`
     : '/pwa/products';
 
+  const normalizedNewName = normalizeProductSearch(payload.name);
+
+  const existingProduct = state.products.find(
+    (product) =>
+      Number(product.id) !== Number(editingProductId) &&
+      normalizeProductSearch(product.name) === normalizedNewName
+  );
+
+  if (existingProduct) {
+    toast(
+      `Produit déjà présent : ${existingProduct.name}. ` +
+      'Utilise sa fiche existante.'
+    );
+
+    const existingProductElement =
+      document.querySelector(
+        `[data-restock-product="${existingProduct.id}"]`
+      );
+
+    existingProductElement?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+
+    return;
+  }
+
   try {
-    await api(path, {
+    const savedProduct = await api(path, {
       method: wasEditing ? 'PATCH' : 'POST',
       body: JSON.stringify(payload),
     });
 
-    const processingInvoice = invoiceDraftQueue.length > 0;
     const invoiceLineCount = invoiceDraftQueue.length;
+
+    if (
+      processingInvoice &&
+      wasEditing &&
+      invoiceExistingProductId > 0 &&
+      invoiceRestockQuantity > 0
+    ) {
+      await api(
+        `/pwa/products/${savedProduct.id}/restock`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            quantity: invoiceRestockQuantity,
+            purchase_price: Number(
+              $('productPurchasePrice').value || 0
+            ),
+            note:
+              'Réapprovisionnement depuis justificatif fournisseur',
+            source: 'invoice',
+          }),
+        },
+      );
+    }
+
+    const pendingBarcode = wasEditing
+      ? ''
+      : String(
+          sessionStorage.getItem('whatzabi_product_form_barcode') || ''
+        ).trim();
+
+    if (pendingBarcode && savedProduct?.id) {
+      const response = await fetch(
+        '/pwa/catalog/barcode/' +
+          encodeURIComponent(pendingBarcode) +
+          '/associate',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            product_id: Number(savedProduct.id),
+          }),
+        },
+      );
+
+      let barcodeBody = null;
+      try {
+        barcodeBody = await response.json();
+      } catch {}
+
+      if (!response.ok) {
+        sessionStorage.removeItem('whatzabi_product_form_barcode');
+        sessionStorage.removeItem('whatzabi_pending_barcode');
+        sessionStorage.removeItem('whatzabi_catalog_selected');
+
+        resetProductForm();
+        setSmartCatalogStatus('');
+        await refresh();
+
+        toast(
+          'Produit créé, mais le code-barres n’a pas pu être associé. ' +
+          'Rescanne le code pour terminer l’association.'
+        );
+        return;
+      }
+
+      sessionStorage.removeItem('whatzabi_product_form_barcode');
+      sessionStorage.removeItem('whatzabi_pending_barcode');
+      sessionStorage.removeItem('whatzabi_catalog_selected');
+    }
 
     resetProductForm();
     setSmartCatalogStatus('');
@@ -2319,8 +3037,67 @@ $('voiceContinueBtn').addEventListener('click', () => {
     return;
   }
 
+  const normalizedTranscript = transcript
+    .toLocaleLowerCase('fr')
+    .trim();
+
+  const explicitSaleCommand =
+    /^(ajoute|ajouter|mets|mettre|vends|vendre)\b/i
+      .test(normalizedTranscript);
+
+  const leadingQuantity =
+    /^(?:\d+|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze)\s+/i
+      .test(normalizedTranscript);
+
+  const explicitSearchCommand =
+    /^(cherche|recherche|trouve|affiche|montre(?:-moi)?)\b/i
+      .test(normalizedTranscript);
+
+  const voiceSearch =
+    explicitSearchCommand ||
+    (!explicitSaleCommand && !leadingQuantity);
+
+  if (voiceSearch) {
+    if (
+      typeof window.whatzabiExpressVoiceSearch !== 'function'
+    ) {
+      showVoiceProblem(
+        'La recherche vocale Vente Express est indisponible.'
+      );
+      return;
+    }
+
+    try {
+      const result =
+        window.whatzabiExpressVoiceSearch(transcript);
+
+      closeVoiceSheet();
+
+      toast(
+        `Recherche vocale : ${result.query}` +
+        (
+          result.result_count != null
+            ? ` · ${result.result_count} résultat${
+                result.result_count > 1 ? 's' : ''
+              }`
+            : ''
+        )
+      );
+
+      return;
+    } catch (error) {
+      showVoiceProblem(
+        error?.message ||
+        'Impossible de lancer la recherche vocale.'
+      );
+      return;
+    }
+  }
+
   if (!can('sale.create')) {
-    showVoiceProblem('Ton rôle ne permet pas d’enregistrer une vente.');
+    showVoiceProblem(
+      'Ton rôle ne permet pas d’enregistrer une vente.'
+    );
     return;
   }
 
@@ -2678,7 +3455,8 @@ async function prepareExpenseScanImage(file) {
   /*
    * Même principe que Smart Catalog :
    * on réduit la photo avant l'envoi pour accélérer l'analyse sur mobile.
-   * En cas d'échec de compression, on conserve le fichier original.
+   * Si la préparation échoue, on arrête l’analyse au lieu d’envoyer
+   * un fichier potentiellement incompatible avec Safari/iPhone.
    */
   try {
     const dataUrl = await new Promise((resolve, reject) => {
@@ -2710,7 +3488,9 @@ async function prepareExpenseScanImage(file) {
 
     const context = canvas.getContext('2d');
 
-    if (!context) return file;
+    if (!context) {
+      throw new Error('Impossible de préparer cette image.');
+    }
 
     context.drawImage(image, 0, 0, width, height);
 
@@ -2718,7 +3498,9 @@ async function prepareExpenseScanImage(file) {
       canvas.toBlob(resolve, 'image/jpeg', 0.8);
     });
 
-    if (!blob) return file;
+    if (!blob) {
+      throw new Error('Impossible de convertir cette image en JPEG.');
+    }
 
     return new File(
       [blob],
@@ -2727,7 +3509,10 @@ async function prepareExpenseScanImage(file) {
     );
   } catch (error) {
     console.warn('Compression justificatif impossible', error);
-    return file;
+    throw new Error(
+      'Cette photo ne peut pas être préparée pour l’analyse. ' +
+      'Réessaie avec une photo JPEG ou prends une nouvelle photo.'
+    );
   }
 }
 
@@ -2831,17 +3616,32 @@ async function analyzeExpenseScan() {
 
     const preparedFile = await prepareExpenseScanImage(expenseScanFile);
     const formData = new FormData();
-    formData.append('image', preparedFile);
+
+    formData.append(
+      'image',
+      preparedFile,
+      preparedFile.name || 'depense.jpg'
+    );
 
     const token = localStorage.getItem('whatzabi_token');
 
-    const response = await fetch('/pwa/expenses/scan', {
-      method: 'POST',
-      headers: token
-        ? { Authorization: `Bearer ${token}` }
-        : {},
-      body: formData,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+    let response;
+
+    try {
+      response = await fetch('/pwa/expenses/scan', {
+        method: 'POST',
+        headers: token
+          ? { Authorization: `Bearer ${token}` }
+          : {},
+        body: formData,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     let payload = null;
 
@@ -2860,8 +3660,21 @@ async function analyzeExpenseScan() {
 
     applyExpenseScanResult(payload?.result || {});
   } catch (error) {
+    let message =
+      error?.message ||
+      'Analyse du justificatif impossible.';
+
+    if (
+      error?.name === 'AbortError' ||
+      /load failed|failed to fetch|network/i.test(message)
+    ) {
+      message =
+        'Impossible d’envoyer le justificatif. ' +
+        'Vérifie la connexion puis réessaie.';
+    }
+
     setExpenseScanStatus(
-      error.message || 'Analyse du justificatif impossible.',
+      message,
       'error'
     );
   } finally {
@@ -3011,3 +3824,1398 @@ document.querySelectorAll('[data-expense-period]').forEach((button) => {
     renderExpenses();
   });
 });
+
+
+/* STOCK INTELLIGENT V1 */
+
+let stock360Data = null;
+let stock360ShowAll = false;
+const STOCK_360_INITIAL_LIMIT = 20;
+
+function stock360Number(value) {
+  return new Intl.NumberFormat('fr-FR').format(
+    Number(value || 0)
+  );
+}
+
+function stock360Signed(value) {
+  const number = Number(value || 0);
+
+  if (number > 0) {
+    return '+' + stock360Number(number);
+  }
+
+  return stock360Number(number);
+}
+
+function stock360TrafficLight(value) {
+  if (value === 'red') {
+    return {
+      icon: '🔴',
+      label: 'Urgent',
+      css: 'is-red',
+    };
+  }
+
+  if (value === 'orange') {
+    return {
+      icon: '🟠',
+      label: 'Attention',
+      css: 'is-orange',
+    };
+  }
+
+  return {
+    icon: '🟢',
+    label: 'Sain',
+    css: 'is-green',
+  };
+}
+
+function stock360HasActivity(item) {
+  const initial = Number(item.initial_stock || 0);
+  const current = Number(item.current_stock || 0);
+
+  const movements =
+    Math.abs(Number(item.purchase_in || 0))
+    + Math.abs(Number(item.restock_in || 0))
+    + Math.abs(Number(item.other_entries || 0))
+    + Math.abs(Number(item.sale_out || 0))
+    + Math.abs(Number(item.other_exits || 0))
+    + Math.abs(Number(item.adjustments || 0));
+
+  return initial > 0 || current > 0 || movements > 0;
+}
+
+
+function stock360EffectiveTraffic(item) {
+  if (!stock360HasActivity(item)) {
+    return 'gray';
+  }
+
+  return item.traffic_light || 'green';
+}
+
+
+function stock360InitialDisplay(item) {
+  if (!stock360HasActivity(item)) {
+    return 'ND';
+  }
+
+  return stock360Number(item.initial_stock);
+}
+
+
+function stock360MovementDisplay(value, negative = false) {
+  const number = Number(value || 0);
+
+  if (number === 0) {
+    return '·';
+  }
+
+  return negative
+    ? `-${stock360Number(Math.abs(number))}`
+    : stock360Number(number);
+}
+
+
+function renderStock360() {
+  const body = $('stock360Body');
+
+  if (!body) return;
+
+  if (!stock360Data) {
+    body.innerHTML = `
+      <tr>
+        <td colspan="11">
+          Données Stock 360 indisponibles.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const summary = stock360Data.summary || {};
+  const items = stock360Data.items || [];
+
+  const visibleItems =
+    stock360ShowAll
+      ? items
+      : items.slice(0, STOCK_360_INITIAL_LIMIT);
+
+  const negativeInitialCount = items.filter(
+    item => Number(item.initial_stock || 0) < 0
+  ).length;
+
+  const toggle = $('stock360Toggle');
+
+  if (toggle) {
+    toggle.hidden =
+      items.length <= STOCK_360_INITIAL_LIMIT;
+
+    toggle.textContent =
+      stock360ShowAll
+        ? 'Voir moins'
+        : (
+            'Voir les autres produits'
+            + (
+                items.length > STOCK_360_INITIAL_LIMIT
+                  ? ` (${items.length - STOCK_360_INITIAL_LIMIT})`
+                  : ''
+              )
+          );
+  }
+
+  const note = $('stock360Note');
+
+  if (note) {
+    if (negativeInitialCount > 0) {
+      note.textContent =
+        '* Stock initial estimé à partir du stock actuel'
+        + ' et des mouvements connus. '
+        + `${negativeInitialCount} ouverture`
+        + `${negativeInitialCount > 1 ? 's ont' : ' a'}`
+        + ' été ramenée'
+        + `${negativeInitialCount > 1 ? 's' : ''}`
+        + ' à 0 car l’historique disponible ne permet pas'
+        + ' de reconstituer une valeur initiale fiable.';
+    } else {
+      note.textContent =
+        '* Stock initial estimé à partir du stock actuel'
+        + ' et des mouvements connus.';
+    }
+  }
+
+  const red = items.filter(
+    item => stock360EffectiveTraffic(item) === 'red'
+  ).length;
+
+  const orange = items.filter(
+    item => stock360EffectiveTraffic(item) === 'orange'
+  ).length;
+  const alerts = red + orange;
+
+  if ($('stock360Alerts')) {
+    $('stock360Alerts').textContent =
+      String(alerts);
+  }
+
+  if ($('stock360AlertsDetail')) {
+    $('stock360AlertsDetail').textContent =
+      `${red} rouge${red > 1 ? 's' : ''}`
+      + ` · ${orange} orange${orange > 1 ? 's' : ''}`;
+  }
+
+  if ($('stock360CostValue')) {
+    $('stock360CostValue').textContent =
+      fmt(summary.cost_value || 0);
+  }
+
+  if ($('stock360RetailValue')) {
+    $('stock360RetailValue').textContent =
+      fmt(summary.retail_value || 0);
+  }
+
+  if ($('stock360Margin')) {
+    $('stock360Margin').textContent =
+      fmt(summary.potential_margin || 0);
+  }
+
+  if (!items.length) {
+    body.innerHTML = `
+      <tr>
+        <td colspan="11">
+          Aucun produit dans cette boutique.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  body.innerHTML = visibleItems.map(item => {
+    const light =
+      stock360TrafficLight(item.traffic_light);
+
+    const entries =
+      Number(item.purchase_in || 0)
+      + Number(item.restock_in || 0)
+      + Number(item.other_entries || 0);
+
+    const otherExits =
+      Number(item.other_exits || 0);
+
+    const adjustment =
+      Number(item.adjustments || 0);
+
+    const cover =
+      item.days_of_cover == null
+        ? '—'
+        : (
+            new Intl.NumberFormat(
+              'fr-FR',
+              {
+                maximumFractionDigits: 1,
+              }
+            ).format(
+              Number(item.days_of_cover)
+            )
+            + ' j'
+          );
+
+    return `
+      <tr class="stock-360-row ${light.css}">
+        <td class="stock-360-light">
+          <span
+            title="${esc(light.label)}"
+            aria-label="${esc(light.label)}"
+          >
+            ${light.icon}
+          </span>
+        </td>
+
+        <td class="stock-360-product">
+          <strong>
+            ${esc(item.product_name)}
+          </strong>
+          <small>
+            ${esc(item.unit || 'unité')}
+          </small>
+        </td>
+
+        <td>
+          ${
+            (() => {
+              const rawInitial =
+                Number(item.initial_stock || 0);
+
+              const displayedInitial =
+                Math.max(0, rawInitial);
+
+              const title =
+                rawInitial < 0
+                  ? (
+                      'Ouverture estimée négative : '
+                      + 'historique incomplet. '
+                      + 'Valeur affichée ramenée à 0.'
+                    )
+                  : 'Stock initial estimé';
+
+              return `
+                <span title="${esc(title)}">
+                  ${stock360InitialDisplay(item)}
+                </span>
+              `;
+            })()
+          }
+        </td>
+
+        <td class="stock-360-positive">
+          ${entries > 0
+            ? '+' + stock360Number(entries)
+            : '0'}
+        </td>
+
+        <td class="stock-360-negative">
+          ${Number(item.sale_out || 0) > 0
+            ? '-' + stock360Number(item.sale_out)
+            : '0'}
+        </td>
+
+        <td class="stock-360-negative">
+          ${otherExits > 0
+            ? '-' + stock360Number(otherExits)
+            : '0'}
+        </td>
+
+        <td class="${
+          adjustment < 0
+            ? 'stock-360-negative'
+            : adjustment > 0
+              ? 'stock-360-positive'
+              : ''
+        }">
+          ${stock360Signed(adjustment)}
+        </td>
+
+        <td class="stock-360-current">
+          ${stock360Number(item.current_stock)}
+        </td>
+
+        <td>
+          ${stock360Number(item.threshold)}
+        </td>
+
+        <td>
+          ${cover}
+        </td>
+
+        <td class="stock-360-money">
+          ${fmt(item.cost_value || 0)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+let stockIntelligenceData = null;
+let stockIntelligenceFilter = 'replenish';
+let stockIntelligenceShopKey = null;
+let stockIntelligenceLoading = false;
+let stockIntelligenceRequestId = 0;
+
+function stockIntelligenceStatus(message, error = false) {
+  const element = $('stockIntelligenceStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.hidden = !message;
+  element.classList.toggle('settings-error', error);
+}
+
+function renderStockIntelligence() {
+  if (!stockIntelligenceData) return;
+
+  const data = stockIntelligenceData;
+  const summary = data.summary || {};
+  const items = data.items || [];
+
+  const toOrder =
+    Number(summary.out_of_stock || 0) +
+    Number(summary.replenish || 0);
+
+  const recommendedUnits =
+    Number(summary.recommended_units || 0);
+
+  const dormant =
+    Number(summary.dormant || 0);
+
+  if ($('statLowStock')) {
+    $('statLowStock').textContent = String(toOrder);
+  }
+
+  if ($('statStockInsight')) {
+    $('statStockInsight').textContent =
+      `${dormant} dormant(s) · Voir détail ›`;
+  }
+
+  $('stockIntelligenceToOrder').textContent =
+    String(toOrder);
+
+  $('stockIntelligenceDormant').textContent =
+    String(dormant);
+
+  $('stockIntelligenceValue').textContent =
+    fmt(summary.stock_value || 0);
+
+  $('stockIntelligenceShop').textContent =
+    `${state.merchant?.active_shop_name || 'Boutique active'}`
+    + ` · ${data.period_days || 30} derniers jours`;
+
+  const priorityTitle = $('stockPriorityTitle');
+  const priorityText = $('stockPriorityText');
+  const priorityCard = $('stockPriorityCard');
+
+  priorityCard.classList.remove(
+    'is-ok',
+    'is-warning',
+    'is-dormant'
+  );
+
+  if (toOrder > 0 && recommendedUnits > 0) {
+    priorityCard.classList.add('is-warning');
+
+    priorityTitle.textContent =
+      `${toOrder} produit${toOrder > 1 ? 's' : ''} à traiter`;
+
+    priorityText.textContent =
+      `${recommendedUnits} unité${recommendedUnits > 1 ? 's' : ''}`
+      + ` recommandée${recommendedUnits > 1 ? 's' : ''}`
+      + ` pour sécuriser le stock.`;
+
+  } else if (toOrder > 0) {
+    priorityCard.classList.add('is-warning');
+
+    priorityTitle.textContent =
+      `${toOrder} produit${toOrder > 1 ? 's' : ''} à surveiller`;
+
+    priorityText.textContent =
+      `Stock faible détecté. Aucune quantité d'achat`
+      + ` n'est recommandée automatiquement pour le moment.`;
+
+  } else if (dormant > 0) {
+    priorityCard.classList.add('is-dormant');
+
+    priorityTitle.textContent =
+      `${dormant} produit${dormant > 1 ? 's' : ''} dormant${dormant > 1 ? 's' : ''}`;
+
+    priorityText.textContent =
+      `Aucune urgence de réapprovisionnement.`
+      + ` Vérifie le capital immobilisé.`;
+
+  } else {
+    priorityCard.classList.add('is-ok');
+
+    priorityTitle.textContent =
+      'Stock sous contrôle';
+
+    priorityText.textContent =
+      'Aucune action prioritaire détectée aujourd’hui.';
+  }
+
+  document
+    .querySelectorAll('[data-stock-filter]')
+    .forEach(button => {
+      button.classList.toggle(
+        'active',
+        button.dataset.stockFilter === stockIntelligenceFilter
+      );
+    });
+
+  const filtered = items.filter(item => {
+    if (stockIntelligenceFilter === 'replenish') {
+      return ['out_of_stock', 'replenish'].includes(item.status);
+    }
+
+    return item.status === stockIntelligenceFilter;
+  });
+
+  const list = $('stockIntelligenceList');
+
+  if (!filtered.length) {
+    list.innerHTML = `
+      <div class="stock-v2-empty">
+        <strong>Rien à signaler</strong>
+        <span>Aucun produit dans cette catégorie.</span>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = filtered.map(item => {
+    const unit = esc(item.unit || 'unité');
+
+    const stock = Number(item.stock || 0);
+    const sold30 = Number(item.sold_30d || 0);
+
+    const recommendation = Math.max(
+      0,
+      Number(item.recommended_quantity || 0)
+    );
+
+    const statusLabel =
+      item.status === 'out_of_stock' ? 'Rupture' :
+      item.status === 'replenish' ? 'À traiter' :
+      item.status === 'fast' ? 'Rapide' :
+      item.status === 'slow' ? 'Lent' :
+      item.status === 'dormant' ? 'Dormant' :
+      'Normal';
+
+    const statusClass =
+      item.status === 'out_of_stock' ? 'stock-out' :
+      item.status === 'replenish' ? 'stock-low' :
+      item.status === 'dormant' ? 'stock-dormant' :
+      'stock-ok';
+
+    let message = '';
+
+    if (item.status === 'out_of_stock') {
+      message = recommendation > 0
+        ? `Rupture de stock · commander ${recommendation} ${unit}`
+        : 'Rupture de stock · achat à évaluer';
+
+    } else if (item.status === 'replenish') {
+      message = recommendation > 0
+        ? `Stock faible · commander ${recommendation} ${unit}`
+        : 'Stock faible · à surveiller';
+
+    } else if (item.status === 'dormant') {
+      const dormantDuration =
+        item.days_since_last_sale != null
+          ? `${item.days_since_last_sale} jours sans vente`
+          : 'Aucune vente récente';
+
+      message =
+        `${dormantDuration} · `
+        + `${fmt(item.stock_value || 0)} immobilisés`;
+
+    } else if (item.status === 'fast') {
+      message =
+        `${sold30} ${unit} vendu${sold30 > 1 ? 's' : ''}`
+        + ` sur 30 jours`;
+
+    } else if (item.status === 'slow') {
+      message =
+        `${sold30} ${unit} vendu${sold30 > 1 ? 's' : ''}`
+        + ` sur 30 jours · rotation faible`;
+    }
+
+    const action =
+      recommendation > 0
+        ? `<div class="stock-v2-action">
+             Commander ${recommendation} ${unit}
+           </div>`
+        : '';
+
+    return `
+      <article class="stock-v2-product">
+        <div class="stock-v2-product-top">
+          <strong>${esc(item.product_name)}</strong>
+          <span class="stock-state ${statusClass}">
+            ${statusLabel}
+          </span>
+        </div>
+
+        <div class="stock-v2-stockline">
+          <strong>${stock}</strong>
+          <span>${unit} en stock</span>
+          <span class="stock-v2-dot">•</span>
+          <span>${sold30} vendu${sold30 > 1 ? 's' : ''} / 30 j</span>
+        </div>
+
+        <p class="stock-v2-message">
+          ${message}
+        </p>
+
+        ${action}
+      </article>
+    `;
+  }).join('');
+}
+
+async function loadStockIntelligence(silent = false) {
+  const requestedShop = state.merchant?.shop_id;
+
+  if (requestedShop == null) {
+    stockIntelligenceData = null;
+    stockIntelligenceShopKey = null;
+    stockIntelligenceStatus('Sélectionne une boutique.');
+    return;
+  }
+
+  const requestId = ++stockIntelligenceRequestId;
+  stockIntelligenceLoading = true;
+  stockIntelligenceShopKey = String(requestedShop);
+
+  if (!silent) {
+    stockIntelligenceStatus('Analyse du stock en cours…');
+  }
+
+  try {
+    const [data, stock360] = await Promise.all([
+      api(
+        '/pwa/stock/intelligence?target_cover_days=30&safety_days=7'
+      ),
+      api(
+        '/pwa/stock/360?target_cover_days=30&safety_days=7'
+      ),
+    ]);
+
+    // Une réponse ancienne ne peut jamais remplacer la boutique active.
+    if (
+      requestId !== stockIntelligenceRequestId ||
+      String(state.merchant?.shop_id) !== String(requestedShop)
+    ) return;
+
+    stockIntelligenceData = data;
+    stock360Data = stock360;
+
+    renderStockIntelligence();
+    renderStock360();
+
+    stockIntelligenceStatus('');
+  } catch (error) {
+    if (
+      requestId !== stockIntelligenceRequestId ||
+      String(state.merchant?.shop_id) !== String(requestedShop)
+    ) return;
+
+    stockIntelligenceData = null;
+    stock360Data = null;
+
+    if ($('stock360Body')) {
+      $('stock360Body').innerHTML = `
+        <tr>
+          <td colspan="11">
+            Stock 360 indisponible.
+          </td>
+        </tr>
+      `;
+    }
+
+    if ($('statLowStock')) $('statLowStock').textContent = '—';
+    if ($('statStockInsight')) {
+      $('statStockInsight').textContent = 'Analyse indisponible';
+    }
+    if ($('stockIntelligenceList')) {
+      $('stockIntelligenceList').innerHTML = '';
+    }
+
+    stockIntelligenceStatus(
+      error.message || 'Analyse du stock indisponible.',
+      true
+    );
+  } finally {
+    if (requestId === stockIntelligenceRequestId) {
+      stockIntelligenceLoading = false;
+    }
+  }
+}
+
+$('productStockIntelligenceLink')?.addEventListener(
+  'click',
+  () => {
+    stockIntelligenceFilter = 'replenish';
+
+    document
+      .querySelectorAll('[data-stock-filter]')
+      .forEach((button) => {
+        button.classList.toggle(
+          'active',
+          button.dataset.stockFilter === 'replenish'
+        );
+      });
+
+    showTab('stockIntelligence');
+
+    if (stockIntelligenceData) {
+      renderStockIntelligence();
+    }
+  },
+);
+
+
+document.querySelectorAll('[data-stock-filter]').forEach(button => {
+  button.addEventListener('click', () => {
+    stockIntelligenceFilter = button.dataset.stockFilter;
+    renderStockIntelligence();
+  });
+});
+
+$('stock360Toggle')?.addEventListener(
+  'click',
+  () => {
+    stock360ShowAll = !stock360ShowAll;
+    renderStock360();
+
+    if (!stock360ShowAll) {
+      document
+        .querySelector('.stock-360-section')
+        ?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+    }
+  }
+);
+
+
+$('stockIntelligenceRefresh')?.addEventListener('click', () => {
+  stockIntelligenceShopKey = null;
+  void loadStockIntelligence();
+});
+
+
+// whatzabi-accounting-exports-v1
+(() => {
+  const menu = document.getElementById('moreExports');
+  const dialog = document.getElementById('accountingExportDialog');
+  const form = document.getElementById('accountingExportForm');
+  const status = document.getElementById('accountingExportStatus');
+  const sinceInput = document.getElementById('accountingExportSince');
+  const untilInput = document.getElementById('accountingExportUntil');
+  let controller = null;
+
+  function context() {
+    return {
+      merchantId: state.merchant?.id,
+      shopId: state.merchant?.shop_id,
+      accessToken: token,
+    };
+  }
+
+  function sameContext(before) {
+    const now = context();
+    return now.merchantId === before.merchantId &&
+      now.shopId === before.shopId &&
+      now.accessToken === before.accessToken &&
+      can('report.read');
+  }
+
+  function syncAccess() {
+    menu.hidden = !can('report.read');
+    if (dialog.open && (!can('report.read') || !state.merchant?.shop_id)) {
+      dialog.close();
+    }
+  }
+
+  const previousPermissions = renderPermissions;
+  renderPermissions = function (...args) {
+    const result = previousPermissions.apply(this, args);
+    syncAccess();
+    return result;
+  };
+  syncAccess();
+
+  menu.addEventListener('click', () => {
+    if (!can('report.read')) {
+      toast("Tu n'as pas l'autorisation d'exporter ces données.");
+      return;
+    }
+    const shopId = state.merchant?.shop_id;
+    if (!shopId) {
+      toast("Sélectionne d'abord une boutique.");
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    sinceInput.value = today.slice(0, 8) + '01';
+    untilInput.value = today;
+    document.getElementById('accountingExportMode').value = 'summary';
+    document.getElementById('accountingExportCancelled').checked = false;
+    document.getElementById('accountingExportShop').textContent =
+      'Boutique sélectionnée : ' +
+      (state.merchant.shop_name || 'n° ' + shopId);
+    status.textContent = '';
+    dialog.showModal();
+  });
+
+  document.getElementById('accountingExportClose')
+    .addEventListener('click', () => dialog.close());
+
+  dialog.addEventListener('close', () => {
+    controller?.abort();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (controller || !form.reportValidity()) return;
+
+    const kind = event.submitter?.value;
+    if (!['sales', 'purchases', 'expenses'].includes(kind)) return;
+
+    const before = context();
+    if (!before.accessToken || !before.shopId || !can('report.read')) {
+      status.textContent = 'Reconnecte-toi et sélectionne une boutique.';
+      return;
+    }
+    if (sinceInput.value > untilInput.value) {
+      status.textContent = 'La date de début dépasse la date de fin.';
+      return;
+    }
+
+    const params = new URLSearchParams({
+      since: sinceInput.value,
+      until: untilInput.value,
+      mode: kind === 'expenses' ? 'summary' :
+        document.getElementById('accountingExportMode').value,
+      include_cancelled: String(
+        document.getElementById('accountingExportCancelled').checked
+      ),
+    });
+
+    const controls = [...form.querySelectorAll('input, select, button')];
+    controls.forEach((control) => { control.disabled = true; });
+    status.textContent = 'Préparation du fichier…';
+    controller = new AbortController();
+    const activeController = controller;
+    const timeout = setTimeout(() => activeController.abort(), 60000);
+
+    try {
+      const response = await fetch('/pwa/exports/' + kind + '.csv?' + params, {
+        headers: { Authorization: 'Bearer ' + before.accessToken },
+        cache: 'no-store',
+        signal: activeController.signal,
+      });
+
+      if (!response.ok) {
+        let body = null;
+        try { body = await response.json(); } catch {}
+        if (response.status === 401 && sameContext(before)) logout();
+        throw new Error(
+          typeof body?.detail === 'string' ? body.detail :
+            'Export impossible (' + response.status + ').'
+        );
+      }
+
+      if (!(response.headers.get('content-type') || '').includes('text/csv')) {
+        throw new Error('Le serveur ne renvoie pas un fichier CSV.');
+      }
+
+      const blob = await response.blob();
+      if (!dialog.open || !sameContext(before)) {
+        throw new Error('La boutique ou la session a changé. Relance cet export.');
+      }
+
+      const disposition = response.headers.get('content-disposition') || '';
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] ||
+        'whatzabi-' + kind + '.csv';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      status.textContent = 'Téléchargement lancé.';
+    } catch (error) {
+      if (dialog.open) {
+        status.textContent = error.name === 'AbortError'
+          ? 'Export interrompu. Réessaie.'
+          : error.message || 'Export impossible. Vérifie ta connexion.';
+      }
+    } finally {
+      clearTimeout(timeout);
+      controller = null;
+      controls.forEach((control) => { control.disabled = false; });
+    }
+  });
+})();
+
+
+// whatzabi-sale-photo-review-v1
+(() => {
+  const menu = document.getElementById('moreSalePhoto');
+  if (!menu) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'sale-photo-dialog';
+  dialog.setAttribute('aria-labelledby', 'salePhotoTitle');
+  dialog.innerHTML = `
+    <div class="sale-photo-head"><h2 id="salePhotoTitle">Importer les ventes papier</h2>
+    <button type="button" data-close>Fermer</button></div>
+    <p data-shop></p>
+    <p>Photographie une page entière et nette. Vérifie les données avant tout enregistrement.</p>
+    <div class="sale-photo-actions">
+      <button type="button" data-camera>Prendre une photo</button>
+      <button type="button" data-gallery>Choisir une photo</button>
+      <input data-camera-input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+      <input data-gallery-input type="file" accept="image/jpeg,image/png,image/webp" hidden>
+    </div>
+    <p>JPEG, PNG ou WebP · 20 Mo maximum avant compression, 12 Mo après.</p>
+    <img data-preview alt="Photo du registre" hidden>
+    <p data-status role="status" aria-live="polite"></p>
+    <button type="button" data-retry hidden>Réessayer la lecture de la photo</button>
+    <form data-review hidden>
+      <div class="sale-photo-fields">
+        <label>Date d’en-tête (indicative)<input data-date type="date"></label>
+        <label>Total déclaré du document<input data-document-total type="number" min="0" step="1"></label>
+        <label>Justification du total absent, corrigé ou différent<input data-total-reason maxlength="1000"></label>
+        <label>Justification des ventes similaires (si signalées)<input data-duplicate-reason maxlength="1000"></label>
+        <label>Règle validée pour décompter le stock historique<input data-stock-reason maxlength="1000"></label>
+        <label>Devise<input data-currency maxlength="3" pattern="[A-Z]{3}" required></label>
+        <label>Regroupement<select data-group required>
+          <option value="">Choisir comment lire le registre</option>
+          <option value="rows">Chaque ligne est une vente distincte</option>
+          <option value="sheet">Toutes les lignes appartiennent à une seule vente</option>
+        </select></label>
+        <label>Stock<select data-stock required>
+          <option value="">Choisir l'effet sur le stock</option>
+          <option value="deduct">Décompter les quantités du stock actuel</option>
+          <option value="keep">Stock déjà à jour : ne pas décompter</option>
+        </select></label>
+      </div>
+      <p data-warnings></p>
+      <p>Une case « Payé » vide reste inconnue : renseigne le montant après vérification.
+      Pour une vente à crédit, choisis le client. Les paiements saisis seront datés du registre.
+      Les montants doivent être entiers, dans la devise de la boutique.</p>
+      <div data-daily-totals></div>
+      <div data-lines></div>
+      <p data-total></p>
+      <details><summary>Voir le JSON corrigé</summary><pre data-json></pre></details>
+      <label class="sale-photo-check"><input data-confirm type="checkbox" required>
+        J'ai vérifié la date, les produits, les paiements, le regroupement et le stock.
+        J’ai vérifié les éventuelles ventes similaires.</label>
+      <button type="submit" class="primary">Valider et importer les ventes</button>
+    </form>`;
+  document.body.appendChild(dialog);
+  const get = name => dialog.querySelector('[data-' + name + ']');
+  const form = get('review');
+  const status = get('status');
+  const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+  let contextEpoch = 0;
+  const context = () => ({
+    epoch:contextEpoch,
+    merchant:state.merchant?.id, shop:state.merchant?.shop_id, token
+  });
+  const same = before => before && before.epoch === contextEpoch &&
+    before.merchant === state.merchant?.id &&
+    before.shop === state.merchant?.shop_id &&
+    before.token === token && can('sale.create');
+  let origin = null, extraction = null, controller = null;
+  let previewUrl = null, busy = false, pendingPhoto = null;
+  let recoveryKey = null, pendingConfirmation = null;
+  const storageKey = 'whatzabi.salePhoto.v2';
+  const fields = ['date', 'currency', 'group', 'stock', 'document-total', 'total-reason', 'duplicate-reason', 'stock-reason'];
+  const rowFields = ['sale-date', 'product', 'quantity', 'price', 'line-total', 'paid', 'channel', 'customer'];
+  function forgetRecovery() {
+    try { sessionStorage.removeItem(storageKey); } catch { /* Storage may be unavailable. */ }
+  }
+  function saveRecovery() {
+    if (!extraction || !same(origin) || !recoveryKey) return;
+    const saved = {
+      key:recoveryKey, extraction, pendingConfirmation,
+      fields:Object.fromEntries(fields.map(name => [name, get(name).value])),
+      rows:[...get('lines').querySelectorAll('[data-row]')].map(field => ({
+        index:field.dataset.row,
+        values:Object.fromEntries(rowFields.map(name => [name, field.querySelector('[data-' + name + ']').value]))
+      })),
+      daily:[...get('daily-totals').querySelectorAll('[data-daily]')].map(field => field.value),
+      dailyDates:[...get('daily-totals').querySelectorAll('[data-daily-date]')].map(field => field.value)
+    };
+    try { sessionStorage.setItem(storageKey, JSON.stringify(saved)); } catch { /* In-memory draft still works. */ }
+  }
+  async function restoreRecovery() {
+    const before = origin;
+    try {
+      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+        JSON.stringify([before.merchant, before.shop, before.token])));
+      if (!same(before)) return;
+      recoveryKey = [...new Uint8Array(hash)].map(x => x.toString(16).padStart(2, '0')).join('');
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (!saved) return;
+      if (saved.key !== recoveryKey || !saved.extraction?.expires_at ||
+          (!saved.pendingConfirmation && Date.parse(saved.extraction.expires_at) <= Date.now())) { forgetRecovery(); return; }
+      if (extraction) { saveRecovery(); return; }
+      renderDraft(saved.extraction);
+      for (const name of fields) get(name).value = saved.fields[name] ?? '';
+      for (const field of get('lines').querySelectorAll('[data-row]')) {
+        const row = saved.rows.find(row => row.index === field.dataset.row);
+        if (!row) { field.remove(); continue; }
+        for (const name of rowFields) field.querySelector('[data-' + name + ']').value = row.values[name] ?? '';
+      }
+      [...get('daily-totals').querySelectorAll('[data-daily]')].forEach((field, index) => { field.value = saved.daily[index] ?? ''; });
+      [...get('daily-totals').querySelectorAll('[data-daily-date]')].forEach((field, index) => { field.value = saved.dailyDates[index] ?? ''; });
+      pendingConfirmation = saved.pendingConfirmation || null;
+      get('confirm').checked = false;
+      renderJson();
+      setBusy(false);
+      status.textContent = pendingConfirmation ?
+        'Validation à vérifier : relance la même confirmation pour connaître le résultat.' :
+        'Brouillon restauré sans photographie. Vérifie les données avant confirmation.';
+    } catch { /* Recovery unavailable: never apply an unverified draft. */ }
+  }
+
+  function reset() {
+    forgetRecovery();
+    pendingConfirmation = null;
+    extraction = null;
+    form.hidden = true;
+    form.reset();
+    get('lines').replaceChildren();
+    get('daily-totals').replaceChildren();
+    get('json').textContent = '';
+    get('total').textContent = '';
+    get('warnings').textContent = '';
+    get('preview').hidden = true;
+    get('preview').removeAttribute('src');
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    pendingPhoto = null;
+    get('retry').hidden = true;
+  }
+  function syncAccess() {
+    menu.hidden = !can('sale.create');
+    if (origin && !same(origin)) {
+      contextEpoch += 1;
+      controller?.abort();
+      dialog.close();
+      reset();
+    }
+  }
+  const previous = renderPermissions;
+  renderPermissions = function (...args) {
+    const result = previous.apply(this, args);
+    syncAccess();
+    return result;
+  };
+  syncAccess();
+  menu.addEventListener('click', async () => {
+    if (!token || !can('sale.create') || !state.merchant?.shop_id) {
+      toast('Sélectionne une boutique et reconnecte-toi.');
+      return;
+    }
+    if (busy) return;
+    if (origin && !same(origin)) {
+      reset();
+      status.textContent = '';
+    }
+    origin = context();
+    get('shop').textContent = 'Boutique : ' +
+      (state.merchant.active_shop_name || state.merchant.shop_name || origin.shop);
+    dialog.showModal();
+    await restoreRecovery();
+  });
+  get('close').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    controller?.abort();
+    saveRecovery();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    get('preview').removeAttribute('src');
+    get('preview').hidden = true;
+    // A failed extraction may retry its photo in memory; it is never persisted.
+  });
+  get('camera').addEventListener('click', () => get('camera-input').click());
+  get('gallery').addEventListener('click', () => get('gallery-input').click());
+
+  const httpErrors = {
+    400:['invalid_request', 'Vérifie les données et la photo.'],
+    401:['authentication_required', 'Session expirée. Reconnecte-toi pour poursuivre.'],
+    403:['forbidden', 'Tu n’as pas accès à cet import.'],
+    404:['not_found', 'Produit ou client inaccessible. Vérifie les lignes.'],
+    409:['conflict', 'Vérifie la boutique et si cette photo a déjà été importée.'],
+    413:['photo_too_large', 'Photo trop volumineuse : maximum 12 Mo après compression.'],
+    415:['unsupported_photo', 'Photo JPEG, PNG ou WebP requise. Convertis HEIC en JPEG.'],
+    422:['validation_error', 'Vérifie les champs obligatoires et leur format.'],
+    503:['service_unavailable', 'Service de lecture indisponible. Réessaie dans un instant.'],
+    504:['timeout', 'Le serveur a dépassé le délai de réponse. Réessaie.']
+  };
+  function photoError(code, message, requestId = null, statusCode = null) {
+    return Object.assign(new Error(message), {
+      name:'SalePhotoError', code, requestId, status:statusCode,
+      retryable:['network', 'timeout', 'service_unavailable'].includes(code)
+    });
+  }
+  function showError(error, confirming = false) {
+    const known = error.name === 'SalePhotoError';
+    status.textContent = (known ? error.message : 'Import impossible. Réessaie.') +
+      (known && error.requestId ? ' Référence : ' + error.requestId + '.' : '') +
+      (confirming ? ' Le brouillon est conservé dans cette session.' : '') +
+      (confirming && (!known || error.retryable || error.code === 'invalid_response') ?
+        ' Réessaie la même validation pour vérifier le résultat sans créer de doublon.' : '');
+  }
+  async function request(path, body, json = false) {
+    if (!same(origin)) throw photoError('context_changed', 'La boutique ou la session a changé. Recommence.');
+    const requestOrigin = origin;
+    controller = new AbortController();
+    const active = controller;
+    let timedOut = false;
+    let requestId = crypto.randomUUID();
+    const timer = setTimeout(() => { timedOut = true; active.abort(); }, 90000);
+    try {
+      const response = await fetch(path, {
+        method:'POST', cache:'no-store', signal:active.signal,
+        headers:{
+          Authorization:'Bearer ' + requestOrigin.token,
+          'X-Request-ID':requestId,
+          ...(json ? {'Content-Type':'application/json'} : {})
+        },
+        body:json ? JSON.stringify(body) : body
+      });
+      const returnedId = response.headers.get('X-Request-ID');
+      if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(returnedId || '')) {
+        requestId = returnedId;
+      }
+      if (!same(requestOrigin)) throw photoError('context_changed', 'La boutique ou la session a changé. Recommence.', requestId);
+      if (!response.ok) {
+        const [code, message] = httpErrors[response.status] ||
+          ['http_error', 'Import impossible (HTTP ' + response.status + '). Réessaie ou contacte le support.'];
+        // Only a fixed public business-error vocabulary can cross this boundary.
+        const businessMessages = {
+          total_reconciliation:'Total absent, corrigé ou incohérent : corrige les lignes ou saisis une justification (10 caractères minimum).',
+          business_duplicate:'Ventes similaires détectées : vérifie le registre et justifie les ventes réellement distinctes.',
+          historical_stock_rule:'Décris la règle autorisant le décompte historique du stock actuel.',
+          mixed_sale_dates:'Une vente ne peut pas regrouper plusieurs journées.',
+          draft_expired:'Brouillon expiré : reprends la lecture.',
+          confirmed_payload_changed:'Brouillon déjà confirmé avec un contenu différent. Vérifie les ventes enregistrées.',
+          source_already_imported:'Photo déjà importée. Reprends le brouillon d’origine.',
+          source_changed:'La photo ne correspond pas au brouillon.',
+          daily_total_duplicate:'Un seul sous-total par journée est permis.'
+        };
+        let errorBody;
+        try { errorBody = await response.json(); } catch { /* HTML/empty proxy error. */ }
+        const businessCode = response.status === 409 && errorBody?.error?.code;
+        const candidates = businessCode === 'business_duplicate' && Array.isArray(errorBody?.error?.candidates) ?
+          errorBody.error.candidates.filter(item => Number.isInteger(item.sale_number) && item.sale_number > 0).slice(0, 50) : [];
+        const references = candidates.length ? ' Ventes à vérifier : ' +
+          [...new Set(candidates.map(item => '#' + item.sale_number))].join(', ') + '.' : '';
+        throw photoError(businessMessages[businessCode] ? businessCode : code,
+          (businessMessages[businessCode] || message) + references, requestId, response.status);
+      }
+      let result;
+      try {
+        result = await response.json();
+      } catch (error) {
+        if (active.signal.aborted || error instanceof TypeError) throw error;
+        throw photoError('invalid_response', 'Réponse du serveur illisible. Réessaie.', requestId);
+      }
+      if (!same(requestOrigin)) throw photoError('context_changed', 'La boutique ou la session a changé. Recommence.', requestId);
+      if (!result || (json ?
+        !Array.isArray(result.sale_ids) || !result.sale_ids.length ||
+        !result.sale_ids.every(id => Number.isInteger(id) && id > 0) ||
+        typeof result.already_imported !== 'boolean' :
+        !Array.isArray(result.result?.lines) || !Array.isArray(result.result?.warnings) ||
+        !result.result.lines.every(line => line && Array.isArray(line.warnings) &&
+          Array.isArray(line.uncertain_fields)) ||
+        !/^[a-f0-9-]{36}$/.test(result.draft_id || '') ||
+        String(result.merchant_id) !== String(requestOrigin.merchant) ||
+        !Number.isFinite(Date.parse(result.expires_at)) ||
+        !/^[a-f0-9]{64}$/.test(result.source_sha256 || '') ||
+        String(result.shop_id) !== String(requestOrigin.shop))) {
+        throw photoError('invalid_response', 'Réponse du serveur incomplète. Réessaie.', requestId);
+      }
+      return result;
+    } catch (error) {
+      if (error.name === 'SalePhotoError') throw error;
+      if (timedOut) throw photoError('timeout', 'Le délai de réponse est dépassé. Réessaie.', requestId);
+      if (active.signal.aborted) throw photoError('cancelled', 'Opération interrompue. Réessaie.', requestId);
+      throw photoError('network', 'Connexion interrompue. Vérifie le réseau puis réessaie.', requestId);
+    } finally {
+      clearTimeout(timer);
+      if (controller === active) controller = null;
+    }
+  }
+  async function convert(file) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file?.type)) {
+      throw photoError('unsupported_photo', 'Choisis une photo JPEG, PNG ou WebP. Convertis HEIC en JPEG.');
+    }
+    if (!file.size) throw photoError('empty_photo', 'La photo est vide. Choisis une autre photo.');
+    if (file.size > 20 * 1024 * 1024) {
+      throw photoError('photo_too_large', 'Photo trop volumineuse : maximum 20 Mo avant compression.');
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      const scale = Math.min(1, 2400 / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!blob || blob.size > 12 * 1024 * 1024) {
+        throw photoError('photo_too_large', 'Impossible de préparer cette photo : maximum 12 Mo après compression.');
+      }
+      return blob;
+    } catch (error) {
+      if (error.name === 'SalePhotoError') throw error;
+      throw photoError('unsupported_photo', 'Photo illisible. Choisis un JPEG, PNG ou WebP valide.');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  function setBusy(value) {
+    busy = value;
+    dialog.querySelectorAll('input, select, button').forEach(control => {
+      if (!control.hasAttribute('data-close')) control.disabled = value ||
+        (!!pendingConfirmation && control.type !== 'submit');
+    });
+  }
+  async function selected(event) {
+    const file = event?.target.files?.[0];
+    if (event) event.target.value = '';
+    if ((!file && !pendingPhoto) || busy || pendingConfirmation) return;
+    setBusy(true);
+    status.textContent = 'Lecture de la photo…';
+    const before = origin;
+    try {
+      // A failed replacement must not erase corrections to the previous draft.
+      const blob = file ? await convert(file) : pendingPhoto;
+      if (!dialog.open || !same(before)) return;
+      pendingPhoto = blob;
+      get('retry').hidden = false;
+      const data = new FormData();
+      data.append('image', blob, 'registre.jpg');
+      const result = await request('/pwa/sales/photo/extract', data);
+      if (!dialog.open || !same(before) ||
+          String(result.shop_id) !== String(before.shop)) return;
+      if (!result.result.lines.length) {
+        throw photoError('unreadable_photo', 'Aucune ligne lisible. Reprends la photo.');
+      }
+      reset();
+      renderDraft(result);
+      saveRecovery();
+    } catch (error) {
+      if (dialog.open && same(before)) {
+        showError(error);
+      }
+    } finally {
+      setBusy(false);
+      get('retry').hidden = !pendingPhoto;
+    }
+  }
+  get('camera-input').addEventListener('change', selected);
+  get('gallery-input').addEventListener('change', selected);
+  get('retry').addEventListener('click', () => selected());
+  function renderDraft(result) {
+      extraction = result;
+      get('document-total').value = result.result.document_total ?? '';
+      get('daily-totals').innerHTML = (result.result.daily_totals || []).map((item, index) =>
+        `<label>Journée du sous-total<input data-daily-date="${index}" type="date" value="${escape(item.sale_date || '')}" required></label><label>Sous-total<input data-daily="${index}" type="number" min="0" step="1" value="${item.total ?? ''}"></label>`).join('');
+      get('date').value = result.result.document_date || '';
+      get('currency').value = result.result.currency ||
+        state.currencyContext?.shop_currency || 'XOF';
+      get('warnings').textContent = result.result.warnings.join(' ');
+      get('lines').innerHTML = result.result.lines.map((line, index) => {
+        const candidates = line.product_candidates || [];
+        const seen = new Set(candidates.map(p => p.product_id));
+        const products = [
+          ...candidates,
+          ...(state.products || []).filter(p => !seen.has(p.id)).map(p => ({
+            product_id:p.id, name:p.name, stock:p.stock
+          }))
+        ];
+        const labels = {
+          sale_date:'Date à vérifier', description:'Produit à vérifier', quantity:'Quantité à vérifier',
+          unit_price:'Prix à vérifier', line_total:'Total à vérifier',
+          paid_amount:'Paiement à vérifier'
+        };
+        const warnings = [
+          ...line.uncertain_fields.map(field => labels[field]), ...line.warnings
+        ].join(' · ');
+        return `<fieldset data-row="${index}">
+          <legend>Ligne ${line.row_number} · ${escape(line.description || 'Produit illisible')}</legend>
+          <p class="sale-photo-alert">${escape(warnings)}</p>
+          <div class="sale-photo-fields">
+          <label>Date de vente<input data-sale-date type="date" value="${escape(line.sale_date || '')}" required></label>
+          <label>Produit du catalogue<select data-product required>
+            <option value="">Sélectionner le produit</option>
+            ${products.map(p => `<option value="${Number(p.product_id)}">${escape(p.name)} · stock ${Number(p.stock || 0)}</option>`).join('')}
+          </select></label>
+          <label>Quantité<input data-quantity type="number" min="1" max="1000000"
+            step="1" value="${line.quantity ?? ''}" required></label>
+          <label>Prix unitaire<input data-price type="number" min="1" max="2000000000"
+            step="1" value="${line.unit_price ?? line.suggested_unit_price ?? ''}" required></label>
+          <label>Total de ligne<input data-line-total type="number" min="1"
+            max="2000000000" step="1" value="${line.line_total ?? ''}" required></label>
+          <label>Montant payé<input data-paid type="number" min="0" max="2000000000"
+            step="1" value="${line.paid_amount ?? ''}"
+            placeholder="Inconnu : à renseigner" required></label>
+          <label>Mode de paiement<select data-channel>
+            <option value="">À préciser</option><option value="cash">Espèces</option>
+            <option value="mobile_money">Mobile Money</option>
+            <option value="card">Carte</option><option value="bank_transfer">Virement</option>
+          </select></label>
+          <label>Client si crédit<select data-customer>
+            <option value="">Vente comptoir payée</option>
+            ${(state.customers || []).map(c => `<option value="${Number(c.id)}">${escape(c.name)}</option>`).join('')}
+          </select></label>
+          </div><button type="button" data-exclude>Retirer cette ligne</button>
+        </fieldset>`;
+      }).join('');
+      form.hidden = false;
+      status.textContent = 'Lecture terminée. Vérifie chaque ligne. Rien n’est enregistré.';
+      renderJson();
+  }
+  function payload() {
+    const number = input => input.value === '' ? null : Number(input.value);
+    return {
+      draft_id:extraction.draft_id,
+      confirmed:get('confirm').checked,
+      shop_id:Number(origin.shop),
+      source_sha256:extraction.source_sha256,
+      document_date:get('date').value || null,
+      document_total:number(get('document-total')),
+      daily_totals:[...get('daily-totals').querySelectorAll('[data-daily]')].map((field, index) => ({sale_date:[...get('daily-totals').querySelectorAll('[data-daily-date]')][index].value, total:number(field)})),
+      total_justification:get('total-reason').value.trim() || null,
+      duplicate_justification:get('duplicate-reason').value.trim() || null,
+      stock_justification:get('stock-reason').value.trim() || null,
+      currency:get('currency').value.toUpperCase(),
+      affect_stock:get('stock').value === 'deduct',
+      rows:[...get('lines').querySelectorAll('[data-row]')].map(field => {
+        const read = name => field.querySelector('[data-' + name + ']');
+        const row = extraction.result.lines[Number(field.dataset.row)];
+        return {
+          row_number:row.row_number,
+          sale_date:read('sale-date').value,
+          sale_group:get('group').value === 'sheet' ? 'registre' : String(row.row_number),
+          product_id:number(read('product')),
+          quantity:number(read('quantity')),
+          unit_price:number(read('price')),
+          line_total:number(read('line-total')),
+          paid_amount:number(read('paid')),
+          customer_id:number(read('customer')),
+          payment_channel:read('channel').value || null
+        };
+      })
+    };
+  }
+  function renderJson() {
+    if (!extraction) return;
+    const data = payload();
+    get('json').textContent = JSON.stringify(data, null, 2);
+    get('total').textContent = 'Total des lignes retenues : ' +
+      data.rows.reduce((sum,row) => sum + (row.line_total || 0), 0) +
+      ' ' + data.currency + ' · Total déclaré : ' + (data.document_total ?? 'inconnu') +
+      ' · Écart : ' + (data.document_total === null ? 'à justifier' : data.document_total - data.rows.reduce((sum,row) => sum + (row.line_total || 0), 0));
+    saveRecovery();
+  }
+  form.addEventListener('input', event => {
+    if (event.target !== get('confirm')) get('confirm').checked = false;
+    renderJson();
+  });
+  form.addEventListener('change', event => {
+    if (event.target === get('confirm')) {
+      renderJson();
+      return;
+    }
+    get('confirm').checked = false;
+    if (get('stock').value === 'keep' && !can('stock.adjust')) {
+      get('stock').value = '';
+      status.textContent = 'Un manager ou propriétaire doit valider un import sans décompte du stock.';
+    }
+    renderJson();
+  });
+  get('lines').addEventListener('click', event => {
+    if (event.target.hasAttribute('data-exclude')) {
+      event.target.closest('[data-row]').remove();
+      get('confirm').checked = false;
+      renderJson();
+    }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy || (!pendingConfirmation && !form.reportValidity()) || !same(origin)) return;
+    const data = pendingConfirmation || payload();
+    if (!data.rows.length) {
+      status.textContent = 'Conserve au moins une ligne.';
+      return;
+    }
+    for (const row of data.rows) {
+      if (row.quantity * row.unit_price !== row.line_total ||
+          row.paid_amount > row.line_total) {
+        status.textContent = 'Vérifie les montants de la ligne ' + row.row_number;
+        return;
+      }
+      if (row.paid_amount > 0 && !row.payment_channel) {
+        status.textContent = 'Précise le mode de paiement de la ligne ' + row.row_number;
+        return;
+      }
+      if (row.paid_amount < row.line_total && !row.customer_id) {
+        status.textContent = 'Choisis le client de la ligne ' + row.row_number;
+        return;
+      }
+    }
+    pendingConfirmation = data;
+    saveRecovery();
+    setBusy(true);
+    status.textContent = 'Enregistrement des ventes…';
+    try {
+      const result = await request('/pwa/sales/photo/confirm', data, true);
+      if (!dialog.open || !same(origin)) return;
+      reset();
+      status.textContent = result.already_imported ?
+        'Cette photo était déjà importée. Aucun doublon créé.' :
+        result.sale_ids.length + ' vente(s) importée(s).';
+      try {
+        await refresh();
+      } catch {
+        if (dialog.open) status.textContent += ' Actualisation indisponible : recharge les listes.';
+      }
+    } catch (error) {
+      if (same(origin)) {
+        if (error.status && error.status < 500) pendingConfirmation = null;
+        saveRecovery();
+        showError(error, true);
+      }
+    } finally {
+      setBusy(false);
+    }
+  });
+})();
