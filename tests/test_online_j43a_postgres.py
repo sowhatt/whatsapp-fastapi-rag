@@ -55,8 +55,8 @@ def test_migration_replay_and_all_private_tables_fail_closed(lab):
     lab.migrate(cid)
     with lab.connect(cid) as c:
         assert snapshot(c)==before
-        assert c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 5
-        assert c.execute("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity AND relforcerowsecurity").fetchone()[0] == 34
+        assert c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 6
+        assert c.execute("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity AND relforcerowsecurity").fetchone()[0] == 36
         assert not c.execute("SELECT 1 FROM pg_policies WHERE schemaname='public' AND (qual LIKE '%bypass%' OR with_check LIKE '%bypass%')").fetchall()
         flags=c.execute("SELECT rolname,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication FROM pg_roles WHERE rolname LIKE 'j43a_%'").fetchall()
         assert len(flags)==len(ROLES) and all(not any(row[1:]) for row in flags)
