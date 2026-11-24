@@ -37,7 +37,7 @@ def test_core_tracks_online_and_replays_without_duplicate_events(db):
         count = db.query(OutboxEvent).count()
         advance(db, merchant.id, order.id, status)
         assert db.query(OutboxEvent).count() == count
-    assert db.query(StockReservation).one().status == "consumed"
+    assert db.query(StockReservation).one().status == "settled"
 
 
 def test_cancel_syncs_core_and_releases_once(db):

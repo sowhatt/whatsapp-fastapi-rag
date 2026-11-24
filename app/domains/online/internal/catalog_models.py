@@ -37,6 +37,9 @@ class OnlineProductPublication(Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Surcharge produit du tampon Online (None = valeur de la boutique).
     stock_buffer_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Mode de stock : tracked (suivi), daily (quantité du jour), unlimited (sur commande).
+    stock_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="tracked", server_default="tracked")
+    daily_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

@@ -18,6 +18,7 @@ from app.models.product import Product
 from app.models.shop import Shop
 
 DEFAULT_LOW_STOCK_THRESHOLD = 2
+STOCK_MODES = ("tracked", "daily", "unlimited")
 
 
 def _store_for(merchant_id: int, db: Session) -> OnlineStore | None:
@@ -26,6 +27,23 @@ def _store_for(merchant_id: int, db: Session) -> OnlineStore | None:
 
 def resolve_stock_policy(*, merchant_id: int, product_id: int | None, db: Session) -> StockPolicy:
     store = _store_for(merchant_id, db)
+    mode, daily_quantity = "tracked", None
+    if product_id is not None:
+        row = (
+            db.query(OnlineProductPublication.stock_mode, OnlineProductPublication.daily_quantity)
+            .filter(
+                OnlineProductPublication.merchant_id == merchant_id,
+                OnlineProductPublication.product_id == product_id,
+            )
+            .first()
+        )
+        if row is not None and row[0] in STOCK_MODES:
+            mode, daily_quantity = row[0], row[1]
+    if mode != "tracked":
+        # Ces modes ne lisent ni n'écrivent le stock du Shop : aucune boutique à résoudre.
+        buffer = int(store.stock_buffer or 0) if (store is not None and mode == "daily") else 0
+        return StockPolicy(shop_id=None, buffer=max(0, buffer), mode=mode,
+                           daily_quantity=daily_quantity)
     shops = (
         db.query(Shop.id)
         .filter(Shop.merchant_id == merchant_id, Shop.is_active.is_(True))

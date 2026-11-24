@@ -388,7 +388,8 @@ def test_admin_catalog_exposes_online_stock_breakdown(db):
     )
 
     row = read_online_catalog_admin(merchant_id=merchant.id, db=db)[0]
-    assert row["stock_physical"] == 10
+    # Commerçant sans boutique : la finalisation sort le stock du produit (réservation soldée).
+    assert row["stock_physical"] == 9
     assert row["stock_reserved_active"] == 0
-    assert row["stock_consumed_online"] == 1
+    assert row["stock_consumed_online"] == 0
     assert row["stock_online_available"] == 9

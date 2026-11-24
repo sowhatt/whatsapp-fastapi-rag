@@ -39,6 +39,8 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "seo_title",
         "seo_description",
         "stock_buffer_override",
+        "stock_mode",
+        "daily_quantity",
     },
     "online_product_images": {
         "id",

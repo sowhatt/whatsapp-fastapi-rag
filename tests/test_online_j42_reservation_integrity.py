@@ -90,7 +90,7 @@ def test_complete_consumes_all_quantities_replay_accepts_consumed_not_expiration
     for stage in ("confirmed", "preparing", "ready", "completed"):
         advance(db, merchant_id, order_id, stage)
     for row in db.query(StockReservation).all():
-        assert row.status == "consumed"
+        assert row.status == "settled"
         row.expires_at = datetime.utcnow() - timedelta(days=1)
     db.commit()
     advance(db, merchant_id, order_id, "completed")

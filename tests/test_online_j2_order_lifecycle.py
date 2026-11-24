@@ -269,8 +269,8 @@ def test_completed_consumes_reservation_and_emits_completed_event(db):
 
     reservation = db.query(StockReservation).one()
     assert payload["status"] == "completed"
-    assert payload["reservation_status"] == "consumed"
-    assert reservation.status == "consumed"
+    assert payload["reservation_status"] == "consumed"  # état exposé inchangé
+    assert reservation.status == "settled"  # soldée : la sortie est faite sur le stock
 
     events = {
         event.event_type
@@ -351,7 +351,7 @@ def test_ready_order_can_revalidate_then_complete(db):
 
 
 
-def test_completed_order_stays_unavailable_to_online_without_mutating_shop_stock(db):
+def test_completed_order_leaves_stock_decremented_once_without_double_deduction(db):
     merchant, order = _order(db)
     reservation = db.query(StockReservation).one()
     product = db.query(Product).filter(Product.id == reservation.product_id).one()
@@ -370,9 +370,9 @@ def test_completed_order_stays_unavailable_to_online_without_mutating_shop_stock
     db.refresh(product)
     db.refresh(reservation)
 
-    assert product.stock == 10
-    assert reservation.status == "consumed"
-    assert available_stock(product=product, db=db) == 8
+    assert product.stock == 8  # sortie réelle
+    assert reservation.status == "settled"
+    assert available_stock(product=product, db=db) == 8  # pas de double déduction
 
 
 def test_cancelled_order_releases_quantity_back_to_online(db):
@@ -421,9 +421,9 @@ def test_stock_position_distinguishes_reserved_consumed_and_available(db):
 
     after = stock_position(product=product, db=db)
     assert after == {
-        "stock_physical": 10,
+        "stock_physical": 8,
         "stock_reserved_active": 0,
-        "stock_consumed_online": 2,
+        "stock_consumed_online": 0,
         "stock_online_available": 8,
     }
 
@@ -489,5 +489,5 @@ def test_revalidated_history_does_not_mask_consumed_state(db):
         .all()
     }
     assert "expired" in statuses
-    assert "consumed" in statuses
+    assert "settled" in statuses
     assert completed["reservation_status"] == "consumed"

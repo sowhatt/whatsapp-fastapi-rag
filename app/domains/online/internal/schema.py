@@ -79,6 +79,8 @@ ONLINE_SCHEMA_SQL = (
     "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS stock_buffer INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE online_stores ADD COLUMN IF NOT EXISTS low_stock_threshold INTEGER NOT NULL DEFAULT 2",
     "ALTER TABLE online_product_publications ADD COLUMN IF NOT EXISTS stock_buffer_override INTEGER NULL",
+    "ALTER TABLE online_product_publications ADD COLUMN IF NOT EXISTS stock_mode VARCHAR(20) NOT NULL DEFAULT 'tracked'",
+    "ALTER TABLE online_product_publications ADD COLUMN IF NOT EXISTS daily_quantity INTEGER NULL",
     "CREATE INDEX IF NOT EXISTS ix_online_stores_merchant_id ON online_stores (merchant_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_online_stores_slug ON online_stores (slug)",
     "CREATE INDEX IF NOT EXISTS ix_online_product_publications_merchant_id ON online_product_publications (merchant_id)",

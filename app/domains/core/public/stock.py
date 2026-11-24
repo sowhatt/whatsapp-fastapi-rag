@@ -21,11 +21,27 @@ class StockPolicy:
     shop_id : boutique de préparation (stock = ShopInventory) ; None = stock historique Product.stock.
     buffer : unités non vendables en ligne (absorbe les ventes en caisse concurrentes).
     fail_closed : configuration ambiguë ou invalide, rien n'est vendable.
+    mode : "tracked" (stock suivi), "daily" (quantité du jour, remise à zéro chaque jour),
+        "unlimited" (sur commande, jamais limité par le stock).
+    daily_quantity : quantité vendable chaque jour en mode "daily".
     """
 
     shop_id: int | None = None
     buffer: int = 0
     fail_closed: bool = False
+    mode: str = "tracked"
+    daily_quantity: int | None = None
+
+
+UNLIMITED_AVAILABLE = 1_000_000
+# Jour commercial du Bénin (UTC+1, sans heure d'été) : la quantité du jour repart à minuit local.
+BUSINESS_DAY_OFFSET = timedelta(hours=1)
+
+
+def business_day_start(now: datetime | None = None) -> datetime:
+    """Début (en UTC naïf) du jour commercial courant."""
+    local = (now or datetime.utcnow()) + BUSINESS_DAY_OFFSET
+    return local.replace(hour=0, minute=0, second=0, microsecond=0) - BUSINESS_DAY_OFFSET
 
 
 def physical_stock(*, product: Product, db: Session, policy: StockPolicy | None = None) -> int:
@@ -167,6 +183,12 @@ def available_stock(
         return 0
     if product.merchant_id is None:
         return int(product.stock or 0)
+    if policy is not None and policy.mode == "unlimited":
+        return UNLIMITED_AVAILABLE
+    if policy is not None and policy.mode == "daily":
+        return _daily_available(product=product, db=db, now=now, policy=policy,
+                                exclude_source_type=exclude_source_type,
+                                exclude_source_id=exclude_source_id)
 
     # Phase A: consumed Online reservations remain unavailable to Online.
     # We deliberately do not mutate Product.stock because Shop is frozen.
@@ -180,6 +202,27 @@ def available_stock(
     )
     buffer = max(0, int(policy.buffer)) if policy is not None else 0
     return max(0, physical_stock(product=product, db=db, policy=policy) - reserved - buffer)
+
+
+def _daily_available(*, product, db, now, policy, exclude_source_type, exclude_source_id) -> int:
+    """Quantité du jour moins les réservations du jour commercial (aucune sortie de stock)."""
+    now = now or datetime.utcnow()
+    query = db.query(func.coalesce(func.sum(StockReservation.quantity), 0)).filter(
+        StockReservation.merchant_id == product.merchant_id,
+        StockReservation.product_id == product.id,
+        StockReservation.created_at >= business_day_start(now),
+        or_(
+            StockReservation.status.in_(["consumed", "settled"]),
+            and_(StockReservation.status == "active", StockReservation.expires_at > now),
+        ),
+    )
+    if exclude_source_type is not None and exclude_source_id is not None:
+        query = query.filter(
+            ~((StockReservation.source_type == exclude_source_type)
+              & (StockReservation.source_id == exclude_source_id))
+        )
+    taken = int(query.scalar() or 0)
+    return max(0, int(policy.daily_quantity or 0) - taken - max(0, int(policy.buffer)))
 
 
 def reserve_stock(

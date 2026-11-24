@@ -103,13 +103,25 @@ def test_stock_boutique_insuffisant_refuse_la_completion_sans_effet(db):
     assert db.query(StockMovement).filter_by(reference_id=order.id).count() == 0
 
 
-def test_commercant_sans_boutique_garde_le_comportement_historique(db):
+def test_commercant_sans_boutique_sort_le_stock_du_produit(db):
     merchant, _, product, order, _ = _setup(db, "settle-legacy", with_shop=False, qty=2)
     _advance(db, merchant, order, "completed")
     db.expire_all()
-    assert db.query(Product).filter_by(id=product.id).one().stock == 10  # inchangé
+    assert db.query(Product).filter_by(id=product.id).one().stock == 8
+    movement = db.query(StockMovement).filter_by(reference_id=order.id).one()
+    assert (movement.movement_type, movement.quantity) == ("online_sale_out", -2)
+    assert {r.status for r in db.query(StockReservation).filter_by(source_id=order.id)} == {"settled"}
+
+
+def test_sans_boutique_stock_insuffisant_refuse_sans_effet(db):
+    merchant, _, product, order, _ = _setup(db, "settle-legacy-low", with_shop=False, qty=2)
+    _advance(db, merchant, order, "ready")
+    product.stock = 1; db.commit()
+    with pytest.raises(ValueError, match="Stock insuffisant"):
+        update_order_status(merchant_id=merchant.id, order_id=order.id, status="completed", db=db)
+    db.rollback(); db.expire_all()
+    assert db.query(Product).filter_by(id=product.id).one().stock == 1
     assert db.query(StockMovement).filter_by(reference_id=order.id).count() == 0
-    assert {r.status for r in db.query(StockReservation).filter_by(source_id=order.id)} == {"consumed"}
 
 
 def test_plusieurs_boutiques_sans_choix_refuse_la_completion(db):
