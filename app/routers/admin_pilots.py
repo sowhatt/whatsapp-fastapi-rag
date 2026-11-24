@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.activation_invitation import ActivationInvitation
 from app.models.merchant import Merchant
 from app.models.merchant_user import MerchantUser
+from app.models.user_phone import UserPhone
 from app.models.shop import Shop
 from app.services.pilot_provisioning_service import (
     PilotProvisioningError,
@@ -52,6 +53,10 @@ class PilotInvitePayload(BaseModel):
 
 class PilotExtendPayload(BaseModel):
     days: int = Field(ge=1, le=365)
+
+
+class PilotReinvitePayload(BaseModel):
+    invitation_hours: int = Field(default=48, ge=1, le=168)
 
 
 class PilotResetPasswordPayload(BaseModel):
@@ -425,6 +430,97 @@ def get_pilot(
         db,
         merchant,
     )
+
+
+@router.post("/{merchant_id}/reinvite")
+def reinvite_pilot(
+    merchant_id: int,
+    payload: PilotReinvitePayload,
+    db: Session = Depends(get_db),
+):
+    merchant = _pilot_or_404(db, merchant_id)
+
+    owner = (
+        db.query(MerchantUser)
+        .filter(
+            MerchantUser.merchant_id == merchant.id,
+            MerchantUser.role == "OWNER",
+        )
+        .first()
+    )
+
+    if owner is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "owner_not_found",
+                "message": "Propriétaire du pilote introuvable.",
+            },
+        )
+
+    phone = (
+        db.query(UserPhone)
+        .filter(
+            UserPhone.merchant_id == merchant.id,
+            UserPhone.user_id == owner.id,
+        )
+        .order_by(
+            UserPhone.is_primary.desc(),
+            UserPhone.id.asc(),
+        )
+        .first()
+    )
+
+    phone_number = (
+        phone.phone_number
+        if phone is not None
+        else merchant.whatsapp_number
+    )
+
+    if not phone_number:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "phone_not_found",
+                "message": "Aucun numéro WhatsApp disponible.",
+            },
+        )
+
+    try:
+        invitation = create_activation_invitation(
+            db,
+            merchant=merchant,
+            user=owner,
+            phone_number=phone_number,
+            purpose=INVITATION_PURPOSE_PILOT_OWNER,
+            expires_in_hours=payload.invitation_hours,
+        )
+
+        db.commit()
+        db.refresh(invitation.invitation)
+
+        return {
+            "pilot": _pilot_response(db, merchant),
+            "activation": {
+                "status": "pending_activation",
+                "expires_at": invitation.invitation.expires_at,
+                "token": invitation.token,
+            },
+        }
+
+    except ActivationInvitationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+            },
+        )
+
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/{merchant_id}/suspend")

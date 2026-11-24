@@ -5,6 +5,127 @@
   let selectedPayablePurchaseId = null;
   let loadedShopId = null;
   let loadingPurchasingData = false;
+  let scope = null, generation = 0, loadGeneration = 0, storageHash = null;
+  let pending = {}, keys = {}, writing = false;
+  const savedFields = ['purchaseSupplier', 'purchasePaidAmount', 'purchaseDueDate', 'purchasePaymentChannel',
+    'purchaseQuickSupplierName', 'purchaseQuickSupplierPhone', 'supplierName', 'supplierPhone',
+    'supplierPaymentAmount', 'supplierPaymentChannel', 'supplierPaymentReference', 'supplierPaymentDate'];
+  const storageKey = 'whatzabi.purchasing.v1';
+  const context = () => ({merchant:state.merchant?.id, shop:state.merchant?.shop_id, token, generation});
+  const same = value => value && value.merchant === state.merchant?.id &&
+    value.shop === state.merchant?.shop_id && value.token === token && value.generation === generation;
+  function status(message) { if ($('purchasingStatus')) $('purchasingStatus').textContent = message; }
+  function persist() {
+    if (!same(scope) || !storageHash) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify({
+      hash:storageHash, cart:[...purchaseCart.values()], pending, keys, selectedPayablePurchaseId,
+      fields:Object.fromEntries(savedFields.map(id => [id, $(id)?.value || '']))
+    })); } catch { /* The in-memory form remains available. */ }
+  }
+  function checkContext() {
+    if (same(scope)) return;
+    generation++;
+    scope = context();
+    storageHash = null;
+    purchaseCart.clear(); suppliers = []; purchases = [];
+    pending = {}; keys = {}; selectedPayablePurchaseId = null;
+    loadedShopId = null; loadingPurchasingData = false;
+    for (const id of savedFields) if ($(id)) $(id).value = '';
+    if ($('supplierPaymentSheet')) $('supplierPaymentSheet').hidden = true;
+    status('');
+    renderPurchaseCart(); renderPurchases(); renderSupplierWorkspace(); renderSupplierDebtDashboard();
+  }
+  async function ready() {
+    checkContext();
+    const before = scope;
+    if (!storageHash && before.token && before.shop) {
+      try {
+        const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([before.merchant, before.shop, before.token])));
+        if (!same(before)) return null;
+        storageHash = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        if (saved?.hash === storageHash && Array.isArray(saved.cart)) {
+          for (const line of saved.cart) purchaseCart.set(line.product.id, line);
+          pending = saved.pending || {}; keys = saved.keys || {};
+          selectedPayablePurchaseId = saved.selectedPayablePurchaseId;
+          for (const id of savedFields) if ($(id)) $(id).value = saved.fields[id] || '';
+          if (pending.payment) $('supplierPaymentSheet').hidden = false;
+          renderPurchaseCart();
+          status('Brouillon restauré. Une confirmation en attente se rejoue avec le même contenu.');
+        } else if (saved) sessionStorage.removeItem(storageKey);
+      } catch { /* Recovery is optional when browser storage is unavailable. */ }
+    }
+    return same(before) ? before : null;
+  }
+  function freeze() {
+    const purchaseFrozen = writing || !!pending.purchase;
+    for (const id of ['purchaseSupplier', 'purchaseProduct', 'purchaseQty', 'purchaseUnitCost',
+      'purchaseAddLineBtn', 'purchasePaidAmount', 'purchasePaymentChannel', 'purchaseDueDate']) {
+      if ($(id)) $(id).disabled = purchaseFrozen;
+    }
+    for (const id of ['purchaseQuickSupplierName', 'purchaseQuickSupplierPhone', 'supplierName', 'supplierPhone']) {
+      if ($(id)) $(id).disabled = writing || !!pending.supplier;
+    }
+    for (const id of ['supplierPaymentAmount', 'supplierPaymentChannel', 'supplierPaymentReference', 'supplierPaymentDate']) {
+      if ($(id)) $(id).disabled = writing || !!pending.payment;
+    }
+    for (const id of ['purchaseSubmitBtn', 'supplierPaymentSubmitBtn', 'purchaseQuickSupplierBtn']) {
+      if ($(id)) $(id).disabled = writing;
+    }
+  }
+  async function write(kind, path, build) {
+    if (writing) return null;
+    writing = true; freeze();
+    let before;
+    try {
+      before = await ready();
+      if (!before?.shop || !before?.token) throw new Error('Sélectionne une boutique et reconnecte-toi.');
+      if (!pending[kind]) {
+        keys[kind] ||= crypto.randomUUID();
+        pending[kind] = {...build(), shop_id:Number(before.shop), idempotency_key:keys[kind]};
+      }
+      persist(); freeze();
+      if (!same(before)) return null;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 90000);
+      let result;
+      try { result = await api(path, {method:'POST', body:JSON.stringify(pending[kind]), signal:controller.signal}); }
+      finally { clearTimeout(timer); }
+      if (!same(before)) return null;
+      if (!Number.isInteger(result?.id) || result.id <= 0) throw new Error('Réponse incomplète. Relance la même confirmation.');
+      delete pending[kind]; delete keys[kind]; persist();
+      return result;
+    } catch (error) {
+      if (same(before)) {
+        if (error.status && error.status < 500) delete pending[kind];
+        persist();
+        status((error.status ? error.message : 'Réponse non confirmée. Réessaie la même validation.') + ' Le formulaire est conservé.');
+      }
+      return null;
+    } finally { writing = false; freeze(); }
+  }
+  async function refreshAfterWrite(withStock = false) {
+    const before = scope;
+    try {
+      const results = await Promise.allSettled([
+        withStock ? api('/pwa/products', {cache:'no-store'}) : Promise.resolve(null),
+        can('report.read') ? api('/pwa/finance/overview?period=' + (state.financePeriod || 'month'), {cache:'no-store'}) : Promise.resolve(null),
+        loadPurchasingData(),
+      ]);
+      if (!same(before)) return;
+      if (results.some(result => result.status === 'rejected')) throw new Error('refresh failed');
+      const [products, finance] = results.map(result => result.value);
+      if (products) state.products = products;
+      if (finance) { state.finance = finance; renderFinanceOverview(finance); }
+      render();
+    } catch {
+      if (same(before)) status('Écriture enregistrée. Indicateurs à actualiser : utilise « Actualiser les achats ».');
+    }
+  }
+  $('purchasingRefreshBtn')?.addEventListener('click', () => refreshAfterWrite(true));
+  document.addEventListener('input', () => { renderPurchaseAmounts(); persist(); });
+  document.addEventListener('change', persist);
+
 
   const money = (value) => fmt(Number(value || 0));
 
@@ -37,7 +158,7 @@
     if (supplierSelect) {
       const selected = supplierSelect.value;
       supplierSelect.innerHTML =
-        '<option value="">Choisir un fournisseur</option>' +
+        '<option value="">Sans fournisseur identifié (achat comptant)</option>' +
         suppliers
           .map((supplier) =>
             '<option value="' + supplier.id + '">' + esc(supplier.name) + '</option>'
@@ -66,46 +187,17 @@
   }
 
   function syncPurchaseDetailsVisibility() {
-    const supplierId = Number($('purchaseSupplier')?.value || 0);
-    const details = $('purchaseDetails');
-    const hint = $('purchaseSupplierHint');
-
-    if (details) details.hidden = !supplierId;
-    if (hint) {
-      hint.hidden = Boolean(supplierId);
-      if (!supplierId) {
-        hint.textContent = 'Choisis d’abord un fournisseur pour préparer l’achat.';
-      }
-    }
-
-    if (supplierId && $('purchaseProduct')) {
-      const productCount = Array.isArray(state.products) ? state.products.length : 0;
-      if (!productCount) {
-        $('purchaseProduct').innerHTML =
-          '<option value="">Aucun produit dans la boutique active</option>';
-        toast('Aucun produit disponible dans cette boutique. Ajoute d’abord un produit au catalogue.');
-      }
-    }
+    if ($('purchaseDetails')) $('purchaseDetails').hidden = false;
+    if ($('purchaseSupplierHint')) $('purchaseSupplierHint').textContent =
+      'Fournisseur facultatif si tout est payé ; obligatoire pour toute dette.';
+    if ($('purchaseQuickSupplier')) $('purchaseQuickSupplier').hidden = !can('supplier.create');
   }
-
-  async function onPurchaseSupplierChanged() {
-    const supplierId = Number($('purchaseSupplier')?.value || 0);
-    syncPurchaseDetailsVisibility();
-    if (!supplierId) return;
-
-    try {
-      // Recharge le catalogue de la boutique active pour éviter un sélecteur produit obsolète.
-      const products = await api('/pwa/products');
-      state.products = Array.isArray(products) ? products : [];
-      syncPurchaseSelectors();
-      syncPurchaseDetailsVisibility();
-
-      if (state.products.length) {
-        $('purchaseProduct')?.focus();
-      }
-    } catch (error) {
-      toast(error.message || 'Impossible de charger les produits de la boutique.');
-    }
+  function onPurchaseSupplierChanged() { syncPurchaseDetailsVisibility(); persist(); }
+  function renderPurchaseAmounts() {
+    const total = purchaseTotal(), paid = Number($('purchasePaidAmount')?.value || 0);
+    if ($('purchaseRemaining')) $('purchaseRemaining').textContent = money(total - paid);
+    if ($('purchasePaidSummary')) $('purchasePaidSummary').textContent = money(paid);
+    if ($('purchaseDueDate')) $('purchaseDueDate').required = total > paid;
   }
 
   function renderPurchaseCart() {
@@ -132,19 +224,18 @@
       : '<p class="muted empty-state">Aucune ligne d’achat.</p>';
 
     $('purchaseTotal').textContent = money(purchaseTotal());
+    renderPurchaseAmounts();
 
     const total = purchaseTotal();
     const paidInput = $('purchasePaidAmount');
     if (paidInput) {
       paidInput.max = String(total);
-      if (Number(paidInput.value || 0) > total) {
-        paidInput.value = String(total);
-      }
+
     }
   }
 
   function supplierName(id) {
-    return suppliers.find((supplier) => Number(supplier.id) === Number(id))?.name || 'Fournisseur';
+    return suppliers.find((supplier) => Number(supplier.id) === Number(id))?.name || (id ? 'Fournisseur' : 'Comptant sans fournisseur');
   }
 
   function purchaseStatusLabel(status) {
@@ -237,7 +328,12 @@
               </div>
               <div class="purchase-line-end">
                 <strong>${money(purchase.total_amount)}</strong>
-                <small>Reste ${money(purchase.remaining_amount)}</small>
+                <small>Total payé ${money(purchase.paid_amount)} · Reste dû ${money(purchase.remaining_amount)}</small>
+                <small>Versement initial ${purchase.initial_paid_amount == null ? 'inconnu' : money(purchase.initial_paid_amount)} · Crédit initial ${purchase.initial_credit_amount == null ? 'inconnu' : money(purchase.initial_credit_amount)}</small>
+                <small>Paiements ultérieurs ${purchase.subsequent_paid_amount == null ? 'non déterminables' : money(purchase.subsequent_paid_amount)}</small>
+                <small>Échéance ${esc(fmtDueDate(purchase.due_date))}</small>
+                <button type="button" data-purchase-payments="${purchase.id}">Voir les règlements datés</button>
+                <div id="purchasePayments-${purchase.id}" aria-live="polite"></div>
               </div>
             </article>
           `).join('')
@@ -290,62 +386,73 @@
     }
   }
 
-  async function loadPurchasingData() {
-    if (!token || loadingPurchasingData) return;
-    loadingPurchasingData = true;
+  async function showPurchasePayments(purchaseId) {
+    if (!can('purchase.read') || !purchases.some(p => Number(p.id) === Number(purchaseId))) return;
+    const before = await ready();
+    const generation = loadGeneration;
+    const target = $('purchasePayments-' + purchaseId);
+    if (!target || !same(before)) return;
+    target.textContent = 'Chargement des règlements…';
     try {
-      const results = await Promise.all([
-        can('supplier.read') ? api('/pwa/suppliers') : Promise.resolve([]),
-        can('purchase.read') ? api('/pwa/purchases') : Promise.resolve([]),
-      ]);
-      suppliers = results[0] || [];
-      purchases = results[1] || [];
-      loadedShopId = state.merchant?.shop_id ?? null;
-      syncPurchaseSelectors();
-      syncPurchaseDetailsVisibility();
-      renderSupplierWorkspace();
-      renderSupplierDebtDashboard();
-      renderPurchases();
-      renderPurchaseCart();
+      const payments = await api('/pwa/purchases/' + purchaseId + '/payments', {cache:'no-store'});
+      if (!same(before) || generation !== loadGeneration) return;
+      target.innerHTML = payments.length ? payments.slice().sort((a, b) =>
+        String(a.paid_at).localeCompare(String(b.paid_at)) || Number(a.id) - Number(b.id)
+      ).map(payment => `<small>${esc(fmtSaleDate(payment.paid_at))} · ${money(payment.amount)} · ${esc(payment.channel)}</small>`).join('')
+        : '<small>Aucun règlement enregistré.</small>';
     } catch (error) {
-      toast(error.message || 'Impossible de charger les achats.');
-    } finally {
-      loadingPurchasingData = false;
+      if (same(before) && generation === loadGeneration) target.textContent = 'Règlements indisponibles. Réessaie.';
     }
   }
 
-  $('supplierForm')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!can('supplier.create')) return toast('Permission insuffisante.');
-
+  async function loadPurchasingData() {
+    const before = await ready();
+    if (!before?.token || !before.shop) return;
+    const requestId = ++loadGeneration;
+    loadingPurchasingData = true;
     try {
-      await api('/pwa/suppliers', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: $('supplierName').value.trim(),
-          phone: $('supplierPhone').value.trim() || null,
-          debt: 0,
-        }),
-      });
-      event.target.reset();
-      await loadPurchasingData();
-      toast('Fournisseur ajouté.');
+      const results = await Promise.all([
+        can('supplier.read') ? api('/pwa/suppliers', {cache:'no-store'}) : Promise.resolve([]),
+        can('purchase.read') ? api('/pwa/purchases', {cache:'no-store'}) : Promise.resolve([]),
+      ]);
+      if (!same(before) || requestId !== loadGeneration) return;
+      suppliers = results[0] || []; purchases = results[1] || [];
+      loadedShopId = before.shop;
+      syncPurchaseSelectors(); syncPurchaseDetailsVisibility();
+      renderSupplierWorkspace(); renderSupplierDebtDashboard(); renderPurchases(); renderPurchaseCart(); freeze();
     } catch (error) {
-      toast(error.message);
-    }
-  });
+      if (same(before)) status('Achats indisponibles. Utilise « Actualiser les achats ».');
+      throw error;
+    } finally { if (requestId === loadGeneration) loadingPurchasingData = false; }
+  }
+  async function addSupplier(inline) {
+    if (!can('supplier.create') || writing || pending.purchase) return;
+    const nameField = inline ? 'purchaseQuickSupplierName' : 'supplierName';
+    const phoneField = inline ? 'purchaseQuickSupplierPhone' : 'supplierPhone';
+    if (!$(nameField).value.trim() && !pending.supplier) return status('Renseigne le nom du fournisseur.');
+    const result = await write('supplier', '/pwa/suppliers', () => ({name:$(nameField).value.trim(), phone:$(phoneField).value.trim() || null, debt:0}));
+    if (!result) return;
+    suppliers = [...suppliers.filter(s => s.id !== result.id), result];
+    syncPurchaseSelectors();
+    if (inline) $('purchaseSupplier').value = String(result.id);
+    $(nameField).value = ''; $(phoneField).value = '';
+    renderSupplierWorkspace(); persist(); status('Fournisseur ajouté. Tu peux poursuivre l’achat.');
+  }
+  $('supplierForm')?.addEventListener('submit', async event => { event.preventDefault(); await addSupplier(false); });
+  $('purchaseQuickSupplierBtn')?.addEventListener('click', () => addSupplier(true));
 
   $('purchaseSupplier')?.addEventListener('change', onPurchaseSupplierChanged);
 
   $('purchaseAddLineBtn')?.addEventListener('click', () => {
+    if (writing || pending.purchase) return;
     const productId = Number($('purchaseProduct').value);
     const product = state.products.find((item) => Number(item.id) === productId);
     const quantity = Number($('purchaseQty').value);
     const unitCost = Number($('purchaseUnitCost').value);
 
     if (!product) return toast('Choisis un produit.');
-    if (!Number.isFinite(quantity) || quantity <= 0) return toast('Quantité invalide.');
-    if (!Number.isFinite(unitCost) || unitCost < 0) return toast('Coût unitaire invalide.');
+    if (!Number.isInteger(quantity) || quantity <= 0) return toast('Quantité invalide.');
+    if (!Number.isInteger(unitCost) || unitCost < 0) return toast('Coût unitaire invalide.');
 
     purchaseCart.set(product.id, {
       product,
@@ -355,7 +462,7 @@
 
     $('purchaseQty').value = '1';
     $('purchaseUnitCost').value = String(product.purchase_price || 0);
-    renderPurchaseCart();
+    renderPurchaseCart(); persist();
   });
 
   $('purchaseProduct')?.addEventListener('change', () => {
@@ -368,14 +475,16 @@
   document.addEventListener('click', (event) => {
     const remove = event.target.closest('[data-purchase-remove]');
     if (remove) {
+      if (writing || pending.purchase) return;
       purchaseCart.delete(Number(remove.dataset.purchaseRemove));
-      renderPurchaseCart();
+      renderPurchaseCart(); persist();
       return;
     }
 
     const due = event.target.closest('[data-purchase-due-days]');
     if (due) {
-      setPurchaseDueDays(due.dataset.purchaseDueDays);
+      if (writing || pending.purchase) return;
+      setPurchaseDueDays(due.dataset.purchaseDueDays); persist();
       return;
     }
 
@@ -392,57 +501,27 @@
   });
 
   $('purchaseSubmitBtn')?.addEventListener('click', async () => {
-    if (!can('purchase.create')) return toast('Permission insuffisante.');
-    if (!purchaseCart.size) return toast('Ajoute au moins un produit.');
-
-    const supplierId = Number($('purchaseSupplier').value);
-    if (!supplierId) return toast('Choisis un fournisseur.');
-
-    const total = purchaseTotal();
-    const paidAmount = Number($('purchasePaidAmount').value || 0);
-    if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > total) {
-      return toast('Montant payé invalide.');
+    if (writing || !can('purchase.create')) return;
+    if (!pending.purchase) {
+      if (!purchaseCart.size) return status('Ajoute au moins un produit.');
+      const paid = Number($('purchasePaidAmount').value || 0), remaining = purchaseTotal() - paid;
+      if (!Number.isInteger(paid) || paid < 0 || remaining < 0) return status('Montant payé invalide.');
+      if (remaining > 0 && !$('purchaseSupplier').value) return status('Choisis ou crée un fournisseur pour cet achat avec dette.');
+      if (remaining > 0 && !$('purchaseDueDate').value) return status('Choisis une échéance pour la dette fournisseur.');
     }
-
-    const remaining = total - paidAmount;
-    const dueDate = $('purchaseDueDate').value || null;
-    if (remaining > 0 && !dueDate) {
-      return toast('Choisis une échéance pour la dette fournisseur.');
-    }
-
-    const button = $('purchaseSubmitBtn');
-    button.disabled = true;
-
-    try {
-      await api('/pwa/purchases', {
-        method: 'POST',
-        body: JSON.stringify({
-          supplier_id: supplierId,
-          items: [...purchaseCart.values()].map((line) => ({
-            product_id: line.product.id,
-            quantity: line.quantity,
-            unit_cost: line.unit_cost,
-          })),
-          paid_amount: paidAmount,
-          payment_channel: $('purchasePaymentChannel').value,
-          due_date: remaining > 0 ? dueDate : null,
-          original_amount: total,
-          original_currency: state.currencyContext?.shop_currency || 'XOF',
-          exchange_rate: null,
-        }),
-      });
-
-      purchaseCart.clear();
-      $('purchasePaidAmount').value = '0';
-      $('purchaseDueDate').value = '';
-      await refresh();
-      await loadPurchasingData();
-      toast('Achat enregistré. Stock mis à jour.');
-    } catch (error) {
-      toast(error.message || 'Impossible d’enregistrer l’achat.');
-    } finally {
-      button.disabled = false;
-    }
+    const result = await write('purchase', '/pwa/purchases', () => ({
+      supplier_id:Number($('purchaseSupplier').value) || null,
+      items:[...purchaseCart.values()].map(line => ({product_id:line.product.id, quantity:line.quantity, unit_cost:line.unit_cost})),
+      paid_amount:Number($('purchasePaidAmount').value || 0),
+      payment_channel:$('purchasePaymentChannel').value || 'cash',
+      paid_at:new Date().toISOString(),
+      due_date:purchaseTotal() > Number($('purchasePaidAmount').value || 0) ? $('purchaseDueDate').value : null,
+      original_amount:purchaseTotal(), original_currency:state.currencyContext?.shop_currency || 'XOF', exchange_rate:null,
+    }));
+    if (!result) return;
+    purchaseCart.clear(); $('purchasePaidAmount').value = '0'; $('purchaseDueDate').value = '';
+    renderPurchaseCart(); persist(); status('Achat #' + result.id + ' enregistré. Stock mis à jour.');
+    await refreshAfterWrite(true);
   });
 
   function openSupplierDebtPayment(supplierId) {
@@ -480,6 +559,11 @@
   }
 
   function openSupplierPayment(purchaseId) {
+    if (writing) return;
+    if (pending.payment) {
+      $('supplierPaymentSheet').hidden = false;
+      return status('Vérifie d’abord le résultat du règlement en attente avec la même confirmation.');
+    }
     const purchase = purchases.find((item) => Number(item.id) === Number(purchaseId));
     if (!purchase) return toast('Achat introuvable.');
 
@@ -492,58 +576,41 @@
     $('supplierPaymentAmount').value = String(purchase.remaining_amount);
     $('supplierPaymentAmount').max = String(purchase.remaining_amount);
     $('supplierPaymentReference').value = '';
+    $('supplierPaymentDate').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16);
     $('supplierPaymentSheet').hidden = false;
   }
 
   function closeSupplierPayment() {
     $('supplierPaymentSheet').hidden = true;
-    selectedPayablePurchaseId = null;
+    if (!pending.payment) selectedPayablePurchaseId = null;
+    persist();
   }
 
   $('supplierPaymentCloseBtn')?.addEventListener('click', closeSupplierPayment);
 
   $('supplierPaymentSubmitBtn')?.addEventListener('click', async () => {
-    const purchase = purchases.find(
-      (item) => Number(item.id) === Number(selectedPayablePurchaseId)
-    );
-    if (!purchase) return toast('Achat introuvable.');
-
+    if (writing || !can('supplier_payment.create')) return;
+    const purchase = purchases.find(p => Number(p.id) === Number(selectedPayablePurchaseId));
     const amount = Number($('supplierPaymentAmount').value);
-    if (!Number.isFinite(amount) || amount <= 0) return toast('Montant invalide.');
-    if (amount > Number(purchase.remaining_amount || 0)) {
-      return toast('Le paiement dépasse le reste dû.');
+    if (!pending.payment) {
+      if (!purchase) return status('Achat introuvable.');
+      if (!Number.isInteger(amount) || amount <= 0 || amount > purchase.remaining_amount) return status('Montant invalide ou supérieur au reste dû.');
+      if (!$('supplierPaymentDate').value || !Number.isFinite(Date.parse($('supplierPaymentDate').value))) return status('Renseigne la date réelle du paiement.');
     }
-
-    const button = $('supplierPaymentSubmitBtn');
-    button.disabled = true;
-    try {
-      await api('/pwa/supplier-payments', {
-        method: 'POST',
-        body: JSON.stringify({
-          purchase_id: purchase.id,
-          supplier_id: purchase.supplier_id,
-          amount,
-          channel: $('supplierPaymentChannel').value,
-          reference: $('supplierPaymentReference').value.trim() || null,
-        }),
-      });
-
-      closeSupplierPayment();
-      await loadPurchasingData();
-      toast(
-        amount === Number(purchase.remaining_amount || 0)
-          ? 'Dette fournisseur soldée.'
-          : 'Paiement fournisseur enregistré.'
-      );
-    } catch (error) {
-      toast(error.message || 'Impossible d’enregistrer le paiement.');
-    } finally {
-      button.disabled = false;
-    }
+    const result = await write('payment', '/pwa/supplier-payments', () => ({
+      purchase_id:purchase.id, supplier_id:purchase.supplier_id, amount,
+      channel:$('supplierPaymentChannel').value || 'cash',
+      reference:$('supplierPaymentReference').value.trim() || null,
+      paid_at:new Date($('supplierPaymentDate').value).toISOString(),
+    }));
+    if (!result) return;
+    closeSupplierPayment(); persist(); status('Règlement #' + result.id + ' enregistré.');
+    await refreshAfterWrite(false);
   });
 
   const originalRender = render;
   render = function() {
+    checkContext();
     originalRender();
     syncPurchaseSelectors();
     renderSupplierWorkspace();
@@ -558,17 +625,19 @@
       currentShopId !== loadedShopId &&
       !loadingPurchasingData
     ) {
-      loadPurchasingData();
+      void loadPurchasingData().catch(() => {});
     }
   };
 
   document.addEventListener('click', (event) => {
+    const payments = event.target.closest('[data-purchase-payments]');
+    if (payments) void showPurchasePayments(Number(payments.dataset.purchasePayments));
     const tab = event.target.closest('[data-open-tab]');
     if (tab && (tab.dataset.openTab === 'suppliers' || tab.dataset.openTab === 'purchases')) {
-      loadPurchasingData();
+      void loadPurchasingData().catch(() => {});
     }
   });
 
   syncPurchaseDetailsVisibility();
-  loadPurchasingData();
+  void loadPurchasingData().catch(() => {});
 })();

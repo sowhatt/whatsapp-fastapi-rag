@@ -333,3 +333,203 @@ def test_cross_shop_payment_cannot_modify_sale():
     assert refreshed_sale.paid_amount == original_paid
     assert refreshed_sale.remaining_amount == original_remaining
     assert refreshed_customer.debt == original_debt
+
+
+# ============================================================
+# P1-E — Catalogue partagé / stock spécifique par boutique
+# ============================================================
+
+
+def test_same_product_catalog_is_shared_but_stock_is_shop_specific():
+    from app.routers.products import list_products
+
+    db = make_db()
+    merchant, shop_one, shop_two, _, product = seed(db)
+
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 3, db)
+
+    db.commit()
+    db.expire_all()
+
+    db.info["pwa_shop_id"] = shop_one.id
+    products_shop_one = list_products(category_id=None, db=db)
+
+    assert len(products_shop_one) == 1
+    assert products_shop_one[0].id == product.id
+    assert products_shop_one[0].name == "Riz"
+    assert products_shop_one[0].stock == 10
+
+    db.expire_all()
+
+    db.info["pwa_shop_id"] = shop_two.id
+    products_shop_two = list_products(category_id=None, db=db)
+
+    assert len(products_shop_two) == 1
+    assert products_shop_two[0].id == product.id
+    assert products_shop_two[0].name == "Riz"
+    assert products_shop_two[0].stock == 3
+
+    assert (
+        products_shop_one[0].id
+        == products_shop_two[0].id
+    )
+
+
+def test_catalog_update_is_shared_without_overwriting_other_shop_stock():
+    from app.routers.products import list_products, update_product
+    from app.schemas.product import ProductUpdate
+
+    db = make_db()
+    merchant, shop_one, shop_two, _, product = seed(db)
+
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 3, db)
+
+    db.commit()
+    db.expire_all()
+
+    # Modification du catalogue depuis Boutique A.
+    db.info["pwa_shop_id"] = shop_one.id
+
+    updated = update_product(
+        product_id=product.id,
+        payload=ProductUpdate(
+            name="Riz Premium",
+            price=11000,
+        ),
+        db=db,
+    )
+
+    assert updated.id == product.id
+    assert updated.name == "Riz Premium"
+    assert updated.price == 11000
+    assert updated.stock == 10
+
+    # Boutique B voit les mêmes métadonnées catalogue,
+    # mais conserve son stock propre.
+    db.expire_all()
+    db.info["pwa_shop_id"] = shop_two.id
+
+    products_shop_two = list_products(category_id=None, db=db)
+
+    assert len(products_shop_two) == 1
+
+    product_shop_two = products_shop_two[0]
+
+    assert product_shop_two.id == product.id
+    assert product_shop_two.name == "Riz Premium"
+    assert product_shop_two.price == 11000
+    assert product_shop_two.stock == 3
+
+
+# Tests du prix negocie dans le panier
+import pytest
+from app.models.sale_item import SaleItem
+
+
+@pytest.fixture
+def negotiated_sale_context():
+    db = make_db()
+    merchant, shop, _, _, product = seed(db)
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+    try:
+        yield db, shop, product
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("offline_id", [None, "cart-negotiated-price-test"])
+def test_negotiated_price_is_saved_without_changing_catalog(
+    negotiated_sale_context, offline_id
+):
+    db, shop, product = negotiated_sale_context
+    product_id = product.id
+    shop_id = shop.id
+
+    sale = create_sale(
+        SaleCreate(
+            items=[
+                SaleItemCreate(
+                    product_id=product_id,
+                    quantity=2,
+                    unit_price=9000,
+                )
+            ],
+            paid_amount=18000,
+            offline_sale_id=offline_id,
+        ),
+        db,
+    )
+    sale_id = sale.id
+    db.expire_all()
+
+    saved = db.query(Sale).filter(Sale.id == sale_id).one()
+    line = db.query(SaleItem).filter(SaleItem.sale_id == sale_id).one()
+    catalog = db.query(Product).filter(Product.id == product_id).one()
+    inventory = db.query(ShopInventory).filter(
+        ShopInventory.shop_id == shop_id,
+        ShopInventory.product_id == product_id,
+    ).one()
+
+    assert saved.total_amount == 18000
+    assert saved.paid_amount == 18000
+    assert saved.remaining_amount == 0
+    assert saved.offline_sale_id == offline_id
+    assert line.unit_price == 9000
+    assert line.line_total == 18000
+    assert line.quantity == 2
+    assert catalog.price == 10000
+    assert inventory.stock == 8
+
+
+@pytest.mark.parametrize(
+    "price, supplied_total",
+    [(0, None), (-100, None), (9000, 1)],
+)
+def test_invalid_negotiated_price_or_total_creates_no_sale(
+    negotiated_sale_context, price, supplied_total
+):
+    db, shop, product = negotiated_sale_context
+
+    with pytest.raises(HTTPException) as error:
+        create_sale(
+            SaleCreate(
+                items=[
+                    SaleItemCreate(
+                        product_id=product.id,
+                        quantity=2,
+                        unit_price=price,
+                        line_total=supplied_total,
+                    )
+                ],
+                paid_amount=0,
+            ),
+            db,
+        )
+
+    assert error.value.status_code == 400
+    assert db.query(Sale).count() == 0
+    assert db.query(SaleItem).count() == 0
+    assert db.query(Payment).count() == 0
+
+    db.refresh(product)
+    assert product.price == 10000
+    inventory = db.query(ShopInventory).filter(
+        ShopInventory.shop_id == shop.id,
+        ShopInventory.product_id == product.id,
+    ).one()
+    assert inventory.stock == 10

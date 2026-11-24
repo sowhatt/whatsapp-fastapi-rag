@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.db.schema import create_base_schema
+from app.db.schema import create_base_schema, validate_purchasing_schema
 from app.db.session import engine
 from app.routers.health import router as health_router
 from app.routers.auth import router as auth_router
@@ -12,6 +12,7 @@ from app.routers.pwa_currency import router as pwa_currency_router
 from app.routers.pwa_finance import router as pwa_finance_router
 from app.routers.pwa_settings import router as pwa_settings_router
 from app.routers.pwa_staff import router as pwa_staff_router
+from app.routers.pwa_stock_intelligence import router as pwa_stock_intelligence_router
 from app.routers.pwa_expenses import router as pwa_expenses_router
 from app.auth import require_pwa_merchant
 from app.routers.products import router as products_router
@@ -42,10 +43,12 @@ app = FastAPI(title="WhatsApp FastAPI Railway")
 
 @app.on_event("startup")
 def ensure_catalog_schema() -> None:
-    """Migration légère et idempotente pour le catalogue existant."""
+    """Bootstrap compatible uniquement avec les migrations métier déjà appliquées."""
+    validate_purchasing_schema(engine)
     # Une base de staging neuve ne contient aucune table. Le schéma courant
     # doit exister avant les ALTER/UPDATE historiques ci-dessous.
     create_base_schema(engine)
+    validate_purchasing_schema(engine)
 
     statements = [
         """
@@ -63,6 +66,23 @@ def ensure_catalog_schema() -> None:
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging VARCHAR(100) NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_price INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS unit_cost_snapshot INTEGER NOT NULL DEFAULT 0",
+
+        """
+        ALTER TABLE sales
+        ADD COLUMN IF NOT EXISTS offline_sale_id VARCHAR(36) NULL
+        """,
+
+        """
+        ALTER TABLE sales
+        ADD COLUMN IF NOT EXISTS offline_payload_hash VARCHAR(64) NULL
+        """,
+
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS
+        uq_sales_merchant_offline_sale_id
+        ON sales (merchant_id, offline_sale_id)
+        WHERE offline_sale_id IS NOT NULL
+        """,
         """
         UPDATE sale_items si
         SET unit_cost_snapshot = COALESCE(p.purchase_price, 0)
@@ -76,7 +96,13 @@ def ensure_catalog_schema() -> None:
         DO $$
         BEGIN
             IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category_id'
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = 'products'::regclass
+                  AND confrelid = 'categories'::regclass
+                  AND contype = 'f'
+                  AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                                      WHERE attrelid='products'::regclass
+                                        AND attname='category_id')]::smallint[]
             ) THEN
                 ALTER TABLE products
                 ADD CONSTRAINT fk_products_category_id
@@ -151,6 +177,7 @@ def ensure_catalog_schema() -> None:
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
+        "ALTER TABLE shop_inventories ADD COLUMN IF NOT EXISTS initial_stock INTEGER NULL",
         "ALTER TABLE transaction_events ADD COLUMN IF NOT EXISTS merchant_id INTEGER NULL",
         """
         INSERT INTO merchants (whatsapp_number, shop_name)
@@ -214,102 +241,8 @@ def ensure_catalog_schema() -> None:
             SELECT id FROM merchants WHERE whatsapp_number = 'default-legacy-merchant'
         ) WHERE merchant_id IS NULL
         """,
-        # --- Isolation par commerçant : le nom de produit/catégorie
-        # n'a plus besoin d'être unique globalement, seulement au sein
-        # d'un même commerce (deux commerçants peuvent chacun avoir
-        # un "Riz"). On retire l'ancienne contrainte unique globale,
-        # quel que soit son nom exact (auto-généré par Postgres), et
-        # on la remplace par une contrainte composée (merchant_id, nom).
-        """
-        DO $$
-        DECLARE
-            contrainte TEXT;
-        BEGIN
-            -- Cas 1 : une contrainte UNIQUE formelle (ALTER TABLE ... ADD CONSTRAINT)
-            SELECT tc.constraint_name INTO contrainte
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.table_name = 'products'
-                AND tc.constraint_type = 'UNIQUE'
-                AND ccu.column_name = 'name'
-            LIMIT 1;
-
-            IF contrainte IS NOT NULL THEN
-                EXECUTE format('ALTER TABLE products DROP CONSTRAINT %I', contrainte);
-            END IF;
-
-            -- Cas 2 : un INDEX unique créé directement (CREATE UNIQUE
-            -- INDEX), sans passer par une contrainte formelle — c'est
-            -- ce que SQLAlchemy génère pour Column(unique=True,
-            -- index=True), et ça n'apparaît PAS dans
-            -- information_schema.table_constraints, contrairement au
-            -- cas 1. Sans ce second cas, l'ancienne restriction reste
-            -- active malgré la migration : exactement le bug rencontré
-            -- en conditions réelles (products.name toujours unique
-            -- globalement au lieu de l'être par commerçant).
-            IF EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'products' AND indexname = 'ix_products_name'
-            ) THEN
-                DROP INDEX ix_products_name;
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'products' AND indexname = 'ix_products_name_lookup'
-            ) THEN
-                CREATE INDEX ix_products_name_lookup ON products (name);
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint WHERE conname = 'uq_products_merchant_name'
-            ) THEN
-                ALTER TABLE products
-                ADD CONSTRAINT uq_products_merchant_name UNIQUE (merchant_id, name);
-            END IF;
-        END $$
-        """,
-        """
-        DO $$
-        DECLARE
-            contrainte TEXT;
-        BEGIN
-            SELECT tc.constraint_name INTO contrainte
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.table_name = 'categories'
-                AND tc.constraint_type = 'UNIQUE'
-                AND ccu.column_name = 'name'
-            LIMIT 1;
-
-            IF contrainte IS NOT NULL THEN
-                EXECUTE format('ALTER TABLE categories DROP CONSTRAINT %I', contrainte);
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'categories' AND indexname = 'ix_categories_name'
-            ) THEN
-                DROP INDEX ix_categories_name;
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'categories' AND indexname = 'ix_categories_name_lookup'
-            ) THEN
-                CREATE INDEX ix_categories_name_lookup ON categories (name);
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint WHERE conname = 'uq_categories_merchant_name'
-            ) THEN
-                ALTER TABLE categories
-                ADD CONSTRAINT uq_categories_merchant_name UNIQUE (merchant_id, name);
-            END IF;
-        END $$
-        """,
+        # Les contraintes métier sont gérées par migrations explicites.
+        # Ne jamais supprimer un index/une contrainte au démarrage.
         # --- Tables ouvertes (addition en cours, usage restaurant/bar) ---
         """
         CREATE TABLE IF NOT EXISTS open_tabs (
@@ -340,49 +273,6 @@ def ensure_catalog_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_open_tabs_table_name ON open_tabs (table_name)",
         "CREATE INDEX IF NOT EXISTS ix_open_tab_items_merchant_id ON open_tab_items (merchant_id)",
         "CREATE INDEX IF NOT EXISTS ix_open_tab_items_tab_id ON open_tab_items (tab_id)",
-        # --- Même correctif que products/categories, appliqué aux
-        # fournisseurs : le nom de fournisseur n'a plus besoin d'être
-        # unique globalement, seulement par commerçant. ---
-        """
-        DO $$
-        DECLARE
-            contrainte TEXT;
-        BEGIN
-            SELECT tc.constraint_name INTO contrainte
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.table_name = 'suppliers'
-                AND tc.constraint_type = 'UNIQUE'
-                AND ccu.column_name = 'name'
-            LIMIT 1;
-
-            IF contrainte IS NOT NULL THEN
-                EXECUTE format('ALTER TABLE suppliers DROP CONSTRAINT %I', contrainte);
-            END IF;
-
-            IF EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'suppliers' AND indexname = 'ix_suppliers_name'
-            ) THEN
-                DROP INDEX ix_suppliers_name;
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_indexes
-                WHERE tablename = 'suppliers' AND indexname = 'ix_suppliers_name_lookup'
-            ) THEN
-                CREATE INDEX ix_suppliers_name_lookup ON suppliers (name);
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint WHERE conname = 'uq_suppliers_merchant_name'
-            ) THEN
-                ALTER TABLE suppliers
-                ADD CONSTRAINT uq_suppliers_merchant_name UNIQUE (merchant_id, name);
-            END IF;
-        END $$
-        """,
         """
         ALTER TABLE sales
         ADD COLUMN IF NOT EXISTS sale_number INTEGER NULL
@@ -461,7 +351,13 @@ app.include_router(admin_web_router)
 
 # Routes PWA : authentification JWT + isolation automatique
 # par merchant_id sur la session SQLAlchemy.
+from app.routers.pwa_exports import router as pwa_exports_router
+
+from app.routers.pwa_sale_photo import router as pwa_sale_photo_router
+
 for pwa_router in (
+    pwa_sale_photo_router,
+    pwa_exports_router,
     categories_router,
     products_router,
     customers_router,
@@ -474,6 +370,7 @@ for pwa_router in (
     pwa_expenses_router,
     pwa_settings_router,
     pwa_staff_router,
+    pwa_stock_intelligence_router,
     suppliers_router,
     purchases_router,
     supplier_payments_router,

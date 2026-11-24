@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,25 +25,21 @@ def test_home_supplier_debt_card_opens_payables():
     assert 'data-scroll-target="supplierPayablesList"' in INDEX
 
 
+def _check_behavior(pattern):
+    result = subprocess.run(
+        ["node", "--test", "--test-name-pattern", pattern,
+         "tests/js/home_drilldowns.test.cjs"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_home_low_stock_card_opens_critical_stock():
-    assert 'id="statLowStockCard"' in INDEX
-    assert 'data-open-tab="catalog"' in INDEX
-    assert 'data-scroll-target="criticalStockList"' in INDEX
-    assert 'id="criticalStockList"' in INDEX
-    assert 'id="criticalStockItems"' in INDEX
+    _check_behavior("stock card opens")
 
 
 def test_critical_stock_uses_stock_and_threshold():
-    assert "const lowStockProducts = products.filter(" in APP_JS
-    assert (
-        "Number(product.stock || 0) <= Number(product.threshold || 0)"
-        in APP_JS
-    )
-    assert "$('criticalStockItems').innerHTML" in APP_JS
-    assert "Stock ${stock}" in APP_JS
-    assert "seuil ${threshold}" in APP_JS
-    assert "Rupture" in APP_JS
-    assert "Faible" in APP_JS
+    _check_behavior("critical stock includes")
 
 
 def test_generic_home_drilldown_handler_is_present():

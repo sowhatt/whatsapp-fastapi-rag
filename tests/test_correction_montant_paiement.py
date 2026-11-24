@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.agents.intent_agent import AIIntent, _to_business_action
 from app.db.base import Base
+from app.db import schema as _schema  # register all foreign-key targets
 from app.db.tenant import set_current_merchant
 from app.models.product import Product
 from app.models.supplier import Supplier

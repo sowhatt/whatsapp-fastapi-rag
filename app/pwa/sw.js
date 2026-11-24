@@ -1,11 +1,14 @@
-const CACHE = 'whatzabi-pwa-v35';
+const CACHE = 'whatzabi-pwa-v56-lot4-1';
 
 const ASSETS = [
+  '/auth/express-sale.css?v=2-cart-price-1',
   '/auth/app',
-  '/auth/styles.css?v=17',
-  '/auth/app.js?v=25',
-  '/auth/smart-catalog.js?v=45',
-  '/auth/purchases.js?v=5',
+  '/auth/styles.css?v=29-exports-1-sale-photo-1',
+  '/auth/app.js?v=42-lot4-1',
+  '/auth/offline-sales.js?v=2',
+  '/auth/express-sale.js?v=13-cart-price-1',
+  '/auth/smart-catalog.js?v=46',
+  '/auth/purchases.js?v=7-lot4-1',
   '/auth/manifest.webmanifest',
   '/auth/icon.svg',
 ];
@@ -48,6 +51,7 @@ self.addEventListener('fetch', (event) => {
   if (
     url.pathname === '/auth/app' ||
     url.pathname === '/auth/app.js' ||
+    url.pathname === '/auth/offline-sales.js' ||
     url.pathname === '/auth/smart-catalog.js' ||
     url.pathname === '/auth/purchases.js' ||
     url.pathname === '/auth/styles.css'

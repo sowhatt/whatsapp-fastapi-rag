@@ -724,3 +724,156 @@ input {
     width: 100%;
   }
 }
+
+/* =========================================================
+   S6 — Pilot detail
+   ========================================================= */
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.detail-grid .admin-card {
+  min-width: 0;
+}
+
+.detail-list {
+  margin: 20px 0 0;
+}
+
+.detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 13px 0;
+  border-bottom: 1px solid #e8ecea;
+}
+
+.detail-list > div:last-child {
+  border-bottom: 0;
+}
+
+.detail-list dt {
+  color: #66736d;
+  font-size: 0.9rem;
+}
+
+.detail-list dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.detail-action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.detail-action-row select {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cfd8d3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.danger-zone {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.danger-zone h2 {
+  margin-bottom: 6px;
+}
+
+.danger-zone p {
+  margin: 0;
+  color: #66736d;
+}
+
+.danger-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid #b42318;
+  border-radius: 8px;
+  background: #fff;
+  color: #b42318;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  background: #fff3f2;
+}
+
+.danger-button:disabled,
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.form-message.success {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.form-message.error {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fef3f2;
+  color: #b42318;
+}
+
+@media (max-width: 760px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .danger-zone {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .danger-zone > div:last-child {
+    width: 100%;
+  }
+
+  .danger-zone button {
+    width: 100%;
+  }
+
+  .detail-action-row {
+    flex-direction: column;
+  }
+
+  .detail-action-row select,
+  .detail-action-row button {
+    width: 100%;
+  }
+}

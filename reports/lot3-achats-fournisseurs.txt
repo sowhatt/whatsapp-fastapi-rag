@@ -1,0 +1,156 @@
+WHATZABI — SPRINT CORRECTIF P0 — LOT 3
+Bilan du 21 octobre 2026
+
+VERDICT
+GO pour le Lot 4 sur le parcours PWA/HTTP testé.
+Les garanties sont démontrées par les tests HTTP, PostgreSQL et JavaScript.
+Aucun déploiement ni application de migration sur une base existante.
+
+CORRECTIONS ET CHOIX
+- Fournisseur existant sélectionnable, création rapide dans le formulaire,
+  achat comptant sans fournisseur ; dette interdite sans fournisseur et échéance.
+- Total, payé, reste dû et échéance visibles. Les erreurs réseau conservent le
+  formulaire ; une réponse incertaine fige le payload et la clé pour son rejeu.
+- Reprise dans le même onglet/session via sessionStorage, lié à l'empreinte du
+  commerçant, de la boutique et du jeton. Le jeton brut n'est pas enregistré
+  dans le brouillon. Les réponses tardives d'un ancien contexte sont ignorées.
+- UUID obligatoire sur les écritures HTTP achat, règlement et création fournisseur.
+  Reçu durable unique par (merchant_id, key), avec boutique, type, empreinte du
+  contenu, réponse et auteur. Rejeu identique : même réponse et même identifiant.
+  Réutilisation avec contenu, type ou boutique différent : HTTP 409.
+- Reçu, achat, lignes, règlement, allocations, dette, stock et événements sont
+  validés dans une seule transaction. Toute exception déclenche un rollback.
+- Ordre de verrouillage : commerçant, achat/fournisseur, produits, inventaires.
+  PostgreSQL READ COMMITTED requis ; les autres niveaux sont refusés.
+  Le verrou du commerçant sérialise les écritures concernées ; les achats et
+  lignes payables sont relus sous verrou. Le stock est rechargé une fois sous
+  verrou avant mutation, sans perdre les incréments de lignes répétées.
+- Les paiements refusent les dépassements, achats annulés, fournisseurs étrangers
+  au contexte, dettes agrégées incohérentes et soldes de lignes incohérents.
+  Ils ne modifient pas le stock. La date réelle saisie est normalisée en UTC.
+- Fournisseurs rattachés explicitement à une boutique. Lectures des fournisseurs,
+  achats, règlements et ledger filtrées par commerçant et boutique. Un contexte
+  PWA sans boutique est refusé. Les fournisseurs historiques non rattachés sont
+  indisponibles dans ce parcours, sans attribution automatique de leurs dettes.
+- Cockpit Finance : achats, règlements, dette et stock lus sur les tables vivantes
+  en une requête cohérente, même si les vues analytiques sont périmées. Les flux
+  de paiements suivent paid_at, indépendamment de la date de création de l'achat.
+  Le paiement initial est figé pour mesurer le crédit généré des nouveaux achats.
+  Une annulation ne fait pas disparaître un décaissement réel sans remboursement.
+- Actualisation ciblée après succès confirmé : achats/fournisseurs, Finance et,
+  seulement pour un achat, catalogue/stock. Aucun rafraîchissement des vues
+  matérialisées au milieu de la transaction. Un échec de lecture après succès
+  conserve le succès et propose une actualisation, sans réémettre l'écriture.
+
+VALIDATION FINALE
+- 181 tests Python ciblés réussis et 5 sous-tests réussis.
+- 17 tests PostgreSQL réussis : 12 Lot 3 + 5 non-régression Lot 2.
+- Total : 198 tests Python réussis.
+- 40 tests JavaScript réussis : 11 Lot 3 + les 29 existants.
+- Non-régression : totalité du périmètre de 112 tests Python hors PostgreSQL
+  du Lot 2, ses 5 tests PostgreSQL et ses 29 tests JavaScript rejoués.
+- node --check app/pwa/purchases.js : réussi.
+- git diff --check : réussi.
+- PostgreSQL 16 dans un conteneur jetable, sans volume et avec des schémas de
+  test distincts ; conteneur arrêté et supprimé automatiquement après succès.
+- Avertissements de dépréciation observés (datetime.utcnow, Starlette/httpx),
+  sans échec de test. La suite complète du dépôt n'a pas été exécutée.
+
+CAS COUVERTS
+Comptant sans fournisseur ; crédit et échéance ; paiement partiel puis solde ;
+clé modifiée ; création fournisseur rejouée ; réponse perdue et rechargement ;
+double clic ; paiement rejoué ; deux paiements avec la même clé ; deux paiements
+avec clés distinctes dépassant ensemble le solde ; deux paiements partiels
+valides ; deux achats distincts concurrents ; état ORM du stock chargé avant
+verrouillage ; concurrence annulation/règlement ; rollback après flush ;
+références d'une autre boutique ou d'un autre commerçant ; même clé dans deux
+commerces ; permissions ; contexte PWA sans boutique ; fournisseurs non rattachés ;
+Finance avec vues périmées ; flux à la date réelle du paiement ; réponses tardives.
+
+COMMANDES DE VALIDATION
+.venv/bin/python -m pytest \
+  tests/test_sale_photo_import.py tests/test_sale_photo_extraction.py \
+  tests/test_sale_photo_http_errors.py tests/test_sale_photo_integrity.py \
+  tests/test_sale_photo_integrity_http.py tests/test_schema_bootstrap.py \
+  tests/test_multi_shop_sales_stock.py tests/test_shop_inventory_context.py \
+  tests/test_offline_sale_idempotency.py tests/test_offline_sale_shop_sync.py \
+  tests/test_pwa_product_tenant_isolation.py tests/test_pwa_sales_payments_tenant_isolation.py \
+  tests/test_purchasing_integrity.py tests/test_purchasing_http.py \
+  tests/test_purchase_flow.py tests/test_purchase_multi_item.py \
+  tests/test_purchase_currency_persistence.py tests/test_s2_purchase_express_e2e.py \
+  tests/test_pwa_finance_http.py tests/test_financial_analysis_multishop.py \
+  tests/test_financial_analysis_service.py tests/test_gestion_clients_fournisseurs.py \
+  tests/test_pwa_catalog_customer_tenant_isolation.py tests/test_pwa_rbac_enforcement.py \
+  -q --disable-warnings --tb=short
+
+PHOTO_TEST_POSTGRES_URL=<PostgreSQL jetable local, base lot2_test> \
+  .venv/bin/python -m pytest tests/test_purchasing_postgres.py \
+  tests/test_sale_photo_postgres.py -q --disable-warnings --tb=short
+
+node --test tests/js/*.test.cjs
+node --check app/pwa/purchases.js
+git diff --check
+
+MIGRATION PREPAREE, NON APPLIQUEE
+migrations/20261021_purchasing_integrity.sql
+- purchases.initial_paid_amount nullable, sans invention du paiement initial ancien.
+- suppliers.shop_id nullable avec clé étrangère et index.
+- Unicité fournisseur par commerçant/boutique/nom ; unicité des noms non rattachés
+  conservée par index partiel.
+- Table purchasing_receipts, clé primaire composite et index boutique.
+- Requête d'audit en lecture seule fournie en commentaire pour préparer un
+  rattachement explicite des fournisseurs historiques.
+Aucun backfill ou rattachement n'a été effectué sur les données du pilote.
+
+LIMITES ET PRECONDITIONS
+- Avant mise en service : revue puis application distincte de la migration,
+  rattachement explicite des fournisseurs historiques et rapprochement de leurs
+  dettes. Un fournisseur utilisé par plusieurs boutiques demande un traitement
+  métier spécifique ; aucune affectation arbitraire n'est faite ici.
+- Les anciens achats sans initial_paid_amount conservent un calcul de crédit
+  généré fondé sur leur solde courant. Le paiement initial exact n'est pas inventé.
+- Les appels Python historiques hors contexte PWA conservent leur contrat ; ils
+  doivent transmettre une clé pour bénéficier du reçu de rejeu. Les endpoints
+  HTTP et les appels portant un rôle PWA exigent la clé et la boutique.
+- La sérialisation par commerçant favorise la sûreté ; son débit doit être évalué
+  avant de réduire la granularité des verrous pour une charge élevée.
+- La reprise du brouillon dépend de sessionStorage et de la même session.
+- Les autres agrégats Finance (ventes, dépenses, créances clients) conservent leur
+  source analytique existante ; le correctif porte sur achats/règlements/dettes/stock.
+- Pas de recette visuelle sur appareil mobile réel pendant ce lot.
+
+FICHIERS MODIFIES POUR CE LOT
+app/db/schema.py
+app/db/tenant.py
+app/models/purchase.py
+app/models/supplier.py
+app/schemas/purchase.py
+app/schemas/supplier.py
+app/schemas/supplier_payment.py
+app/routers/purchases.py
+app/routers/supplier_payments.py
+app/routers/suppliers.py
+app/routers/suppliers_ledger.py
+app/routers/pwa_finance.py
+app/services/financial_analysis_service.py
+app/pwa/purchases.js
+app/pwa/index.html
+app/pwa/sw.js
+tests/test_pwa_finance_http.py
+
+FICHIERS CREES POUR CE LOT
+app/models/purchasing_receipt.py
+app/services/purchasing_integrity_service.py
+app/services/purchasing_finance_service.py
+tests/test_purchasing_integrity.py
+tests/test_purchasing_http.py
+tests/test_purchasing_postgres.py
+tests/js/purchasing_integrity.test.cjs
+migrations/20261021_purchasing_integrity.sql
+reports/lot3-achats-fournisseurs.txt
+
+CONTRAINTES RESPECTEES
+Changements préexistants et fichiers non suivis préservés. Aucun reset, stash,
+clean, commit, push ou déploiement. Aucune modification d'Auth V2 ou de Whatzabi
+Online pour ce lot. Aucune écriture sur les données du pilote. Seuls les schémas
+éphémères des bases de test ont été créés ; le script de migration n'a pas été appliqué.

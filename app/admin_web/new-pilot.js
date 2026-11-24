@@ -17,6 +17,91 @@
     "created-merchant-name"
   );
 
+
+  let pendingInvitationUrl = "";
+  let pendingInvitationPhone = "";
+  let pendingMerchantName = "";
+
+  const shareActions = document.getElementById(
+    "invitation-share-actions"
+  );
+  const shareMessage = document.getElementById(
+    "invitation-share-message"
+  );
+  const whatsappButton = document.getElementById(
+    "send-invitation-whatsapp"
+  );
+  const copyButton = document.getElementById(
+    "copy-invitation-link"
+  );
+
+  function prepareInvitationShare(data, payload) {
+    const token = data?.activation?.token;
+
+    if (typeof token !== "string" || token.length < 20) {
+      shareActions.hidden = true;
+      shareMessage.textContent =
+        "Invitation créée, mais lien indisponible. " +
+        "Utilisez la réinvitation depuis la fiche pilote.";
+      return;
+    }
+
+    const phone = String(payload.whatsapp_number || "")
+      .replace(/[^0-9]/g, "");
+
+    if (phone.length < 8 || phone.length > 15) {
+      shareActions.hidden = true;
+      shareMessage.textContent =
+        "Numéro international invalide pour WhatsApp.";
+      return;
+    }
+
+    pendingInvitationUrl =
+      `${window.location.origin}/auth/activation` +
+      `#token=${encodeURIComponent(token)}`;
+
+    pendingInvitationPhone = phone;
+    pendingMerchantName = String(
+      data?.pilot?.merchant_name || payload.merchant_name || "votre commerce"
+    );
+
+    shareActions.hidden = false;
+    shareMessage.textContent =
+      "Invitation prête. Aucun message WhatsApp n'a encore été envoyé.";
+  }
+
+  whatsappButton?.addEventListener("click", () => {
+    if (!pendingInvitationUrl || !pendingInvitationPhone) return;
+
+    const message =
+      `Bonjour, bienvenue sur Whatzabi !\\n\\n` +
+      `Votre espace ${pendingMerchantName} est prêt.\\n` +
+      `Activez votre compte avec ce lien personnel :\\n` +
+      `${pendingInvitationUrl}\\n\\n` +
+      `Ce lien est confidentiel et à usage unique.`;
+
+    const url =
+      `https://wa.me/${pendingInvitationPhone}` +
+      `?text=${encodeURIComponent(message)}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+
+    shareMessage.textContent =
+      "WhatsApp ouvert. Appuyez sur Envoyer pour transmettre l'invitation.";
+  });
+
+  copyButton?.addEventListener("click", async () => {
+    if (!pendingInvitationUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(pendingInvitationUrl);
+      shareMessage.textContent = "Lien copié. À transmettre au commerçant.";
+    } catch {
+      shareMessage.textContent =
+        "Copie impossible. Utilisez le bouton WhatsApp.";
+    }
+  });
+
   function hideMessages() {
     errorBox.hidden = true;
     successBox.hidden = true;
@@ -113,6 +198,8 @@
       }
 
       const pilot = data.pilot || {};
+
+      prepareInvitationShare(data, payload);
 
       createdMerchantName.textContent =
         pilot.merchant_name || payload.merchant_name;

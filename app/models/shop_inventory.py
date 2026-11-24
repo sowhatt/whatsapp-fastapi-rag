@@ -19,5 +19,6 @@ class ShopInventory(Base):
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    initial_stock: Mapped[int | None] = mapped_column(Integer, nullable=True)
     threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

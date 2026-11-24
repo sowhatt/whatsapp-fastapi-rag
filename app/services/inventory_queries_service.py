@@ -253,6 +253,8 @@ def handle_inventory_query(
             if item.status in {
                 "rupture",
                 "rupture_risk",
+                "out_of_stock",
+                "replenish",
             }
         ]
 

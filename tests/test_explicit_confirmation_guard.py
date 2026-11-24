@@ -9,6 +9,7 @@ from app.agents.intent_agent import (
     _to_business_action,
 )
 from app.db.base import Base
+from app.db import schema as _schema  # register all foreign-key targets
 from app.db.tenant import set_current_merchant
 from app.models.customer import Customer
 from app.models.product import Product
@@ -280,3 +281,25 @@ def test_initial_purchase_message_never_writes():
 
     db.refresh(product)
     assert product.stock == 10
+
+
+@pytest.mark.parametrize('paid,expected_remaining', [(None,0),(0,50000),(10000,40000)])
+def test_purchase_cash_preserves_unspecified_zero_and_partial_payment(monkeypatch, paid, expected_remaining):
+    sender = 'confirm-cash-distinction-' + str(paid)
+    pending_actions.pop(sender, None)
+    db = fresh_db(sender)
+    db.add(Supplier(name='Soglo', debt=0))
+    db.add(Product(name='Riz',unit='Sac',price=50000,purchase_price=40000,stock=0))
+    db.commit()
+    action = _to_business_action(AIIntent(type='purchase',supplier='Soglo',product='Riz',
+        unit='Sac',quantity=1,amount=50000,payment='cash',paid_amount=paid,confidence=0.99))
+    monkeypatch.setattr(mo,'detect_intent',lambda text,session:action)
+    result=send(db,sender,'Achat un sac de riz chez Soglo cash')
+    assert result['action']['remaining']==expected_remaining
+    assert db.query(Purchase).count()==0
+    if expected_remaining:
+        assert 'Quand dois-tu payer' in result['reply_text']
+    else:
+        assert 'Confirmer' in result['reply_text']
+    pending_actions.pop(sender,None)
+    db.close()

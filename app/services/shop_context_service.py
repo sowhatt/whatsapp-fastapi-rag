@@ -129,7 +129,51 @@ def set_initial_shop_stock(product: Product, stock: int, db: Session) -> None:
         )
         db.add(inventory)
     inventory.stock = stock
+    inventory.initial_stock = stock
     inventory.threshold = int(product.threshold or 0)
+
+
+def set_shop_stock(
+    product: Product,
+    stock: int,
+    db: Session,
+) -> None:
+    """Remplace le stock courant sans modifier le stock initial déclaré."""
+    if stock < 0:
+        raise ValueError("Le stock ne peut pas être négatif.")
+
+    shop_id = get_current_shop_id(db)
+    merchant_id = (
+        get_current_merchant(db)
+        or getattr(product, "merchant_id", None)
+    )
+
+    if shop_id is None:
+        product.stock = stock
+        return
+
+    if merchant_id is None:
+        raise ValueError(
+            "merchant_id requis pour un stock de boutique"
+        )
+
+    inventory = _inventory_row(
+        product,
+        db,
+        lock=True,
+    )
+
+    if inventory is None:
+        inventory = ShopInventory(
+            merchant_id=merchant_id,
+            shop_id=shop_id,
+            product_id=product.id,
+            stock=stock,
+            threshold=int(product.threshold or 0),
+        )
+        db.add(inventory)
+    else:
+        inventory.stock = stock
 
 
 def record_shop_operation(entity_type: str, entity_id: int, db: Session) -> None:
