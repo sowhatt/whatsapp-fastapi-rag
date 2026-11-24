@@ -283,3 +283,62 @@ def test_invalid_activation_token_is_rejected(invitation_client):
 
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_token"
+
+
+def test_admin_can_reinvite_existing_pending_pilot(invitation_client):
+    first = invitation_client.post(
+        "/admin/pilots/invite",
+        headers=admin_headers(),
+        json=invite_payload(),
+    )
+    assert first.status_code == 201, first.text
+
+    first_data = first.json()
+    merchant_id = first_data["pilot"]["merchant_id"]
+    first_token = first_data["activation"]["token"]
+
+    reinvite = invitation_client.post(
+        f"/admin/pilots/{merchant_id}/reinvite",
+        headers=admin_headers(),
+        json={"invitation_hours": 72},
+    )
+    assert reinvite.status_code == 200, reinvite.text
+
+    data = reinvite.json()
+
+    # On réutilise strictement le pilote existant.
+    assert data["pilot"]["merchant_id"] == merchant_id
+    assert data["pilot"]["merchant_name"] == invite_payload()["merchant_name"]
+    assert data["pilot"]["owner"]["name"] == invite_payload()["owner_name"]
+    assert data["pilot"]["onboarding_status"] == "pending_activation"
+
+    # Une nouvelle invitation est générée.
+    second_token = data["activation"]["token"]
+    assert second_token
+    assert second_token != first_token
+    assert data["activation"]["status"] == "pending_activation"
+    assert data["activation"]["expires_at"] is not None
+
+    # L'ancien lien a été révoqué.
+    old_activation = invitation_client.post(
+        "/auth/activate",
+        json={
+            "token": first_token,
+            "password": PASSWORD,
+        },
+    )
+    assert old_activation.status_code == 410, old_activation.text
+    assert (
+        old_activation.json()["detail"]["code"]
+        == "invitation_revoked"
+    )
+
+    # Le nouveau lien reste utilisable.
+    new_activation = invitation_client.post(
+        "/auth/activate",
+        json={
+            "token": second_token,
+            "password": PASSWORD,
+        },
+    )
+    assert new_activation.status_code == 200, new_activation.text

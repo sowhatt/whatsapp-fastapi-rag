@@ -69,7 +69,7 @@
       pilot.owner?.full_name ||
       pilot.owner_name ||
       pilot.shop_name ||
-      `Pilote #${pilot.merchant_id || pilot.id || "?"}`
+      pilot.owner?.name || `Pilote #${pilot.merchant_id || pilot.id || "?"}`
     );
   }
 
@@ -189,7 +189,7 @@
         }
 
         window.location.href =
-          `/admin/pilots/${encodeURIComponent(merchantId)}`;
+          `/admin/pilots/${encodeURIComponent(merchantId)}/view`;
       });
 
       actionCell.appendChild(action);

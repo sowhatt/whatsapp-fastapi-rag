@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>Activer mon compte | Whatzabi</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: #f6f8fa;
+      color: #172b3a;
+      font: 14px system-ui, -apple-system, sans-serif;
+    }
+    main {
+      width: 100%;
+      max-width: 440px;
+      padding: 32px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px #172b3a0b;
+    }
+    .brand {
+      color: #146c43;
+      font-size: 22px;
+      font-weight: 750;
+    }
+    h1 { font-size: 26px; margin: 24px 0 10px; }
+    p { color: #64748b; line-height: 1.6; }
+    label { display: block; margin: 20px 0 8px; font-weight: 600; }
+    input {
+      width: 100%;
+      height: 46px;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 0 12px;
+      font: inherit;
+    }
+    input:focus { outline: 2px solid #146c43; outline-offset: 2px; }
+    button, .action {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin-top: 24px;
+      border: none;
+      border-radius: 9px;
+      background: #146c43;
+      color: white;
+      text-align: center;
+      font: inherit;
+      font-weight: 650;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    .error { color: #b42318; }
+    .success { color: #146c43; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">Whatzabi</div>
+
+    <section id="activation-section">
+      <h1>Bienvenue sur Whatzabi</h1>
+      <p>Activez votre compte commerçant pour accéder à votre boutique.</p>
+
+      <p id="missing-token" class="error" hidden>
+        Lien d'activation absent ou invalide.
+        Contactez votre administrateur Whatzabi.
+      </p>
+
+      <form id="activation-form">
+        <label for="password">Créer un mot de passe</label>
+        <input id="password" type="password"
+               minlength="8" maxlength="200"
+               autocomplete="new-password" required>
+
+        <label for="confirmation">Confirmer le mot de passe</label>
+        <input id="confirmation" type="password"
+               minlength="8" maxlength="200"
+               autocomplete="new-password" required>
+
+        <p id="message" class="error" role="alert" hidden></p>
+
+        <button id="submit" type="submit">Activer mon compte</button>
+      </form>
+    </section>
+
+    <section id="success-section" hidden>
+      <h1 class="success">Compte activé !</h1>
+      <p>Votre compte est prêt. Vous pouvez maintenant vous connecter.</p>
+      <a class="action" href="/auth/app">Accéder à Whatzabi</a>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      // Le jeton voyage dans le fragment, non transmis au serveur GET.
+      const params = new URLSearchParams(location.hash.slice(1));
+      let token = params.get("token") || "";
+
+      // Retirer immédiatement le jeton de la barre d'adresse.
+      history.replaceState(null, "", location.pathname);
+
+      const form = document.getElementById("activation-form");
+      const message = document.getElementById("message");
+      const button = document.getElementById("submit");
+
+      if (!token || token.length < 20) {
+        form.hidden = true;
+        document.getElementById("missing-token").hidden = false;
+        return;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const password = document.getElementById("password").value;
+        const confirmation = document.getElementById("confirmation").value;
+
+        message.hidden = true;
+
+        if (password !== confirmation) {
+          message.textContent = "Les mots de passe ne correspondent pas.";
+          message.hidden = false;
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Activation en cours…";
+
+        try {
+          const response = await fetch("/auth/activate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ token, password })
+          });
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            const detail = data.detail;
+            throw new Error(
+              typeof detail?.message === "string"
+                ? detail.message
+                : "Activation impossible. Vérifiez votre invitation."
+            );
+          }
+
+          token = "";
+          form.reset();
+
+          document.getElementById("activation-section").hidden = true;
+          document.getElementById("success-section").hidden = false;
+        } catch (error) {
+          message.textContent = error.message;
+          message.hidden = false;
+        } finally {
+          button.disabled = false;
+          button.textContent = "Activer mon compte";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

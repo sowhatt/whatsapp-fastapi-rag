@@ -36,6 +36,14 @@ def admin_new_pilot():
     )
 
 
+@router.get("/admin/pilots/{merchant_id}/view", include_in_schema=False)
+def admin_pilot_detail(merchant_id: int):
+    return FileResponse(
+        ADMIN_WEB_DIR / "pilot-detail.html",
+        media_type="text/html",
+    )
+
+
 @router.get("/admin/dashboard", include_in_schema=False)
 def admin_dashboard():
     return FileResponse(
@@ -68,9 +76,41 @@ def admin_new_pilot_script():
     )
 
 
+@router.get("/admin-web/pilot-detail.js", include_in_schema=False)
+def admin_pilot_detail_script():
+    return FileResponse(
+        ADMIN_WEB_DIR / "pilot-detail.js",
+        media_type="application/javascript",
+    )
+
+
 @router.get("/admin-web/dashboard.js", include_in_schema=False)
 def admin_dashboard_script():
     return FileResponse(
         ADMIN_WEB_DIR / "dashboard.js",
         media_type="application/javascript",
+    )
+
+
+@router.get("/admin-web/tokens.css")
+def admin_design_tokens():
+    return FileResponse(
+        ADMIN_WEB_DIR / "tokens.css",
+        media_type="text/css",
+    )
+
+
+@router.get("/admin-web/components.css", include_in_schema=False)
+def admin_design_components():
+    return FileResponse(
+        ADMIN_WEB_DIR / "components.css",
+        media_type="text/css",
+    )
+
+
+@router.get("/admin-web/layout.css", include_in_schema=False)
+def admin_design_layout():
+    return FileResponse(
+        ADMIN_WEB_DIR / "layout.css",
+        media_type="text/css",
     )

@@ -16,3 +16,5 @@ scripts/__pycache__/
 
 # One-off production data migration
 scripts/merge_legacy_merchant.py
+
+.env.admin.local

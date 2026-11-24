@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Donner accès | Whatzabi Admin</title>
   <link rel="stylesheet" href="/admin-web/admin.css">
+  <link rel="stylesheet" href="/admin-web/tokens.css">
+  <link rel="stylesheet" href="/admin-web/components.css">
+  <link rel="stylesheet" href="/admin-web/layout.css">
 </head>
 
 <body class="admin-body">
@@ -170,6 +173,29 @@
         Le compte pilote est maintenant
         <strong>en attente d'activation</strong>.
       </p>
+
+
+      <div class="admin-form-actions" id="invitation-share-actions" hidden>
+        <button
+          id="send-invitation-whatsapp"
+          type="button"
+          class="admin-primary-button"
+        >
+          Envoyer via WhatsApp
+        </button>
+
+        <button
+          id="copy-invitation-link"
+          type="button"
+          class="admin-secondary-button"
+        >
+          Copier le lien
+        </button>
+      </div>
+
+      <p id="invitation-share-message"
+         role="status"
+         aria-live="polite"></p>
 
       <div class="admin-form-actions">
         <a

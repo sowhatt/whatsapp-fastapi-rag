@@ -90,6 +90,14 @@ def pwa_script():
 
 
 
+@router.get("/offline-sales.js", include_in_schema=False)
+def pwa_offline_sales_script():
+    return FileResponse(
+        PWA_DIR / "offline-sales.js",
+        media_type="application/javascript",
+    )
+
+
 @router.get("/smart-catalog.js", include_in_schema=False)
 def pwa_smart_catalog_script():
     return FileResponse(
@@ -413,4 +421,20 @@ def select_shop(
             shop_id=payload.shop_id,
             role=role,
         ),
+    )
+
+
+@router.get("/activation", include_in_schema=False)
+def activation_page():
+    from fastapi.responses import Response
+
+    html = (PWA_DIR / "activation.html").read_text(encoding="utf-8")
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
