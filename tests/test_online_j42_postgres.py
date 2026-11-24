@@ -192,7 +192,13 @@ def test_concurrent_completion_is_idempotent_with_one_stock_consumption(pg):
         assert db.query(OutboxEvent).filter_by(event_type="commerce.order.completed").count() == 1
         rows = db.query(StockReservation).all()
         assert len(rows) == 2 and sum(r.quantity for r in rows) == 5
-        assert {r.status for r in rows} == {"consumed"}
+        # Soldées par la sortie de stock : une seule sortie malgré deux finalisations simultanées.
+        assert {r.status for r in rows} == {"settled"}
+        from app.models.stock_movement import StockMovement
+        movements = db.query(StockMovement).filter_by(
+            reference_type="online_order", reference_id=order_id, movement_type="online_sale_out",
+        ).all()
+        assert len(movements) == 2 and sum(-m.quantity for m in movements) == 5
 
 
 def test_expiry_changed_while_completion_waits_is_not_consumed(pg):
