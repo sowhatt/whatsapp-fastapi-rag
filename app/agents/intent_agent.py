@@ -529,13 +529,14 @@ def _to_business_action(parsed: AIIntent) -> dict[str, Any] | None:
 
     if parsed.type == "purchase":
         amount = int(data.get("amount") or 0)
-        paid_amount = int(data.get("paid_amount") or 0)
+        paid_amount = (int(data["paid_amount"])
+                       if data.get("paid_amount") is not None else None)
         payment = data.get("payment") or "unknown"
 
         remaining = data.get("remaining")
 
         if remaining is None:
-            if paid_amount > 0:
+            if paid_amount is not None:
                 remaining = max(
                     amount - paid_amount,
                     0,

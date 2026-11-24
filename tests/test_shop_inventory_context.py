@@ -8,7 +8,12 @@ from app.models.merchant import Merchant
 from app.models.product import Product
 from app.models.shop import Shop
 from app.models.shop_inventory import ShopInventory
-from app.services.shop_context_service import adjust_stock, get_effective_stock, set_initial_shop_stock
+from app.services.shop_context_service import (
+    adjust_stock,
+    get_effective_stock,
+    set_initial_shop_stock,
+    set_shop_stock,
+)
 
 
 def make_db():
@@ -81,3 +86,74 @@ def test_no_shop_keeps_legacy_stock_behavior():
     set_current_merchant(db, merchant.id)
     adjust_stock(product, -5, db)
     assert product.stock == 45
+
+def test_current_stock_update_does_not_change_declared_initial_stock():
+    from app.models.merchant import Merchant
+    from app.models.shop import Shop
+    from app.models.product import Product
+    from app.models.shop_inventory import ShopInventory
+    from app.db.tenant import set_current_merchant
+
+    db = make_db()
+
+    merchant = Merchant(
+        whatsapp_number="22900000999",
+        subscription_status="pilot",
+    )
+    db.add(merchant)
+    db.flush()
+
+    shop = Shop(
+        merchant_id=merchant.id,
+        name="Test",
+        code="test",
+    )
+    db.add(shop)
+    db.flush()
+
+    product = Product(
+        merchant_id=merchant.id,
+        name="Coca-Cola",
+        unit="unité",
+        stock=0,
+        threshold=5,
+        price=600,
+        purchase_price=350,
+    )
+    db.add(product)
+    db.flush()
+
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop.id
+
+    set_initial_shop_stock(
+        product,
+        50,
+        db,
+    )
+
+    db.flush()
+
+    inventory = (
+        db.query(ShopInventory)
+        .filter(
+            ShopInventory.shop_id == shop.id,
+            ShopInventory.product_id == product.id,
+        )
+        .one()
+    )
+
+    assert inventory.initial_stock == 50
+    assert inventory.stock == 50
+
+    set_shop_stock(
+        product,
+        33,
+        db,
+    )
+
+    db.flush()
+    db.refresh(inventory)
+
+    assert inventory.initial_stock == 50
+    assert inventory.stock == 33

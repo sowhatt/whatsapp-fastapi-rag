@@ -18,7 +18,9 @@ from app.models.open_tab import OpenTab, OpenTabItem
 from app.models.payment import Payment
 from app.models.product import Product
 from app.models.purchase import Purchase
+from app.models.purchasing_receipt import PurchasingReceipt
 from app.models.sale import Sale
+from app.models.sale_photo_import import SalePhotoImport, SalePhotoDraft
 from app.models.shop_inventory import ShopInventory
 from app.models.shop_operation import ShopOperation
 from app.models.stock_movement import StockMovement
@@ -32,7 +34,10 @@ TENANT_SCOPED_MODELS = (
     Product,
     Category,
     Sale,
+    SalePhotoImport,
+    SalePhotoDraft,
     Purchase,
+    PurchasingReceipt,
     FinancialEntry,
     Payment,
     SupplierPayment,
