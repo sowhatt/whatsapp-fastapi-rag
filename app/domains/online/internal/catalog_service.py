@@ -4,7 +4,9 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.domains.core.public.stock import available_stock
+from app.domains.online.internal.stock_policy import (
+    availability, low_stock_threshold, online_available_stock,
+)
 from app.domains.online.internal.catalog_models import (
     OnlineProductImage,
     OnlineProductPublication,
@@ -157,13 +159,18 @@ def _serialize_product(*, product: Product, publication: OnlineProductPublicatio
             Category.merchant_id == merchant_id,
         ).first()
 
-    current_available = available_stock(product=product, db=db)
+    current_available = online_available_stock(product=product, db=db)
+    state = availability(
+        available=current_available,
+        threshold=low_stock_threshold(merchant_id=merchant_id, db=db),
+    )
     return {
         "id": product.id,
         "name": product.name,
         "unit": product.unit,
         "price": product.price if publication.show_price else None,
         "available": current_available > 0,
+        **state,
         "stock": current_available if publication.show_stock else None,
         "description": publication.description,
         "category": category.name if category else None,

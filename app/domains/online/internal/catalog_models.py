@@ -35,6 +35,8 @@ class OnlineProductPublication(Base):
     seo_title: Mapped[str | None] = mapped_column(String(180), nullable=True)
     seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Surcharge produit du tampon Online (None = valeur de la boutique).
+    stock_buffer_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

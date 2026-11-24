@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func, or_
@@ -7,9 +8,40 @@ from sqlalchemy.orm import Session
 
 from app.domains.core.internal.stock_reservation_model import StockReservation
 from app.models.product import Product
+from app.models.shop_inventory import ShopInventory
 
 
 DEFAULT_RESERVATION_MINUTES = 10
+
+
+@dataclass(frozen=True)
+class StockPolicy:
+    """Règle de lecture du stock vendable pour un canal (Online).
+
+    shop_id : boutique de préparation (stock = ShopInventory) ; None = stock historique Product.stock.
+    buffer : unités non vendables en ligne (absorbe les ventes en caisse concurrentes).
+    fail_closed : configuration ambiguë ou invalide, rien n'est vendable.
+    """
+
+    shop_id: int | None = None
+    buffer: int = 0
+    fail_closed: bool = False
+
+
+def physical_stock(*, product: Product, db: Session, policy: StockPolicy | None = None) -> int:
+    """Stock physique lu pour le canal : ShopInventory si une boutique est désignée."""
+    if policy is not None and policy.shop_id is not None and product.merchant_id is not None:
+        value = (
+            db.query(ShopInventory.stock)
+            .filter(
+                ShopInventory.merchant_id == product.merchant_id,
+                ShopInventory.shop_id == policy.shop_id,
+                ShopInventory.product_id == product.id,
+            )
+            .scalar()
+        )
+        return int(value or 0)
+    return int(product.stock or 0)
 
 
 class ReservationSetError(ValueError):
@@ -129,7 +161,10 @@ def available_stock(
     now: datetime | None = None,
     exclude_source_type: str | None = None,
     exclude_source_id: int | None = None,
+    policy: StockPolicy | None = None,
 ) -> int:
+    if policy is not None and policy.fail_closed:
+        return 0
     if product.merchant_id is None:
         return int(product.stock or 0)
 
@@ -143,7 +178,8 @@ def available_stock(
         exclude_source_type=exclude_source_type,
         exclude_source_id=exclude_source_id,
     )
-    return max(0, int(product.stock or 0) - reserved)
+    buffer = max(0, int(policy.buffer)) if policy is not None else 0
+    return max(0, physical_stock(product=product, db=db, policy=policy) - reserved - buffer)
 
 
 def reserve_stock(
@@ -155,6 +191,7 @@ def reserve_stock(
     source_id: int,
     db: Session,
     minutes: int = DEFAULT_RESERVATION_MINUTES,
+    policy: StockPolicy | None = None,
 ) -> StockReservation:
     if quantity <= 0:
         raise ValueError("La quantité réservée doit être positive.")
@@ -171,7 +208,7 @@ def reserve_stock(
     if product is None:
         raise ValueError("Produit introuvable.")
 
-    available = available_stock(product=product, db=db)
+    available = available_stock(product=product, db=db, policy=policy)
     if quantity > available:
         raise ValueError(
             f"Stock disponible insuffisant pour {product.name} : "

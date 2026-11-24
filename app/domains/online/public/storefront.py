@@ -11,7 +11,9 @@ from app.domains.online.internal.catalog_service import list_online_catalog, sea
 from app.domains.online.foundation import require_business_type, require_capability
 from app.domains.online.foundation.seo import SeoProfile
 from app.models.product import Product
-from app.domains.core.public.stock import available_stock
+from app.domains.online.internal.stock_policy import (
+    availability, low_stock_threshold, online_available_stock,
+)
 
 
 def _store_payload(store) -> dict[str, Any]:
@@ -136,17 +138,18 @@ def read_public_product(
         .first()
     )
 
+    current_available = online_available_stock(product=product, db=db)
     return {
         "id": product.id,
         "name": product.name,
         "unit": product.unit,
         "price": product.price if publication.show_price else None,
-        "available": available_stock(product=product, db=db) > 0,
-        "stock": (
-            available_stock(product=product, db=db)
-            if publication.show_stock
-            else None
+        "available": current_available > 0,
+        **availability(
+            available=current_available,
+            threshold=low_stock_threshold(merchant_id=product.merchant_id, db=db),
         ),
+        "stock": current_available if publication.show_stock else None,
         "description": publication.description,
         "image_url": image.image_url if image else None,
         "currency": store.currency,

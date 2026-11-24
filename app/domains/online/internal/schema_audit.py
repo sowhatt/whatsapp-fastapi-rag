@@ -23,6 +23,9 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "latitude",
         "longitude",
         "is_active",
+        "fulfilment_shop_id",
+        "stock_buffer",
+        "low_stock_threshold",
     },
     "online_product_publications": {
         "id",
@@ -35,6 +38,7 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "seo_slug",
         "seo_title",
         "seo_description",
+        "stock_buffer_override",
     },
     "online_product_images": {
         "id",

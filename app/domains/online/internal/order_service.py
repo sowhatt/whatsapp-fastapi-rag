@@ -18,6 +18,7 @@ from app.shared.outbox import enqueue_domain_event
 from app.models.product import Product
 from app.domains.core.public.transactions import TransactionStatus, update_commerce_transaction
 from app.domains.online.internal.mutation import tenant_mutation
+from app.domains.online.internal.stock_policy import resolve_stock_policy
 from app.shared.tenancy.rls import apply_rls_context
 
 
@@ -525,6 +526,7 @@ def revalidate_order_reservations(
             source_id=order.id,
             db=db,
             minutes=order_reservation_minutes(),
+            policy=resolve_stock_policy(merchant_id=merchant_id, product_id=item.product_id, db=db),
         )
 
     # tenant_mutation rolls back expiry, release and rebuild together on failure.

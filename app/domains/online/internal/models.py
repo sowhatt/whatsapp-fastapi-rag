@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -43,6 +43,11 @@ class OnlineStore(Base):
     postal_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     latitude: Mapped[str | None] = mapped_column(String(40), nullable=True)
     longitude: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    # Pont stock Shop -> Online : boutique de préparation, tampon et seuil "dernières unités".
+    fulfilment_shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"), nullable=True)
+    stock_buffer: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    low_stock_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
