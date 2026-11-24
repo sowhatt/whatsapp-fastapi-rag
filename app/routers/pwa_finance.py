@@ -87,12 +87,15 @@ def finance_overview(
         db=db,
         since=since,
         until=until,
+        live_purchasing=True,
     )
 
     return {
         "merchant_id": int(merchant_id),
         "shop_id": int(shop_id),
         "period": period,
+        "source": "live_operations",
+        "date_basis": "UTC",
         "since": (
             since.isoformat()
             if since is not None
@@ -127,6 +130,8 @@ def finance_overview(
             "supplier_credit_generated": (
                 overview.supplier_credit_generated
             ),
+            "supplier_credit_known": overview.supplier_credit_known,
+            "supplier_credit_unknown_count": overview.supplier_credit_unknown_count,
             "expenses_total": (
                 overview.expenses_total
             ),

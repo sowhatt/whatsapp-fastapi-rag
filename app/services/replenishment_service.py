@@ -40,6 +40,8 @@ def build_replenishment_recommendations(
     metrics = get_inventory_intelligence(
         merchant_id=merchant_id,
         db=db,
+        target_cover_days=target_days,
+        safety_days=safety_days,
     )
 
     recommendations = []
@@ -50,9 +52,7 @@ def build_replenishment_recommendations(
         if daily_demand <= 0:
             continue
 
-        coverage_target = (
-            target_days + safety_days
-        )
+        coverage_target = target_days + safety_days
 
         target_stock = round(
             daily_demand * coverage_target

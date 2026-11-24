@@ -29,6 +29,8 @@ def _overview():
         purchases_total=Decimal("40000"),
         purchases_paid=Decimal("0"),
         supplier_credit_generated=Decimal("40000"),
+        supplier_credit_known=40000,
+        supplier_credit_unknown_count=0,
         expenses_total=Decimal("5000"),
         net_cash_flow=Decimal("4000"),
 
@@ -93,6 +95,7 @@ def test_finance_uses_shop_from_authenticated_token(
         shop_id=None,
         since=None,
         until=None,
+        live_purchasing=False,
     ):
         captured.append(
             {
@@ -184,3 +187,18 @@ def test_finance_router_exposes_no_shop_id_parameter():
     )
 
     assert "shop_id" not in signature.parameters
+
+
+def test_unknown_historical_credit_is_null_in_http_contract(monkeypatch):
+    db = FakeInfoSession()
+    db.info.update(merchant_id=1,pwa_shop_id=2)
+    overview = _overview()
+    overview.supplier_credit_generated = None
+    overview.supplier_credit_known = 4000
+    overview.supplier_credit_unknown_count = 1
+    monkeypatch.setattr(pwa_finance,'get_financial_overview',lambda **kwargs:overview)
+    result = pwa_finance.finance_overview(period='all',db=db)
+    assert result['cashflow']['supplier_credit_generated'] is None
+    assert result['cashflow']['supplier_credit_known'] == 4000
+    assert result['cashflow']['supplier_credit_unknown_count'] == 1
+    assert result['source']=='live_operations'
