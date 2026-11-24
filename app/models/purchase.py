@@ -11,6 +11,7 @@ class Purchase(Base):
     merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
     total_amount: Mapped[int] = mapped_column(Integer, default=0)
+    initial_paid_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     paid_amount: Mapped[int] = mapped_column(Integer, default=0)
     remaining_amount: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="credit")

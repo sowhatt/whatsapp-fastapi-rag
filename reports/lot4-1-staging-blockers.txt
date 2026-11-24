@@ -1,0 +1,351 @@
+WHATZABI SHOP — LOT 4.1 : CORRECTION DES BLOQUANTS STAGING
+Date : 21–22 octobre 2026
+Branche : feat/s2-5-home-drilldowns
+Verdict : NO-GO STAGING — validation historique représentative encore requise.
+
+1. Résultat et limites de la décision
+
+Les quatre tests rouges du Lot 4 sont corrigés. Les correctifs de démarrage,
+Finance, concurrence du stock et crédit historique sont validés sur PostgreSQL synthétique. La procédure
+de rapprochement est livrée et testée, sans rattachement automatique ni réécriture
+de dette. Les cas ambigus restent volontairement bloqués.
+
+La suite verte ne démontre pas l'intégrité des historiques du pilote : aucun de
+ces historiques ni aucune copie anonymisée représentative n'a été consulté.
+B02 ne peut donc pas être déclaré levé opérationnellement dans cette session.
+Le verdict global reste NO-GO, même si les critères techniques locaux passent.
+Aucune ouverture staging, migration distante ou autorisation de déployer implicite.
+
+2. Sécurisation et préservation
+
+Rapport reports/lot4-integration-staging.txt lu intégralement avant modification.
+Git status, branche et diff inspectés. Empreintes de 346 fichiers préexistants et
+copie du diff prises avant travail, hors dépôt pour la copie temporaire.
+18 fichiers préexistants modifiés intentionnellement, 328 inchangés, aucun disparu.
+Les travaux non commités ont été conservés ; aucun reset, stash, clean, commit,
+push ni déploiement Railway. Le sous-projet Whatzabi Online n'a pas été modifié.
+Les fichiers Auth V2 sont inchangés. Les seuls ajouts dans les transitions de
+boutique de la PWA invalident l'affichage Finance ; ni jetons, ni authentification,
+ni droits d'accès n'ont été modifiés.
+Preuve : reports/lot4-1-preservation.json.
+
+Les deux migrations originales et tous les livrables du Lot 4 sont inchangés.
+Aucun accès aux données du pilote, à staging ou à production. DATABASE_URL et
+PHOTO_TEST_POSTGRES_URL ont été remplacées explicitement par une URL locale de
+base synthétique. Les tests PG créent des bases ou schémas UUID jetables, avec
+vérification localhost/127.0.0.1 + nom lot2_test. Aucun volume existant monté.
+
+3. Causes racines et correctifs
+
+B01 — Unicité fournisseur détruite au démarrage
+Le bootstrap recherchait n'importe quelle contrainte UNIQUE contenant name,
+la supprimait, puis rétablissait UNIQUE(merchant_id,name). Deux homonymes dans
+deux boutiques entraînaient alors une UniqueViolation.
+
+Correctif : retrait des trois blocs destructifs fournisseurs/produits/catégories
+qui supprimaient contraintes et index au démarrage. Vérification du schéma
+fournisseur AVANT create_all et les écritures de compatibilité : colonne shop_id,
+unicité merchant/shop/name, index partiel des fournisseurs non rattachés et colonne
+initial_paid_amount. Les unicités restrictives connues sont refusées, sans réparation
+implicite. Un schéma incompatible demande une migration explicite avant démarrage.
+Les introspections portent sur les relations du schéma courant, pas sur un nom
+trouvé arbitrairement dans tous les schémas. La FK produit/catégorie est détectée
+par sa définition pour éviter sa recréation sous un second nom.
+
+Preuves : deux démarrages successifs, contraintes/index métier conservés, autre
+schéma inchangé, homonymes interboutiques acceptés, doublons intraboutique refusés,
+doublons non rattachés refusés. Démarrage prématuré sur historique non migré refusé
+avant toute mutation. Les API conservent leur normalisation des noms et leur garde
+sur les fournisseurs non rattachés ; aucun contournement de ces gardes ajouté.
+
+B02 — Fournisseurs historiques sans boutique
+Le shop_id NULL issu du Lot 3 ne permet pas d'inférer une boutique, notamment
+lorsqu'un fournisseur a des achats dans plusieurs boutiques. Les endpoints scopés
+continuent à les exclure ; ce blocage protège contre un règlement mal attribué.
+
+Livrable : scripts/lot4_1_supplier_reconciliation.sql, lecture seule, à exécuter
+avec scripts/lot4_historical_audit.sql. Il restitue pour chaque fournisseur :
+- identité, commerçant, rattachement actuel, boutiques des opérations ;
+- nombre d'achats et d'annulations, dates extrêmes, scopes invalides/étrangers ;
+- achats actifs, paiements issus des lignes SupplierPayment, payé/restant stockés ;
+- dette recalculée achats actifs moins paiements correspondants ;
+- dette historique et écarts dette/paiements/reste ;
+- nombre de crédits initiaux inconnus et anomalies détaillées du commerçant.
+Les statuts NO_EVIDENCE, AMBIGUOUS, INVALID_SCOPE, BALANCE_MISMATCH et
+REVIEW_REQUIRED ne constituent jamais une instruction automatique de mapping.
+
+Tests : rapprochement 5 000 - 2 000 = 3 000, détection d'un écart de 123,
+fournisseur sans preuve, fournisseur multiboutique, absence de mutation de toutes
+les lignes avant/après audit, rollback d'un mapping synthétique. Les tests Lot 4
+couvrent également achats/lignes/paiements/allocations, tenant étranger et annulation.
+
+B03 — Finance mêlait deux niveaux de fraîcheur
+Achats, dettes et stocks étaient lus en direct, mais ventes, marges et encaissements
+provenaient de vues matérialisées non rafraîchies par l'import papier.
+
+Correctif : le cockpit /pwa/finance/overview lit tous ses agrégats dans un SELECT
+sur les opérations métier, limité au merchant_id et shop_id. Un seul instantané
+SQL couvre ventes, coûts figés, encaissements clients, dépenses, achats, paiements
+fournisseurs, créances, dettes et stocks. Aucun REFRESH ni nouvelle écriture n'est
+ajouté au parcours de vente/import/lecture Finance. Les vues BI ne sont pas modifiées ;
+le chemin historique optionnel continue d'exister pour les usages BI explicites.
+Le paramètre interne live_purchasing sélectionne désormais l'ensemble du cockpit
+live, et non un remplacement partiel des seuls achats.
+
+Règles de dates : chiffre d'affaires et coût à created_at de la vente confirmée ;
+encaissement client à Payment.paid_at, décaissement fournisseur à SupplierPayment.paid_at ;
+dépenses à leur date d'opération. Bornes de période [début, lendemain de fin[ sur
+les timestamps métier UTC existants. Créances/dettes/stocks restent des positions
+courantes, même si une période historique d'activité est sélectionnée.
+Une annulation retire l'activité/la dette, mais ne fabrique pas de remboursement
+d'un paiement réellement enregistré. La même règle existait pour les achats.
+
+Preuve intégrée : achat 5 000, paiements 2 000, dette 3 000, stock valorisé 15 000,
+deux journées papier à 18 000 => CA et encaissements 36 000, flux net 34 000,
+sans rafraîchir les vues BI obsolètes. Jour du 7 avril : CA 18 000, décaissement
+1 000. Autre boutique : zéro. Le cockpit fonctionne aussi sans aucune vue BI.
+Un paiement client différé de 1 500 est compté à sa date réelle et une dépense de
+300 donne un flux de 1 200 ce jour-là. Rollback d'écriture et visibilité après
+commit d'une session distincte vérifiés.
+
+PWA : lecture Finance sans cache, réponse périmée de période/boutique ignorée,
+montants précédents effacés au changement de contexte, Finance déjà ouverte
+rechargée par refresh() après confirmation d'une opération. Les imports papier
+appellent ce refresh(). Tests JavaScript sur les fonctions de production.
+
+Défaut supplémentaire découvert avec psycopg 3 (pilote configuré par l'application) :
+le rapprochement des doublons papier comparait date(sales.created_at) à des VARCHAR
+issus de isoformat(). Les paramètres sont maintenant des objets date, typés DATE ;
+la règle métier de doublon reste identique. Couvert sur SQLite et PostgreSQL.
+
+Défaut de concurrence supplémentaire découvert lors de la dernière répétition :
+un achat et un import papier concurrents pouvaient aboutir à stock 8 au lieu de
+10 + 5 - 2 = 13. L'import verrouillait les lignes, mais un ShopInventory déjà
+chargé dans l'identity map SQLAlchemy conservait stock=10 après le commit de
+l'achat à 15. READ COMMITTED et FOR UPDATE seuls ne rechargent pas cet objet ORM.
+Un nouveau test force cet ordre de façon déterministe et échouait à 8 avant fix.
+Correction : recharger les produits et les stocks concernés sous verrou ; les
+stocks sont rechargés une seule fois avant validation/modifications pour conserver
+les deltas successifs lorsque autoflush est désactivé. Le scénario concurrent
+initial et le scénario déterministe sont inclus dans les résultats finaux.
+Les preuves d'échec restent dans lot4-1-tests-python-stock-race.log et
+lot4-1-tests-stock-reproduction.log. Le passage précédent à 863 succès n'était
+donc pas suffisant ; seules les validations après ce correctif font foi.
+
+B04 — Crédit initial historique confondu avec reste dû courant
+Le fallback coalesce(initial_paid_amount,paid_amount) utilisait le payé ACTUEL
+comme versement initial. Après un règlement ultérieur, le crédit initial diminuait.
+
+Correctif : aucun fallback ni backfill. Si un achat de la période a un versement
+initial inconnu, supplier_credit_generated est NULL, avec supplier_credit_known
+(somme attestée) et supplier_credit_unknown_count. Un agrégat incomplet n'est pas
+présenté comme un total certain. Les dettes courantes restent calculables.
+
+PurchaseRead expose initial_paid_amount, initial_credit_amount et
+subsequent_paid_amount, nullables, ainsi que total_amount, paid_amount,
+remaining_amount et created_at. La PWA affiche explicitement « inconnu » et
+« non déterminables », distingue les montants attestés, et donne accès aux
+règlements datés. La date du premier paiement ne sert jamais de preuve du versement
+initial. Aucun montant historique stocké n'est modifié.
+Preuve : achat 5 000, initial 1 000, ultérieur 1 000 => crédit initial 4 000,
+total payé 2 000, reste 3 000 ; même achat sans snapshot => initial inconnu,
+payé 2 000 et reste 3 000 conservés. Cohorte mixte et filtre de période testés.
+
+4. Les quatre échecs de suite du Lot 4
+
+1) tests/test_correction_montant_paiement.py::test_correction_montant_pendant_attente_paiement
+2) tests/test_explicit_confirmation_guard.py::test_initial_purchase_message_never_writes
+Cause commune : conversion du paid_amount absent en 0 dans _to_business_action.
+Le workflow y voyait un zéro déclaré explicitement, donc une dette à échéance.
+Correction : conserver None. Un achat cash sans partiel est payé intégralement ;
+un zéro explicite ou un partiel reste une dette avec échéance. Les tests vérifient
+l'absence d'écriture avant confirmation et la conservation du montant corrigé.
+Les fixtures enregistrent maintenant tous les modèles FK, afin de fonctionner
+également lorsque ces deux fichiers sont exécutés seuls.
+
+3) tests/test_s2_home_drilldowns.py::test_home_low_stock_card_opens_critical_stock
+L'attente « catalogue » était obsolète depuis Stock 360. Le test exécute maintenant
+le handler de clic réel sur les attributs de la carte et vérifie Stock 360.
+
+4) tests/test_s2_home_drilldowns.py::test_critical_stock_uses_stock_and_threshold
+L'assertion textuelle exacte était obsolète et threshold > 0 masquait les ruptures
+sans seuil. Règle retenue, cohérente avec Stock 360 : stock <= 0 est une rupture ;
+stock positif <= seuil positif est faible. Tests de comportement : zéro, négatif,
+seuil zéro, seuil atteint, stock normal. Aucune assertion simplement supprimée
+pour masquer un défaut ; les deux noms de tests sont conservés.
+
+5. Migrations et rollback
+
+20261020_sale_photo_drafts.sql et 20261021_purchasing_integrity.sql : inchangées.
+Leurs préconditions et caractère non réentrant restent ceux du Lot 4.
+Exécuter ces migrations sur un historique compatible AVANT le nouveau binaire.
+Sur une base réellement vide, create_all installe directement le schéma courant ;
+ne pas rejouer aveuglément les DDL historiques après bootstrap.
+
+Nouvelle migration préparée :
+  migrations/20261021_supplier_shop_uniqueness_repair.sql
+Cible : Lot 3 déjà appliqué, puis unicité abîmée par l'ancien démarrage.
+Pas de changement de données, d'affectation boutique ni de dette. Elle vérifie
+la définition exacte de l'ancienne contrainte connue avant de la retirer,
+rétablit la contrainte par boutique, contrôle l'index partiel Lot 3 et refuse
+un index restrictif inattendu. Toutes les vérifications sont limitées à la relation
+suppliers résolue dans le schéma courant. Transaction unique, verrou advisory,
+verrou table, lock_timeout 3 s, statement_timeout 30 s.
+
+Exécutée et rejouée uniquement dans des bases UUID synthétiques. Rejeu réussi,
+valeurs historiques intégralement conservées. Échec volontaire après modification
+DDL : ancienne contrainte restaurée par rollback, aucune modification partielle.
+Autre échec sur index métier inattendu : index conservé et transaction annulée.
+Les tests Lot 4 vérifient aussi rollback des migrations originales, lock_timeout,
+rejeu après libération de verrou et schéma conforme au modèle.
+
+Pas de down destructif : supprimer shop_id ou les reçus d'idempotence serait
+incompatible avec les nouvelles données. Pour un futur rollback opérationnel,
+utiliser le plan sauvegarde/restauration du Lot 4, avec coupure des écritures et
+réconciliation explicite de toute écriture post-snapshot. La sauvegarde/restauration
+synthétique du Lot 4 n'a pas été rejouée dans ce lot ; le rollback transactionnel
+des migrations et du mapping l'a été. Aucun rollback/migration distant exécuté.
+
+6. Procédure historique à faire valider avant staging
+
+A. Préparer une copie anonymisée représentative autorisée, identifier sa base et
+son schéma, consigner version/migrations et interdire toute connexion au pilote.
+Conserver snapshot et journal avant intervention. Ne jamais lancer la réparation
+ou le mapping sur la base du pilote depuis cette session.
+
+B. Après migrations explicites, dans une même session :
+  BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+  exécuter scripts/lot4_historical_audit.sql ;
+  exécuter scripts/lot4_1_supplier_reconciliation.sql ;
+  exporter les deux résultats ; COMMIT.
+Ces scripts ne contiennent aucune mutation. L'inventaire conserve aussi les
+fournisseurs sans activité, les achats annulés et les soldes sans preuve.
+
+C. Constituer un dossier par fournisseur : identifiant historique, commerçant,
+achats, lignes, paiements, allocations, ShopOperation, boutique(s), solde historique,
+dette recalculée, écarts et origine des crédits initiaux. Chaque écart doit avoir
+une explication documentée. Les contrôles d'allocation et d'appartenance sont
+obligatoires même quand la somme de dette est exacte.
+
+D. Une seule boutique avec preuves concordantes : PROPOSER un mapping nominatif,
+faire valider explicitement les IDs et preuves. Plusieurs boutiques : aucune
+attribution automatique ; préparer une scission revue avec traçabilité des anciens
+et nouveaux fournisseurs, rattacher achats ET paiements au bon groupe. Aucune
+fusion fondée uniquement sur un nom. Pas d'activité/scope manquant/tenant étranger :
+maintenir le dossier bloqué. Une dette d'ouverture nécessite ses propres pièces.
+
+E. Pour un mapping autorisé ultérieurement : transaction bornée, verrouiller les
+fournisseurs/achats concernés, vérifier les préconditions revues, rattacher
+uniquement les lignes approuvées, refaire contrôles et comparaison des totaux
+avant commit. Toute divergence => rollback. Ne pas réécrire Supplier.debt pour
+faire disparaître un écart : correction monétaire séparée, documentée et autorisée.
+Le test de mapping/rollback de ce lot porte uniquement sur les IDs synthétiques.
+
+F. Conserver le rapport avant/après et les signatures métier/techniques. Exiger
+zéro écart inexpliqué, preuve des soldes d'ouverture, recette paiement/rejeu/stock,
+et comportement explicite des crédits initiaux inconnus avant de réexaminer GO.
+
+7. Validation
+
+Environnement : conteneur jetable whatzabi-lot4-1-synthetic, postgres:16-alpine,
+sans volume, port 58448 publié uniquement sur 127.0.0.1 ; pilote psycopg 3.
+Version constatée : PostgreSQL 16.15, aarch64 Alpine. À la fin : zéro base UUID
+Lot 4 et zéro schéma de test restant ; conteneur arrêté et auto-supprimé (--rm).
+Les URL de tests ne sont jamais reprises de la configuration projet.
+
+Résultats finaux (voir traces jointes) :
+- Quatre anciens échecs : 4/4 réussis.
+- Suites métier ciblées : 262 réussis, 602 désélectionnés, 5 sous-tests réussis.
+- PostgreSQL : 50/50 réussis, aucun ignoré (38 Lot 2/3/4 + 12 Lot 4.1), 19,82 s.
+- Python complète : 864 réussis, aucun échec ni ignoré, 5 sous-tests réussis.
+  Durée finale 36,76 s ; 1 047 avertissements.
+- JavaScript : 47/47 réussis, aucun ignoré.
+- Syntaxe des six app/pwa/*.js et git diff --check : réussis.
+Les avertissements Python sont conservés dans les comptes des logs ; ils ne
+constituent pas de nouveaux échecs, mais restent une dette technique.
+
+Commandes reproductibles avec URL_SYNTHETIQUE explicite vers un nouveau conteneur :
+  DATABASE_URL="$URL_SYNTHETIQUE" PHOTO_TEST_POSTGRES_URL="$URL_SYNTHETIQUE" \
+    .venv/bin/python -m pytest tests -q --disable-warnings --tb=short
+  mêmes variables + pytest tests/test_lot4_1_staging_blockers.py \
+    tests/test_lot4_migrations_postgres.py tests/test_purchasing_postgres.py \
+    tests/test_sale_photo_postgres.py -q --disable-warnings --tb=short
+  mêmes variables + pytest tests -k 'supplier or fournisseur or purchas or achat or payment or paiement or sale_photo or finance or financial or multi_shop or isolation' \
+    -q --disable-warnings --tb=short
+  node --test tests/js/*.test.cjs
+  node --check <chacun des six fichiers app/pwa/*.js>
+  git diff --check
+
+Les logs first-targeted et first-full conservent les essais intermédiaires :
+connexion locale d'abord refusée par le sandbox, fixture HTTP à compléter,
+incompatibilité DATE/VARCHAR psycopg 3 FK dupliquée et perte de stock par objet ORM périmé. Ces échecs sont résolus
+dans les traces finales ; aucune erreur intermédiaire n'a été dissimulée.
+
+8. Fichiers modifiés/ajoutés par ce lot
+
+Modifiés par rapport au début de cette session (et non par rapport à HEAD) :
+  app/agents/intent_agent.py
+  app/db/schema.py
+  app/main.py
+  app/pwa/app.js
+  app/pwa/index.html
+  app/pwa/purchases.js
+  app/pwa/sw.js
+  app/routers/pwa_finance.py
+  app/schemas/purchase.py
+  app/services/financial_analysis_service.py
+  app/services/purchasing_finance_service.py
+  app/services/sale_photo_import_service.py
+  tests/js/purchasing_integrity.test.cjs
+  tests/test_correction_montant_paiement.py
+  tests/test_explicit_confirmation_guard.py
+  tests/test_lot4_migrations_postgres.py
+  tests/test_pwa_finance_http.py
+  tests/test_s2_home_drilldowns.py
+
+Nouveaux fichiers fonctionnels :
+  app/services/live_finance_service.py
+  migrations/20261021_supplier_shop_uniqueness_repair.sql
+  scripts/lot4_1_supplier_reconciliation.sql
+  tests/test_lot4_1_staging_blockers.py
+  tests/js/home_drilldowns.test.cjs
+  tests/js/finance_freshness.test.cjs
+
+Preuves/livrables : présent rapport, lot4-1-preservation.json,
+lot4-1-tests-four.log, lot4-1-tests-targeted.log, lot4-1-tests-postgres.log,
+lot4-1-tests-python.log, lot4-1-tests-javascript.log et logs intermédiaires
+(dont reproduction déterministe et répétition ayant révélé la course de stock).
+Les versions app.js/purchases.js et le cache service worker sont incrémentés
+pour distribuer ensemble la présentation corrigée et ses nouveaux champs.
+
+9. Risques résiduels et conditions du GO
+
+B02 reste à lever sur copie anonymisée autorisée : les fixtures synthétiques ne
+prouvent ni le mapping réel, ni les soldes d'ouverture, ni la complétude des
+paiements historiques. Un paiement absent du registre ne peut pas être inventé ;
+il doit apparaître dans le rapprochement. Les fournisseurs non rattachés restent
+inaccessibles aux écritures par boutique tant que leur mapping n'est pas validé.
+
+Les vues BI historiques restent matérialisées et peuvent être obsolètes pour
+leurs autres consommateurs. Le cockpit PWA ne les lit plus. Les modèles n'exposent
+pas de fuseau métier par boutique : les bornes utilisent la convention existante
+des timestamps UTC ; valider le jour métier attendu lors de la recette locale.
+Le libellé API historique customer_credit_generated reste le solde courant des
+ventes de la cohorte, pas un snapshot initial client.
+
+Les patches additifs et UPDATE historiques du bootstrap hors unicités (par exemple
+coûts nuls, numérotation, données marchands) préexistent et ne constituent pas un
+runner de migrations versionné. Leur impact doit être contrôlé sur la copie
+représentative. Aucun registre global de migrations/checksums n'a été introduit.
+La migration corrective suppose un schéma Lot 3 identifiable ; elle échoue
+volontairement devant une forme inattendue au lieu de la réparer arbitrairement.
+
+Pas de mesure de charge représentative du SELECT Finance, ni de recette physique
+Safari iOS/Chrome Android, ni de nouvelle restauration représentative. Les tests
+Node vérifient des comportements, pas l'affichage sur appareil. Les nouveaux
+champs nullables doivent être acceptés par les éventuels autres clients API.
+
+Conclusion opérationnelle : NO-GO STAGING. Les quatre anciens tests rouges et les
+régressions techniques reproduites sont corrigés ; le passage à GO exige encore
+la validation historique documentée, la recette mobile et les validations de mise
+en service prévues par le Lot 4. Aucun accès réel ou déploiement n'a été effectué.
