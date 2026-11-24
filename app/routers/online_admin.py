@@ -13,6 +13,11 @@ from app.domains.online.internal.catalog_service import add_product_image, publi
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
 from app.domains.online.internal.payment_service import update_payment_status
 from app.domains.online.internal.pilot_readiness import pilot_readiness
+from app.domains.online.internal.stock_settings import (
+    read_stock_settings,
+    update_product_stock_settings,
+    update_store_stock_settings,
+)
 from app.domains.online.internal.schema_audit import audit_online_schema
 from app.shared.notifications.model import OnlineNotification
 from app.shared.notifications.push_model import WebPushSubscription
@@ -57,6 +62,18 @@ class StoreUpdatePayload(BaseModel):
     latitude: str | None = Field(default=None, max_length=40)
     longitude: str | None = Field(default=None, max_length=40)
     is_active: bool | None = None
+
+
+class StockSettingsPayload(BaseModel):
+    fulfilment_shop_id: int | None = None
+    stock_buffer: int | None = None
+    low_stock_threshold: int | None = None
+
+
+class ProductStockPayload(BaseModel):
+    stock_mode: str | None = Field(default=None, max_length=20)
+    daily_quantity: int | None = None
+    stock_buffer_override: int | None = None
 
 
 class PublishProductPayload(BaseModel):
@@ -167,6 +184,37 @@ def patch_online_store(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _store_payload(store)
+
+
+@router.get("/merchants/{merchant_id}/stock-settings")
+def read_online_stock_settings(merchant_id: int, db: Session = Depends(get_db)):
+    apply_rls_context(db, merchant_id=merchant_id)
+    return read_stock_settings(merchant_id=merchant_id, db=db)
+
+
+@router.patch("/merchants/{merchant_id}/stock-settings")
+def patch_online_stock_settings(
+    merchant_id: int, payload: StockSettingsPayload, db: Session = Depends(get_db),
+):
+    try:
+        return update_store_stock_settings(
+            merchant_id=merchant_id, db=db, **payload.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/merchants/{merchant_id}/products/{product_id}/stock-settings")
+def patch_online_product_stock_settings(
+    merchant_id: int, product_id: int, payload: ProductStockPayload, db: Session = Depends(get_db),
+):
+    try:
+        return update_product_stock_settings(
+            merchant_id=merchant_id, product_id=product_id, db=db,
+            **payload.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/merchants/{merchant_id}/catalog")

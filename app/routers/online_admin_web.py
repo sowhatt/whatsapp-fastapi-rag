@@ -59,6 +59,7 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
 <div class="shell">
   <div class="top">
     <h1>Whatzabi Online — Commandes</h1>
+    <a href="/online-admin-settings" style="color:#181818">Réglages du stock</a>
     <div class="auth">
       <div class="notif-wrap">
         <button id="notifications-toggle" class="notif-btn" type="button">Notifications <span id="notifications-count" class="notif-count">0</span></button>
@@ -299,3 +300,136 @@ button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:wh
 </html>
         """
     )
+
+
+SETTINGS_PAGE = r"""
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Whatzabi Online — Réglages du stock</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#181818;background:#f6f6f4}
+*{box-sizing:border-box}body{margin:0}.shell{max-width:980px;margin:auto;padding:24px}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:20px}.top h1{font-size:1.4rem;margin:0}
+.auth{display:flex;gap:10px;flex-wrap:wrap}input,select{padding:10px 12px;border:1px solid #d8d8d8;border-radius:10px;background:#fff;font:inherit}
+button{border:0;border-radius:10px;padding:10px 14px;background:#181818;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
+.panel{background:#fff;border:1px solid #e8e8e8;border-radius:16px;padding:18px;margin:14px 0}.panel h2{margin:0 0 4px;font-size:1.1rem}.hint{color:#666;font-size:.9rem;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}label{display:block;font-weight:700;font-size:.88rem;margin-bottom:6px}.field small{display:block;color:#666;font-weight:400;margin-top:5px}
+.alert{background:#fff4d6;border:1px solid #f0d58a;color:#7a5200;border-radius:12px;padding:10px 12px;margin:0 0 14px;font-size:.92rem}.ok{background:#e8f5ec;border-color:#b7dfc3;color:#1a7f37}.err{background:#fdecea;border-color:#f3b8b2;color:#b42318}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px;border-top:1px solid #eee;vertical-align:middle}th{font-size:.8rem;color:#666;border-top:0}td input{width:96px}.pub{font-size:.78rem;color:#888}
+@media(max-width:760px){.grid{grid-template-columns:1fr}table,thead,tbody,tr,td,th{display:block}thead{display:none}tr{border-top:1px solid #eee;padding:10px 0}td{border:0;padding:5px 0}td input,td select{width:100%}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <h1>Réglages du stock en ligne</h1>
+    <div class="auth">
+      <a href="/online-admin-ui" style="align-self:center;color:#181818">← Commandes</a>
+      <input id="merchant-id" type="number" min="1" placeholder="Merchant ID">
+      <input id="admin-token" type="password" placeholder="Admin token">
+      <button id="connect" type="button">Charger</button>
+    </div>
+  </div>
+  <div id="message"></div>
+  <section id="store-panel" class="panel" hidden>
+    <h2>Boutique et seuils</h2>
+    <p class="hint">Ces réglages valent pour toute votre vitrine.</p>
+    <div id="fulfilment-alert"></div>
+    <div class="grid">
+      <div class="field"><label for="fulfilment">Boutique de préparation</label><select id="fulfilment"></select><small>Le stock de cette boutique est celui vendu en ligne.</small></div>
+      <div class="field"><label for="buffer">Tampon (unités gardées pour la caisse)</label><input id="buffer" type="number" min="0"><small>0 = tout le stock est vendable en ligne.</small></div>
+      <div class="field"><label for="threshold">Seuil « Dernières unités »</label><input id="threshold" type="number" min="0"><small>En dessous, la commande est confirmée par vous.</small></div>
+    </div>
+    <p><button id="save-store" type="button">Enregistrer</button></p>
+  </section>
+  <section id="products-panel" class="panel" hidden>
+    <h2>Stock par produit</h2>
+    <p class="hint"><b>Stock suivi</b> : le stock baisse à chaque commande terminée. <b>Quantité du jour</b> : une quantité remise à zéro chaque matin (pain, plats). <b>Sur commande</b> : jamais limité.</p>
+    <table><thead><tr><th>Produit</th><th>Mode</th><th>Quantité du jour</th><th>Tampon produit</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+  </section>
+</div>
+<script>
+(function(){
+  var merchantInput=document.getElementById("merchant-id"),tokenInput=document.getElementById("admin-token"),msg=document.getElementById("message");
+  merchantInput.value=localStorage.getItem("wz_online_merchant")||"";
+  function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c];});}
+  function say(text,kind){msg.innerHTML=text?'<div class="alert '+(kind||"")+'">'+esc(text)+'</div>':"";}
+  function cfg(){return {merchant:merchantInput.value.trim(),token:tokenInput.value.trim()};}
+  async function api(path,options){
+    var c=cfg(),opts=options||{};
+    opts.headers=Object.assign({"X-Admin-Token":c.token,"Content-Type":"application/json"},opts.headers||{});
+    var r=await fetch("/online-admin/merchants/"+c.merchant+path,opts);
+    var body=null;try{body=await r.json();}catch(_){}
+    if(!r.ok)throw new Error((body&&body.detail)||"Erreur "+r.status);
+    return body;
+  }
+  var settings=null;
+  var MODES=[["tracked","Stock suivi"],["daily","Quantité du jour"],["unlimited","Sur commande"]];
+  var STATE_TEXT={
+    ambiguous:"Vous avez plusieurs boutiques : choisissez celle qui prépare les commandes en ligne, sinon rien n'est vendable.",
+    invalid:"La boutique choisie n'est plus active : choisissez-en une autre, sinon rien n'est vendable.",
+    none:"Aucune boutique Shop : le stock du produit est utilisé."
+  };
+  function render(){
+    document.getElementById("store-panel").hidden=false;document.getElementById("products-panel").hidden=false;
+    var sel=document.getElementById("fulfilment");
+    var opts=[];
+    if(settings.fulfilment_state==="none")opts.push('<option value="">Stock du produit (sans boutique)</option>');
+    else opts.push('<option value="">'+(settings.fulfilment_state==="single"?"Ma boutique (automatique)":"— Choisir —")+'</option>');
+    settings.shops.forEach(function(s){opts.push('<option value="'+s.id+'"'+(s.id===settings.fulfilment_shop_id?" selected":"")+">"+esc(s.name)+"</option>");});
+    sel.innerHTML=opts.join("");sel.disabled=settings.fulfilment_state==="none";
+    document.getElementById("buffer").value=settings.stock_buffer;
+    document.getElementById("threshold").value=settings.low_stock_threshold;
+    var warn=STATE_TEXT[settings.fulfilment_state];
+    document.getElementById("fulfilment-alert").innerHTML=warn&&settings.fulfilment_state!=="none"?'<div class="alert">'+esc(warn)+"</div>":"";
+    document.getElementById("rows").innerHTML=settings.products.map(function(p){
+      var modeOpts=MODES.map(function(m){return '<option value="'+m[0]+'"'+(m[0]===p.stock_mode?" selected":"")+">"+m[1]+"</option>";}).join("");
+      return '<tr data-id="'+p.product_id+'"><td>'+esc(p.name)+(p.is_published?"":' <span class="pub">(non publié)</span>')+'</td>'
+        +'<td><select class="mode"'+(p.is_published?"":" disabled")+">"+modeOpts+"</select></td>"
+        +'<td><input class="daily" type="number" min="0" value="'+(p.daily_quantity==null?"":p.daily_quantity)+'"'+(p.stock_mode==="daily"?"":" disabled")+"></td>"
+        +'<td><input class="override" type="number" min="0" placeholder="défaut" value="'+(p.stock_buffer_override==null?"":p.stock_buffer_override)+'"'+(p.is_published?"":" disabled")+"></td>"
+        +'<td><button class="save-row" type="button"'+(p.is_published?"":" disabled")+">Enregistrer</button></td></tr>";
+    }).join("");
+  }
+  function num(id){var v=document.getElementById(id).value.trim();return v===""?null:Number(v);}
+  async function load(){
+    var c=cfg();if(!c.merchant||!c.token){say("Renseignez Merchant ID et Admin token.");return;}
+    localStorage.setItem("wz_online_merchant",c.merchant);
+    try{settings=await api("/stock-settings");say("");render();}catch(e){say(e.message,"err");}
+  }
+  document.getElementById("connect").addEventListener("click",load);
+  document.getElementById("save-store").addEventListener("click",async function(){
+    var shop=document.getElementById("fulfilment").value;
+    var body={stock_buffer:num("buffer"),low_stock_threshold:num("threshold")};
+    if(settings.fulfilment_state!=="none")body.fulfilment_shop_id=shop===""?null:Number(shop);
+    try{settings=await api("/stock-settings",{method:"PATCH",body:JSON.stringify(body)});render();say("Réglages enregistrés.","ok");}catch(e){say(e.message,"err");}
+  });
+  document.getElementById("rows").addEventListener("change",function(event){
+    if(!event.target.classList.contains("mode"))return;
+    var row=event.target.closest("tr");row.querySelector(".daily").disabled=event.target.value!=="daily";
+  });
+  document.getElementById("rows").addEventListener("click",async function(event){
+    var button=event.target.closest(".save-row");if(!button)return;
+    var row=button.closest("tr"),id=row.dataset.id;
+    var mode=row.querySelector(".mode").value;
+    var body={stock_mode:mode,stock_buffer_override:row.querySelector(".override").value===""?null:Number(row.querySelector(".override").value)};
+    body.daily_quantity=mode==="daily"?(row.querySelector(".daily").value===""?null:Number(row.querySelector(".daily").value)):null;
+    button.disabled=true;
+    try{var updated=await api("/products/"+id+"/stock-settings",{method:"PATCH",body:JSON.stringify(body)});
+      settings.products=settings.products.map(function(p){return p.product_id===updated.product_id?updated:p;});render();say("Produit enregistré.","ok");
+    }catch(e){say(e.message,"err");button.disabled=false;}
+  });
+  if(merchantInput.value)tokenInput.focus();
+})();
+</script>
+</body>
+</html>
+"""
+
+
+@router.get("/online-admin-settings", response_class=HTMLResponse)
+def online_admin_settings_ui():
+    return HTMLResponse(SETTINGS_PAGE)
