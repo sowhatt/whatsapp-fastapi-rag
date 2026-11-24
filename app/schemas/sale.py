@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -11,11 +11,20 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    customer_id: int
+    customer_id: int | None = None
     items: list[SaleItemCreate]
     paid_amount: int = 0
     payment_channel: str = "cash"
     due_date: date | None = None
+
+    # Identifiant immuable généré côté PWA pour une vente offline.
+    # None pour les ventes online classiques.
+    offline_sale_id: str | None = None
+
+
+class OfflineSaleSyncCreate(BaseModel):
+    shop_id: int
+    sale: SaleCreate
 
 
 class SaleRead(BaseModel):
@@ -27,5 +36,7 @@ class SaleRead(BaseModel):
     remaining_amount: int
     status: str
     due_date: date | None = None
+    offline_sale_id: str | None = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}

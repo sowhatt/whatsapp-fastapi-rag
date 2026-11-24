@@ -16,7 +16,7 @@ class FinancialOverview:
 
     purchases_total: int
     purchases_paid: int
-    supplier_credit_generated: int
+    supplier_credit_generated: int | None
 
     expenses_total: int
 
@@ -37,6 +37,9 @@ class FinancialOverview:
     estimated_current_liabilities: int
     estimated_net_position: int
 
+    supplier_credit_known: int | None = None
+    supplier_credit_unknown_count: int = 0
+
 
 def _integer(value) -> int:
     return int(value or 0)
@@ -46,121 +49,172 @@ def get_financial_overview(
     *,
     merchant_id: int,
     db: Session,
+    shop_id: int | None = None,
     since: date | None = None,
     until: date | None = None,
+    live_purchasing: bool = False,
 ) -> FinancialOverview:
-    conditions = [
-        "merchant_id = :merchant_id"
-    ]
+    """
+    Retourne la situation financière de gestion.
 
-    params = {
-        "merchant_id": merchant_id,
-    }
+    shop_id=None:
+        vue consolidée historique du commerçant.
 
-    if since is not None:
-        conditions.append(
-            "business_date >= :since"
+    shop_id=<id>:
+        vue strictement limitée à la boutique sélectionnée.
+    """
+
+    # The historical flag now selects the whole live cockpit, never a mix of
+    # materialized sales and live purchases. Keep the BI path for legacy reports.
+    if live_purchasing and shop_id is not None:
+        from app.services.live_finance_service import live_financial_metrics
+        activity = live_financial_metrics(db, merchant_id, shop_id, since, until)
+        customers = activity
+        suppliers = {"payables": activity["supplier_payables"]}
+        stock = activity
+    else:
+        if shop_id is None:
+            daily_view = "mv_daily_business_metrics"
+            customer_view = "mv_customer_financial_position"
+            supplier_view = "mv_supplier_financial_position"
+            stock_view = "mv_stock_analytics"
+        else:
+            daily_view = "mv_daily_business_metrics_by_shop"
+            customer_view = "mv_customer_financial_position_by_shop"
+            supplier_view = "mv_supplier_financial_position_by_shop"
+            stock_view = "mv_stock_analytics_by_shop"
+
+        activity_conditions = [
+            "merchant_id = :merchant_id"
+        ]
+
+        position_conditions = [
+            "merchant_id = :merchant_id"
+        ]
+
+        params = {
+            "merchant_id": merchant_id,
+        }
+
+        if shop_id is not None:
+            activity_conditions.append(
+                "shop_id = :shop_id"
+            )
+            position_conditions.append(
+                "shop_id = :shop_id"
+            )
+            params["shop_id"] = shop_id
+
+        if since is not None:
+            activity_conditions.append(
+                "business_date >= :since"
+            )
+            params["since"] = since
+
+        if until is not None:
+            activity_conditions.append(
+                "business_date <= :until"
+            )
+            params["until"] = until
+
+        activity_where = " AND ".join(
+            activity_conditions
         )
-        params["since"] = since
 
-    if until is not None:
-        conditions.append(
-            "business_date <= :until"
+        position_where = " AND ".join(
+            position_conditions
         )
-        params["until"] = until
 
-    where = " AND ".join(conditions)
+        activity = db.execute(
+            text(f"""
+                SELECT
+                    COALESCE(SUM(sales_total), 0)
+                        AS sales_total,
 
-    activity = db.execute(
-        text(f"""
-            SELECT
-                COALESCE(SUM(sales_total), 0)
-                    AS sales_total,
+                    COALESCE(SUM(sales_paid), 0)
+                        AS sales_paid,
 
-                COALESCE(SUM(sales_paid), 0)
-                    AS sales_paid,
+                    COALESCE(SUM(sales_credit), 0)
+                        AS customer_credit_generated,
 
-                COALESCE(SUM(sales_credit), 0)
-                    AS customer_credit_generated,
+                    COALESCE(SUM(purchases_total), 0)
+                        AS purchases_total,
 
-                COALESCE(SUM(purchases_total), 0)
-                    AS purchases_total,
+                    COALESCE(SUM(purchases_paid), 0)
+                        AS purchases_paid,
 
-                COALESCE(SUM(purchases_paid), 0)
-                    AS purchases_paid,
+                    COALESCE(SUM(purchases_credit), 0)
+                        AS supplier_credit_generated,
 
-                COALESCE(SUM(purchases_credit), 0)
-                    AS supplier_credit_generated,
+                    COALESCE(SUM(expenses_total), 0)
+                        AS expenses_total,
 
-                COALESCE(SUM(expenses_total), 0)
-                    AS expenses_total,
+                    COALESCE(SUM(cogs), 0)
+                        AS cogs,
 
-                COALESCE(SUM(cogs), 0)
-                    AS cogs,
+                    COALESCE(SUM(gross_margin), 0)
+                        AS gross_margin,
 
-                COALESCE(SUM(gross_margin), 0)
-                    AS gross_margin,
+                    COALESCE(SUM(net_cash_flow), 0)
+                        AS net_cash_flow
 
-                COALESCE(SUM(net_cash_flow), 0)
-                    AS net_cash_flow
+                FROM {daily_view}
+                WHERE {activity_where}
+            """),
+            params,
+        ).mappings().one()
 
-            FROM mv_daily_business_metrics
-            WHERE {where}
-        """),
-        params,
-    ).mappings().one()
+        customers = db.execute(
+            text(f"""
+                SELECT
+                    COALESCE(
+                        SUM(outstanding_amount),
+                        0
+                    ) AS receivables,
 
-    customers = db.execute(
-        text("""
-            SELECT
-                COALESCE(
-                    SUM(outstanding_amount),
-                    0
-                ) AS receivables,
+                    COALESCE(
+                        SUM(overdue_amount),
+                        0
+                    ) AS overdue
 
-                COALESCE(
-                    SUM(overdue_amount),
-                    0
-                ) AS overdue
+                FROM {customer_view}
+                WHERE {position_where}
+            """),
+            params,
+        ).mappings().one()
 
-            FROM mv_customer_financial_position
-            WHERE merchant_id = :merchant_id
-        """),
-        {"merchant_id": merchant_id},
-    ).mappings().one()
+        suppliers = db.execute(
+            text(f"""
+                SELECT
+                    COALESCE(
+                        SUM(outstanding_amount),
+                        0
+                    ) AS payables
 
-    suppliers = db.execute(
-        text("""
-            SELECT
-                COALESCE(
-                    SUM(outstanding_amount),
-                    0
-                ) AS payables
+                FROM {supplier_view}
+                WHERE {position_where}
+            """),
+            params,
+        ).mappings().one()
 
-            FROM mv_supplier_financial_position
-            WHERE merchant_id = :merchant_id
-        """),
-        {"merchant_id": merchant_id},
-    ).mappings().one()
+        stock = db.execute(
+            text(f"""
+                SELECT
+                    COALESCE(
+                        SUM(stock_value),
+                        0
+                    ) AS stock_value,
 
-    stock = db.execute(
-        text("""
-            SELECT
-                COALESCE(
-                    SUM(stock_value),
-                    0
-                ) AS stock_value,
+                    COALESCE(
+                        SUM(potential_sales_value),
+                        0
+                    ) AS potential_sales_value
 
-                COALESCE(
-                    SUM(potential_sales_value),
-                    0
-                ) AS potential_sales_value
-
-            FROM mv_stock_analytics
-            WHERE merchant_id = :merchant_id
-        """),
-        {"merchant_id": merchant_id},
-    ).mappings().one()
+                FROM {stock_view}
+                WHERE {position_where}
+            """),
+            params,
+        ).mappings().one()
 
     sales_total = _integer(
         activity["sales_total"]
@@ -226,9 +280,12 @@ def get_financial_overview(
         purchases_paid=_integer(
             activity["purchases_paid"]
         ),
-        supplier_credit_generated=_integer(
-            activity["supplier_credit_generated"]
+        supplier_credit_generated=(
+            _integer(activity["supplier_credit_generated"])
+            if activity["supplier_credit_generated"] is not None else None
         ),
+        supplier_credit_known=activity.get("supplier_credit_known"),
+        supplier_credit_unknown_count=activity.get("supplier_credit_unknown_count", 0),
 
         expenses_total=_integer(
             activity["expenses_total"]

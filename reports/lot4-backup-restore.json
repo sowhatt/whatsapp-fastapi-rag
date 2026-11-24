@@ -1,0 +1,30 @@
+{
+  "postgresql": "16",
+  "tables": 35,
+  "sequences": 33,
+  "nonempty_tables": {
+    "merchants": 1,
+    "payments": 1,
+    "payment_allocations": 1,
+    "sale_items": 1,
+    "purchase_items": 1,
+    "purchases": 1,
+    "purchasing_receipts": 2,
+    "sale_photo_drafts": 1,
+    "suppliers": 2,
+    "shops": 2,
+    "sale_photo_imports": 1,
+    "shop_inventories": 1,
+    "shop_operations": 2,
+    "stock_movements": 2,
+    "supplier_payment_allocations": 2,
+    "supplier_payments": 2,
+    "transaction_events": 3,
+    "products": 1,
+    "sales": 1
+  },
+  "all_rows_and_sequences_identical": true,
+  "purchase_payment_photo_replays_preserved": true,
+  "replays_mutated_data": false,
+  "dump_sha256": "c4141d8dfd95ddd425369a38442ce5e60371d3c5dfa7bd1b6fd2e5218f417e29"
+}

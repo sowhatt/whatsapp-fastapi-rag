@@ -1,0 +1,533 @@
+WHATZABI SHOP — LOT 4.2
+Réconciliation historique et préparation du staging
+Finalisation : 25 octobre 2026
+Branche constatée : feat/s2-5-home-drilldowns (2 commits locaux d’avance).
+
+VERDICT : GO TECHNIQUE SUR DONNÉES SYNTHÉTIQUES ; NO-GO STAGING DÉFINITIF.
+
+Le diagnostic, les migrations existantes, les rollbacks et la restauration sont
+validés sur PostgreSQL isolé. Aucune donnée historique réelle ou représentative
+autorisée n’a été consultée. Aucun mapping métier réel n’a été établi ni appliqué.
+Le GO technique ne vaut ni autorisation de connexion réelle ni déploiement.
+
+890 tests Python réussis, dont 76 PostgreSQL ; 5 sous-tests réussis.
+47 tests JavaScript réussis. Aucun test ignoré dans la suite finale.
+364 fichiers préexistants empreintés : identiques après intervention.
+Aucun changement applicatif ou de migration ; uniquement des ajouts Lot 4.2.
+
+1. PÉRIMÈTRE, PREUVES ET LIMITES
+
+Références lues : reports/lot4-integration-staging.txt,
+reports/lot4-1-staging-blockers.txt, reports/lot3-achats-fournisseurs.txt.
+Les limites Finance et crédit initial du rapport Lot 3 sont corrigées par le
+Lot 4.1 ; le présent rapport se fonde sur le code courant et la suite rejouée.
+
+Nouveaux fichiers fonctionnels :
+  scripts/lot4_2_historical_reconciliation.py
+  tests/test_lot4_2_historical_reconciliation.py
+Preuves : présent rapport, lot4-2-preservation.json,
+lot4-2-tests-python.log, lot4-2-tests-javascript.log.
+Traces intermédiaires conservées : lot4-2-tests-diagnostic-first.log et
+lot4-2-tests-postgres.log. Elles ne sont PAS les résultats finaux.
+
+Aucun accès aux bases pilotes, staging ou production ; aucun Railway ; aucun
+reset, stash, clean, checkout, commit ou push. Aucun changement Whatzabi Online.
+Les seuls CREATE/UPDATE/DELETE/DROP exécutés concernent les jeux synthétiques,
+les bases/schémas UUID et rôles éphémères du conteneur créé pour cette mission.
+Le diagnostic lui-même n’exécute aucune écriture de données ou de schéma.
+
+2. CARTOGRAPHIE TECHNIQUE ET ISOLATION
+
+Notation : -> clé étrangère réelle ; ~> référence logique sans FK.
+Les PK sont id, sauf exceptions précisées. Le schéma historique exact d’une
+copie réelle reste à inventorier ; la cartographie décrit les modèles courants.
+
+merchants
+  Racine tenant ; identité WhatsApp unique. Aucune identité exportée par l’audit.
+shops -> merchants
+  merchant_id obligatoire ; UNIQUE(merchant_id,code).
+merchant_users -> merchants
+user_shop_memberships -> merchant_users, shops
+  UNIQUE(user_id,shop_id), rôle et activation ; autorisations établies par les
+  dépendances PWA/RBAC. La cohérence utilisateur/boutique n’est pas une FK composée.
+
+suppliers -> merchants, shops
+  merchant_id et shop_id historiques nullables ; dette entière stockée dans debt.
+  UNIQUE(merchant_id,shop_id,name) ; index partiel UNIQUE(merchant_id,name)
+  WHERE shop_id IS NULL. Les noms ne constituent pas une identité interboutiques.
+  Les NULL merchant_id conservent la sémantique PostgreSQL des unicités : ils
+  exigent une revue préalable, pas une déduction automatique d’appartenance.
+
+purchases -> merchants, suppliers
+  Pas de shop_id direct. merchant_id/supplier_id nullables historiquement.
+  total_amount, paid_amount, remaining_amount en entiers XOF ; original_amount,
+  original_currency et exchange_rate documentent la devise source, sans modifier
+  la devise comptable de total_amount. initial_paid_amount nullable est le
+  snapshot initial, pas le payé courant. status, échéance et annulation conservés.
+purchase_items -> purchases, products
+  Quantité, coût, montant, payé et restant par ligne ; pas de merchant_id/shop_id.
+supplier_payments -> merchants, purchases, suppliers
+  purchase_id obligatoire, supplier_id nullable pour les achats cash anonymes.
+  amount et paid_at ; les versements initiaux sont déjà des SupplierPayment.
+supplier_payment_allocations -> supplier_payments, purchase_items
+  Ventilation du paiement ; aucune FK ne garantit que les deux parents portent
+  le même purchase_id. L’audit contrôle parenté, positivité et sommes par paiement
+  ET par ligne. Il n’y a pas de registre distinct des soldes d’ouverture.
+
+shop_operations -> merchants, shops, merchant_users
+  UNIQUE(entity_type,entity_id) ; entity_id ~> achat, vente, dépense, etc.
+  Pour un achat, c’est la preuve de boutique. Son absence ne signifie pas
+  « boutique principale ». La référence polymorphe n’a pas de FK vers l’entité.
+products -> merchants, categories
+  Catalogue partagé entre boutiques du même commerce ; ancien stock global.
+shop_inventories -> merchants, shops, products
+  UNIQUE(shop_id,product_id) ; stock courant et initial_stock nullable.
+  Le stock d’une boutique ne se déduit pas de products.stock.
+stock_movements -> merchants, products
+  reference_type/reference_id ~> purchase ou sale ; pas de shop_id direct.
+  Boutique retrouvée via ShopOperation de l’entité ; mouvement sans provenance,
+  tenant divergent ou type non résolu signalé, jamais attribué par défaut.
+transaction_events -> merchants
+  Journal logique entity_type/entity_id, sans FK polymorphe ; source de preuve
+  complémentaire à consulter lors d’une revue autorisée, pas crédit d’ouverture.
+
+sales -> merchants, customers ; sale_items -> sales, products
+sale_photo_imports -> merchants, shops, sales
+  UNIQUE(merchant_id,shop_id,source_sha256,row_number), payload_hash,
+  stock_applied. Un import papier historique ne décrémente pas nécessairement
+  le stock courant ; ne jamais rejouer ses mouvements pour « réparer » un solde.
+sale_photo_drafts -> merchants, shops, merchant_users
+  PK UUID texte ; CHECK confirmation totalement absente ou totalement complète
+  (confirmed_at, confirmation_hash, response, audit) ; portée boutique/session.
+purchasing_receipts -> merchants, shops, merchant_users
+  PK(merchant_id,key) ; kind, payload_hash et réponse durable. La même clé doit
+  conserver contenu, boutique et type. Reçus à préserver lors de toute restauration.
+
+Isolation effective :
+- app/db/tenant.py ajoute le filtre merchant_id aux SELECT ORM des modèles
+  enregistrés lorsque le contexte existe. Il ne sécurise pas le SQL brut, ni
+  une session sans tenant, ni le bypass explicite ; les lignes/allocations sont
+  protégées via leurs parents et les services, pas par un filtre tenant direct.
+- purchasing_integrity_service filtre les fournisseurs par merchant/shop,
+  et les achats via ShopOperation merchant/shop. Les fournisseurs NULL shop sont
+  exclus du parcours PWA. Les routes vérifient permissions et boutique active.
+- Le verrou commerçant sérialise achat/règlement ; ordre commun commerçant,
+  achat/fournisseur, produits, inventaires. READ COMMITTED imposé aux écritures.
+  Reçus, dette, stock, allocations et événements sont dans la même transaction.
+- Les FK sont simples ; aucune RLS ni FK composée d’appartenance n’est démontrée
+  par les modèles/migrations. Le rapport JSON indique relrowsecurity effectif.
+  Les tests montrent qu’un SQL privilégié peut créer une parenté inter-tenant
+  malgré les FK. Le diagnostic la signale, les API refusent les accès hors scope.
+  On ne peut donc pas certifier une isolation absolue des données historiques
+  inconnues : nettoyage revu et contrôle des privilèges SQL restent obligatoires.
+- Les CHECK financiers sont principalement applicatifs : total/payé/restant,
+  allocations et statut doivent être audités même si les FK sont valides.
+
+3. OUTIL DE DIAGNOSTIC EN LECTURE SEULE
+
+Outil autonome : scripts/lot4_2_historical_reconciliation.py.
+Il n’importe ni l’application, ni sa configuration, ni son bootstrap, et ne lit
+pas .env. Aucune URL projet n’est choisie implicitement. Il ne fournit aucun
+endpoint tenant : c’est un outil administratif destiné à une copie autorisée.
+
+Utilisation FUTURE, après autorisation distincte de la copie :
+  Définir LOT42_AUDIT_DATABASE_URL via un gestionnaire de secrets approprié,
+  sans afficher la valeur ni la mettre dans une commande enregistrée.
+  .venv/bin/python scripts/lot4_2_historical_reconciliation.py \
+    --authorised-isolated-copy --schema public > audit-restreint.json
+
+Le drapeau atteste l’autorisation obtenue par l’opérateur ; ce n’est pas un
+mécanisme d’identification fiable du serveur. Contrôler la cible indépendamment.
+Ne jamais utiliser ce drapeau comme autorisation implicite d’une base réelle.
+
+Garanties et contrat :
+- Une connexion PostgreSQL, REPEATABLE READ, SET TRANSACTION READ ONLY avant
+  toute lecture métier, puis rollback systématique, y compris sur exception.
+- SELECT à colonnes explicites, schéma validé et qualifié, search_path réduit
+  à pg_catalog ; pas de SELECT *, SQL fourni par utilisateur, ORM ou DML/DDL.
+- statement_timeout 30 s, lock_timeout 3 s, connect_timeout CLI 5 s.
+- Un rôle limité à CONNECT, USAGE du schéma et SELECT est recommandé ; ce rôle
+  a été réellement testé. Une tentative d’UPDATE échoue par privilèges (42501)
+  et dans la transaction d’audit par lecture seule (25006).
+- JSON : suppliers, by_shop_supplier, purchases, findings, snapshot et inventaire
+  des tables/contraintes/RLS. Les achats cash sans fournisseur restent visibles
+  dans purchases. Les références sont techniques, jamais des noms ou téléphones.
+- Aucun contenu de photo, payload, session, note, numéro de téléphone, secret ou
+  URL exporté. Les erreurs de connexion sont expurgées. Les IDs/montants restent
+  des données financières à accès restreint, pas un export public anonymisé.
+- Exit 0 : audit complet sans finding ; 2 : audit complet avec findings ;
+  3 : échec de connexion/schéma/lecture, résultat incomplet non publié.
+  Erreur d’arguments : 2 sans rapport. Vérifier la présence d’un JSON complet.
+  Aucun code de sortie n’autorise staging : le verdict JSON reste soumis à revue.
+- Précondition : schéma après Lot 2/3 et tables de base présentes. Le schéma
+  prémigration est refusé sans mutation ; ne pas lancer le bootstrap pour le
+  rendre artificiellement compatible avant d’avoir audité les préconditions.
+- Les lignes sont chargées en mémoire dans un seul instantané. Volumétrie,
+  mémoire et durée totale à mesurer sur copie représentative ; timeout par
+  requête, pas SLA global. Ne pas lancer une longue lecture sur une base pilote.
+
+4. RÈGLES DE RÉCONCILIATION FINANCIÈRE
+
+Pour chaque achat non annulé, en XOF entiers :
+  T = total_amount ; P = somme des supplier_payments.amount liés à cet achat.
+  I = initial_paid_amount si attesté, sinon NULL.
+  Paiements ultérieurs U = P - I si I connu, sinon NULL.
+  Total réglé = P (NE PAS calculer I + P, qui compterait deux fois l’initial).
+  Reste dû calculé R = T - P ; ne pas plafonner à zéro un montant incohérent.
+  Crédit initial de l’achat C = T - I si I connu, sinon NULL.
+  Écart fournisseur = suppliers.debt - somme des R des achats actifs.
+
+Contrôles indépendants : payé stocké = P ; restant stocké = R ; T = payé + reste ;
+sommes de lignes = en-tête ; somme d’allocations = paiement ; allocations de
+chaque ligne = payé de la ligne ; quantité x coût = montant de ligne ; montants
+non négatifs, paiement positif daté, versement initial entre zéro et min(T,P).
+Un statut inconnu, trop-payé ou allocation au mauvais achat produit une anomalie.
+
+Les achats annulés n’alimentent ni achat actif ni dette courante. Leurs paiements
+restent exposés séparément dans cancelled_payments : aucune annulation n’invente
+un remboursement. total_settled du regroupement porte sur les achats actifs ;
+le décaissement toutes opérations = total_settled + cancelled_payments.
+
+Les sommes sont groupées par fournisseur/boutique prouvée, pas par nom.
+Le groupe shop_id=NULL et attribution=QUARANTINED conserve les opérations dont
+le scope achat/fournisseur/paiement est incohérent. evidence_shop_id montre la
+preuve de l’opération sans la transformer en attribution valide.
+Les autres anomalies détaillées restent bloquantes même si un scope est connu.
+
+suppliers.debt est GLOBAL au fournisseur. S’il est partagé entre boutiques,
+aucune dette historique n’est recopiée ou répartie sur les groupes :
+historical_debt et debt_difference par boutique sont NULL. Le total historique
+et son écart restent visibles une seule fois au niveau fournisseur, avec
+raw_calculated_due et attribution_valid. Ne pas sommer les écarts NULL comme zéro.
+Un fournisseur sans shop mais avec une unique preuve concordante peut présenter
+un rapprochement provisoire par boutique ; candidate_shop_id n’est qu’une
+proposition pour revue, jamais une instruction d’écriture.
+
+Cohorte mixte : un seul I inconnu rend initial_paid_amount, subsequent_payments
+et initial_credit agrégés NULL. known_initial_paid / known_initial_credit
+conservent les sous-totaux attestés ; unknown_initial_count mesure l’incomplétude.
+La date du premier paiement ne sert jamais de preuve du versement initial.
+
+Distinction essentielle : crédit initial d’un achat != solde d’ouverture du
+compte fournisseur. Aucun registre d’ouverture probant n’existe dans ce schéma.
+opening_balance=NULL, opening_balance_status=UNKNOWN_NO_LEDGER, même si l’écart
+est nul. Un écart de 750 sans achat n’est pas automatiquement un crédit de 750.
+Il faut une pièce, une période d’ouverture et une validation métier explicites.
+
+5. CLASSIFICATION DES ANOMALIES ET CORRECTIONS PROPOSÉES
+
+Catégories cumulables : un fournisseur peut être sans boutique, sans achat et
+avoir un solde incohérent. Une seule priorité masquerait des problèmes distincts.
+
+1) UNAMBIGUOUSLY_ATTACHED : propriétaire valide, boutique explicite cohérente
+   avec les opérations. Ce statut d’appartenance n’efface pas une dette erronée.
+2) WITHOUT_SHOP : shop_id NULL ; BLOCKER. Proposition manuelle seulement avec
+   preuve unique et concordante. Aucune sélection de la première boutique.
+3) MULTIPLE_SHOPS : plusieurs boutiques d’achat ; BLOCKER. Préparer une scission
+   approuvée, avec correspondance ancien/nouveaux IDs, achats ET paiements, sans
+   dupliquer la dette ni fusionner sur un nom.
+4) AMBIGUOUS : propriétaire invalide, scope absent/contradictoire, référence de
+   paiement contradictoire, ou fournisseur non rattaché sans preuve ; BLOCKER.
+   Obtenir les pièces et maintenir le blocage. candidate_shop_id reste NULL.
+5) NO_PURCHASE : aucun achat, y compris annulé ; REVIEW. Vérifier fournisseur
+   dormant, périmètre d’historique et dette d’ouverture ; ne pas supprimer.
+6) BALANCE_MISMATCH : écart dette, payé ou restant ; BLOCKER. Rapprocher pièces,
+   règlements, annulations et ouverture. Correction monétaire séparée et validée.
+
+Chaque finding comporte reference (table:id ou clé technique), category,
+severity, merchant_id si disponible, correction proposée. Les autres catégories
+couvrent scopes achats/paiements/produits/stocks/imports, ShopOperation orpheline,
+allocations, statut, montants et date. Le champ correction ne déclenche rien.
+
+Exemples synthétiques validés :
+- Achat 5 000, initial 1 000, ultérieur 1 000 : réglé 2 000, crédit initial 4 000,
+  dû 3 000, dette 3 000, écart zéro ; aucun double compte du paiement initial.
+- Même historique migré sans snapshot : initial/ultérieur/crédit initial inconnus,
+  réglé 2 000 et dû 3 000 restent calculables.
+- Dette augmentée de 123 : BALANCE_MISMATCH, écart +123, aucune correction.
+- Fournisseur partagé, deux achats de 5 000 et initial 1 000 chacun : dû 4 000
+  dans chaque boutique, dette globale 8 000 ; dette par boutique laissée NULL.
+- Sans achat, dette 750 : NO_PURCHASE + BALANCE_MISMATCH, ouverture inconnue.
+- Achat annulé : dette zéro, paiement historique 2 000 conservé séparément.
+
+6. TESTS ET SIMULATION POSTGRESQL
+
+Environnement exclusivement synthétique : conteneur whatzabi-lot4-2-synthetic,
+PostgreSQL 16.15 aarch64 Alpine (postgres:16-alpine), sans volume utilisateur,
+publication 127.0.0.1:49423,
+base d’amorçage lot2_test. Création explicite dans cette mission ; aucun serveur
+préexistant utilisé. Identifiant conteneur commençant par 81a3e5f857a6.
+Les fixtures refusent tout host autre que localhost/127.0.0.1 ou nom de base autre
+que lot2_test, puis créent des bases/schémas UUID jetables. Cela complète la preuve
+du conteneur ; le nom lot2_test seul ne suffirait pas à certifier une cible sûre.
+Contrôle final : zéro base UUID Lot 4, zéro schéma purchasing/photo de test et
+zéro rôle lot42_reader restant. Conteneur arrêté puis supprimé automatiquement
+par --rm, avec son volume anonyme créé par l’image PostgreSQL. Aucun stockage
+existant n’a été monté ; aucune base synthétique de cette session n’est à réutiliser.
+
+Résultat FINAL faisant foi : reports/lot4-2-tests-python.log
+  890 passed, 1240 warnings, 5 subtests passed, 45,03 s.
+  Dont 76 PostgreSQL : 50 Lots 2/3/4/4.1 + 26 nouveaux cas Lot 4.2.
+  Aucun échec, aucun skip. Les avertissements restent une dette technique.
+JavaScript : 47 passed, 0 failed, 0 skipped, environ 105 ms.
+Syntaxe des fichiers app/pwa/*.js et git diff --check : réussis.
+
+Couverture Lot 4.2 :
+- Avant/après identique sur toutes les tables ; observation SQL limitée à
+  SELECT/SET ; UPDATE réellement refusé par PostgreSQL, rôle SELECT-only testé.
+- Snapshot cohérent pendant un commit concurrent : les paiements lus après le
+  commit restent ceux du même instantané que l’achat lu avant ; une nouvelle
+  exécution voit le règlement actualisé. Pas de mélange de deux états financiers.
+- Initial connu/inconnu/cohorte mixte, solde erroné, dette sans achat, cash sans
+  fournisseur, annulation, lignes/allocations incohérentes, références invalides.
+- Homonymes dans deux boutiques, fournisseur partagé, ambiguïté, absence de
+  preuve, tentative de lecture interboutiques refusée, scopes inter-tenant dans
+  achats/paiements/produits/inventaires/imports détectés, provenance stock invalide.
+- Achat et règlement simultanés : achats 10 000, réglé 3 000, dette 7 000,
+  écart zéro ; les suites antérieures couvrent dépassements, rejeux, double clic,
+  annulation/règlement et achat/import papier avec stock rechargé sous verrou.
+- Schéma explicite indépendant du search_path, schéma prémigration rejeté,
+  absence d’autorisation CLI et erreur de connexion sans fuite de secret.
+- pg_dump custom, pg_restore dans une seconde base UUID : toutes les lignes,
+  valeurs de séquences et résultat d’audit identiques. Rejeux achat/paiement après
+  restauration : mêmes réponses, aucune ligne ni séquence modifiée.
+- Les migrations exactes Lot 2/3, réparation Lot 4.1, contraintes/index, double
+  démarrage, échecs transactionnels, lock_timeout, mapping synthétique annulé et
+  rollbacks métier sont rejoués via les 50 tests PostgreSQL antérieurs.
+
+Traçabilité des essais intermédiaires : premier diagnostic 20/22, puis ensemble
+PG 75/76. Défauts des tests ajoutés corrigés : recherche du mot phone incluant
+le nom technique user_phones ; collision de nom de produit dans une fixture ;
+UPDATE non qualifié après neutralisation volontaire du search_path.
+Ces traces sont conservées ; seule la suite complète finale certifie le résultat.
+
+Commande finale reproductible, avec une NOUVELLE URL explicitement vérifiée :
+  DATABASE_URL="$URL_SYNTHETIQUE" PHOTO_TEST_POSTGRES_URL="$URL_SYNTHETIQUE" \
+    LOT42_SYNTHETIC_CONTAINER=whatzabi-lot4-2-synthetic PYTHONDONTWRITEBYTECODE=1 \
+    .venv/bin/python -m pytest tests -q --disable-warnings --tb=short -p no:cacheprovider
+  node --test tests/js/*.test.cjs
+Ne pas reprendre un port de ce rapport sans recréer et identifier le conteneur.
+
+7. PLAN EXACT DE MIGRATION — PRÉPARÉ, AUCUNE EXÉCUTION DISTANTE
+
+Empreintes SHA-256 des fichiers existants inchangés :
+20261020_sale_photo_drafts.sql
+  e0d6dea6138fd9f15436c1755d0b1ea2ca6c2c8fe5770e58e0f6d2886708b86a
+20261021_purchasing_integrity.sql
+  afb5bce899d895ac2e2d5ccab85d51917b012f938605f506c345f8e842174cec
+20261021_supplier_shop_uniqueness_repair.sql
+  884b9364f16b88a63b0ae384d8cb00d310473029ddc6e44d437118dbcd1afc0f
+
+Étape 0 — Autoriser et identifier la copie, figer l’artefact, fermer ses écritures.
+Relever serveur/version, base, schéma, extensions, propriétaires, rôles/ACL,
+contraintes/index/FK validées, séquences, volumes et checksums de migrations.
+Faire la sauvegarde restaurable ci-dessous AVANT toute mutation. Pas de startup.
+
+Préconditions du chemin historique pré-Lot2/3 :
+- Tables de base déjà présentes : merchants, merchant_users, shops, purchases,
+  suppliers et tables d’opérations/lignes/paiements/stocks/imports attendues.
+- sale_photo_drafts et purchasing_receipts absentes ; purchases.initial_paid_amount
+  et suppliers.shop_id absents ; pas d’objets partiellement créés ou de noms en
+  conflit avec les index attendus.
+- uq_suppliers_merchant_name exactement UNIQUE(merchant_id,name), sur la relation
+  du bon schéma. Contrôler doublons, NULL merchant_id, FK non validées/orphelins,
+  paiements/lignes non rapprochés et opérations sans boutique avant intervention.
+- L’ancien bootstrap n’est pas une migration de réconciliation : app/main.py
+  contient encore des UPDATE de merchant_id NULL vers default-legacy-merchant,
+  ainsi que des reprises de coût/numéro de vente. Exiger l’absence de NULL tenant
+  dans customers, suppliers, products, categories, sales, purchases,
+  financial_entries, payments, supplier_payments, stock_movements,
+  transaction_events, ou un traitement explicite validé sur pièces AVANT startup.
+  Comparer les autres effets attendus du bootstrap sur la copie ; ne jamais le
+  démarrer pour déterminer l’appartenance d’un historique ambigu.
+
+Étape 1 — 20261020_sale_photo_drafts.sql (Lot 2).
+Création additive du brouillon, PK/FK/index/CHECK de reçu complet.
+Étape 2 — 20261021_purchasing_integrity.sql (Lot 3).
+Ajout initial_paid_amount et shop_id fournisseur NULL sans backfill, remplacement
+de l’unicité, index partiel non-rattachés, table de reçus et ses FK/index.
+Étape 3 — 20261021_supplier_shop_uniqueness_repair.sql (Lot 4.1), SEULEMENT
+si inspection démontre un schéma Lot 3 dont l’ancien startup a abîmé l’unicité.
+Ce n’est pas une étape de mapping ; aucun changement monétaire. Rejeu validé.
+La réparation refuse un index restrictif inattendu ou l’index partiel manquant.
+Un schéma Lot 3 sain n’a pas besoin de cette réparation.
+
+Branches de décision :
+- Pré-Lot2/3 compatible : 1, puis 2, puis inspection ; pas de 3 systématique.
+- Lot2 déjà commité et Lot3 absent : vérifier 1, exécuter seulement 2.
+- Lot3 déjà appliqué, unicité altérée : vérifier Lot2/3, exécuter seulement 3.
+- Schéma actuel sain/base neuve déjà bootstrapée : ne pas rejouer 1 ou 2.
+- Schéma partiel/inconnu/ancien nom différent : ARRÊT, procédure spécifique revue.
+Les vues SQL app/analytics/sql/bi_* et purchase_auto_01.sql ne constituent pas
+une étape supplémentaire de ces migrations. Le cockpit courant utilise les
+tables vivantes ; tout refresh BI est une opération séparée à autoriser.
+
+Runner futur : une seule session psql -X avec ON_ERROR_STOP=1, profil de connexion
+explicitement autorisé, search_path du schéma revu, lock_timeout=3s et
+statement_timeout=30s. Prendre un verrou advisory DE SESSION commun au runner
+avant les fichiers, le conserver entre leurs commits, libérer après contrôles.
+Ne pas utiliser une transaction englobante fictive : chaque fichier contient
+BEGIN/COMMIT. Si 2 échoue, 1 peut être déjà commité. Journal externe avec checksum,
+heure, résultat et état observé pour CHAQUE fichier ; aucune relance aveugle.
+La réparation 3 possède en plus son propre verrou advisory transactionnel et
+LOCK TABLE suppliers ACCESS EXCLUSIVE, avec limites temporelles locales.
+
+Étape 4 — Contrôles post-DDL, avant application.
+Comparer colonnes/types/nullabilité, PK/FK, unicités et index ; vérifier que les
+colonnes historiques, comptages, sommes et séquences sont conservés. Vérifier les
+NULL initiaux volontaires et l’absence de toute affectation automatique de shop.
+Exécuter le diagnostic Lot 4.2 et les SQL Lot 4/4.1 en lecture seule sur la copie.
+Les anciens SQL exposent notamment des noms : export restreint, pas de logs publics.
+Pour une comparaison, figer les écritures ou utiliser le même snapshot exporté.
+
+Étape 5 — Dossier métier et futur mapping séparé, explicitement approuvé.
+Ce lot ne fournit aucune mutation de mapping. Une future transaction doit
+verrouiller les références approuvées, revérifier le snapshot/les préconditions,
+conserver les totaux et allocations, relancer les contrôles et rollback au moindre
+écart. Les corrections monétaires nécessitent leurs propres pièces/validation.
+
+Étape 6 — Sur copie réconciliée, démarrer un worker corrigé puis redémarrer ;
+comparer contraintes ET effets de bootstrap. Smoke tests permissions, boutique,
+achats/paiements/imports/rejeux/stock/Finance, puis concurrence plusieurs workers.
+Aucune ouverture staging définitive avant signatures métier et techniques.
+
+Arrêt immédiat : cible non explicitement autorisée ; sauvegarde non restaurée ;
+checksum/schéma inattendu ; doublon ou FK invalide ; lock/statement timeout ;
+erreur psql ; transaction précédente au résultat inconnu ; rattachement ambigu ;
+écart d’argent/stock inexpliqué ; écriture de bootstrap non approuvée ; perte de
+reçu/idempotence ; fuite interboutiques ; test rouge. Fermer les écritures et
+conserver les preuves, sans compensation ou retry automatique.
+
+8. SAUVEGARDE ET RESTAURATION
+
+Plan opérationnel futur, uniquement après autorisation de la cible :
+1) Arrêter les écritures/workers de cette instance, attendre la fin des transactions,
+   consigner la coupure et la version de l’artefact. Aucun accès pilote en écriture.
+2) Utiliser un client pg_dump compatible, profil PGSERVICE/pgpass protégé, sans
+   mot de passe dans les commandes/journaux. Exemple à adapter après revue :
+     pg_dump --format=custom --file=snapshot-autorise.dump
+   Exporter séparément schéma, rôles/ACL nécessaires et configuration protégée.
+   Le dump couvre données, séquences, ShopOperation, stocks, allocations et reçus.
+3) Chiffrer et restreindre le stockage, consigner taille, SHA-256, heure, version,
+   rétention et responsable. Contrôler l’espace et fixer RPO/RTO avant la fenêtre.
+4) Créer une AUTRE base isolée ; restaurer avec profil cible distinct :
+     pg_restore --exit-on-error --dbname=<base_de_restauration_autorisee> snapshot-autorise.dump
+   Ne pas utiliser --clean sur la source. Recréer rôles/ACL approuvés ou mapper
+   les propriétaires ; --no-owner du test synthétique ne certifie pas les ACL réelles.
+5) Comparer toutes les lignes/sommes/contraintes/index/séquences ; relancer audit,
+   tests de scope et rejeux des reçus. Mesurer restauration et validation (RTO).
+
+Échec avant commit DDL : rollback de ce fichier, inspection du schéma ; un fichier
+antérieur peut rester appliqué. Aucun down qui supprimerait shop_id, snapshots
+initiaux, imports ou reçus d’idempotence.
+
+Échec après commit, sans nouvelle écriture acceptée : garder la base fautive
+isolée, restaurer le snapshot dans une autre base et vérifier avant bascule vers
+un binaire compatible. Les homonymes par boutique rendent l’ancien schéma parfois
+incompatible : un simple retour du code n’est pas un rollback de données.
+
+Après écritures acceptées : restaurer un ancien snapshot ferait perdre des
+opérations et leurs reçus. Privilégier correction en avant ; sinon établir une
+réconciliation explicite des écritures post-snapshot avant bascule. Ne pas rejouer
+des achats/imports pour reconstruire le stock sans procédure validée.
+PITR/WAL, chiffrement, permissions réelles, volumétrie et RPO/RTO contractuels ne
+sont pas certifiés par le test synthétique. Répétition représentative obligatoire.
+
+9. STRATÉGIE GIT SANS PERTE DE TRAVAIL
+
+État initial : branche attendue, ahead 2 ; 50 fichiers suivis modifiés,
+67 fichiers non suivis détaillés et le répertoire Online non suivi (118 lignes
+de statut). Le diff suivi préexistant représente 7 269 ajouts et 825 suppressions.
+Le statut et les SHA-256 des 364 fichiers réguliers listés par Git sont conservés
+dans lot4-2-preservation.json. Les fichiers ignorés et le contenu du dépôt Online
+imbriqué ne sont pas inclus dans ces empreintes. Aucun de ces périmètres n’a été
+modifié par ce lot ; ne pas confondre ce relevé avec une sauvegarde intégrale.
+
+Attribution des travaux préexistants, d’après rapports et dépendances :
+- Lot 1 / stock et PWA (inférence, faute de rapport Lot 1 dédié) : stock_360_service,
+  pwa_stock_intelligence, services inventory_*, shop_context, shop_inventory,
+  products, express-sale, styles et tests stock/multi-shop/product_restock.
+- Lot 2 / papier : modèles/schémas sale_photo_import, route pwa_sale_photo,
+  services sale_photo_*, migration 20261020, tests sale_photo_* ; points partagés
+  sales, app.js, index.html et sw.js. Les ajouts offline-sales et exports doivent
+  être revus comme travaux voisins, sans présumer leur lot exact.
+- Lot 3 : purchase/supplier et schémas, routes purchases/supplier_payments/
+  suppliers/suppliers_ledger, purchasing_receipt, purchasing_integrity_service,
+  purchasing_finance_service, purchases.js, migration 20261021, tests purchasing_*.
+- Lot 4 : tests/test_lot4_migrations_postgres.py, scripts/lot4_historical_audit.sql,
+  rapports/logs/backup-restore Lot 4.
+- Lot 4.1 : live_finance_service, réparation unicité, SQL réconciliation,
+  tests/test_lot4_1_staging_blockers.py, JS finance_freshness/home_drilldowns,
+  modifications partagées main/schema/tenant/Finance/PWA/import/intent_agent
+  et tests de régression mentionnés dans son rapport. Ces fichiers contiennent
+  plusieurs lots : ne pas leur attribuer un propriétaire exclusif à partir du nom.
+- Autres travaux préexistants : .gitignore, admin_web (tokens/layout/components,
+  pilot-detail, dashboard/login/new-pilot), auth/admin_pilots/admin_web, activation,
+  scripts/start-admin-local.sh et audit_whatzabi_latency.sh, tests d’invitation.
+  Leur présence ne les autorise pas automatiquement dans un artefact staging.
+- whatsapp-fastapi-rag-online/ contient un fichier .git ; le laisser exclu de
+  l’intégration Shop, des tests et de toute manipulation de dépôt dans ce lot.
+
+Plan d’intégration ultérieur, préparé mais non exécuté :
+1) Sauvegarder hors dépôt le travail sélectionné ET les fichiers non suivis,
+   avec empreintes ; une copie du diff seule perd les fichiers non suivis.
+2) Construire un manifeste explicite par lot et dépendance ; examiner les hunks
+   des fichiers partagés sans les déplacer ni les écraser. Distinguer preuve
+   documentaire et attribution supposée ; faire arbitrer les portions ambiguës.
+3) Inclure les nouveaux modèles/services/migrations/tests non suivis nécessaires.
+   Exclure Online, secrets/.env, .venv, caches, dumps et données privées.
+4) Dans une copie d’intégration distincte autorisée ultérieurement, appliquer la
+   sélection revue, comparer les empreintes et relancer les mêmes suites.
+5) Préparer des unités cohérentes (stock/PWA, papier, achats, correctifs Lot4.1,
+   audit Lot4.2) selon leurs dépendances ; revue humaine des fichiers partagés.
+   Commit/push resteront des actions séparées, absentes de cette mission.
+
+10. RISQUES RÉSIDUELS ET CHECKLIST MÉTIER
+
+Risques bloquants avant GO staging définitif :
+- Aucun échantillon historique représentatif autorisé rapproché ; fournisseurs
+  partagés, absence de preuves, dette d’ouverture et erreurs de scope inconnus.
+- Appartenance fondée sur contrôles applicatifs, pas RLS/FK composées ; revue des
+  accès SQL/legacy et des sessions privilégiées indispensable.
+- Effets de bootstrap legacy sur NULL tenants/coûts/numéros : audit avant startup.
+- Pas de test de volumétrie/verrous en charge, de backup représentatif, de rôles
+  réels, de PITR ni de RPO/RTO ; lecture d’audit globale en mémoire à dimensionner.
+- Stock initial inconnu, ajustements hors opérations et journal incomplet ne
+  permettent pas de promettre une reconstruction intégrale du stock historique.
+  Le diagnostic contrôle les appartenances, pas un inventaire physique certifié.
+- Les sources papier, auteurs, sessions, justificatifs et écritures d’ouverture
+  ne sont pas validés par des sommes correctes. Un JSON sans anomalie ne suffit pas.
+- Recette mobile iOS/Android, fraîcheur du cache PWA et charge réelle restent à signer.
+
+Checklist à faire signer par le responsable métier et technique :
+[ ] Copie représentative explicitement autorisée, isolée et anonymisée ; cible tracée.
+[ ] Périmètre des achats/annulations/paiements complet et dates/devise confirmées.
+[ ] Chaque fournisseur identifié par pièces/IDs, sans fusion par homonymie.
+[ ] Fournisseurs multiboutiques : scission et filiation approuvées ; aucune dette dupliquée.
+[ ] Sans boutique/sans achat : décision documentée ; aucun rattachement par défaut.
+[ ] Initial inconnu affiché comme inconnu ; preuve séparée de tout solde d’ouverture.
+[ ] Zéro écart financier/stock inexpliqué, zéro référence tenant/boutique invalide.
+[ ] Mapping et éventuelles corrections monétaires distinctement autorisés et rejoués
+    en copie avec rollback, totaux et allocations conservés.
+[ ] Préconditions, checkpoints de migration et effets du bootstrap revus ; double
+    démarrage sans altération inattendue des contraintes ou des historiques.
+[ ] Sauvegarde représentative restaurée, reçus/rejeux/ACL validés, RPO/RTO acceptés.
+[ ] Artefact Shop complet identifié malgré les fichiers non suivis ; suite verte.
+[ ] Recette HTTP/mobile, Finance/stock, permissions et concurrence signées.
+[ ] Autorisation finale staging donnée après ces contrôles ; aucune écriture pilote.
+
+11. ACTIONS RESTANTES AVANT STAGING
+
+1) Obtenir l’autorisation et la copie historique représentative ; ne pas se
+   connecter à une base réelle sur la seule base de ce rapport.
+2) Inventorier le schéma réel, restaurer une sauvegarde et répéter le chemin DDL
+   adapté, sans démarrer l’application sur des NULL tenants non résolus.
+3) Exécuter le diagnostic lecture seule ; faire valider rattachements/scissions,
+   dettes, écarts, crédits initiaux inconnus et soldes d’ouverture sur pièces.
+4) Tester en copie le traitement explicitement approuvé, puis audit avant/après,
+   restauration, reçus, scopes, stock, Finance et démarrages successifs.
+5) Intégrer l’artefact Shop revu sans perdre les autres travaux, obtenir la recette
+   mobile et les signatures métier/techniques avant une décision staging séparée.
+
+GO technique synthétique acquis. NO-GO staging définitif maintenu tant que la
+réconciliation historique autorisée et la validation métier restent ouvertes.

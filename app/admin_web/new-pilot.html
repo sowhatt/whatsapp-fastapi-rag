@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Donner accès | Whatzabi Admin</title>
+  <link rel="stylesheet" href="/admin-web/admin.css">
+  <link rel="stylesheet" href="/admin-web/tokens.css">
+  <link rel="stylesheet" href="/admin-web/components.css">
+  <link rel="stylesheet" href="/admin-web/layout.css">
+</head>
+
+<body class="admin-body">
+  <header class="admin-topbar">
+    <div>
+      <strong>Whatzabi</strong>
+      <span class="admin-topbar-label">Administration</span>
+    </div>
+
+    <a href="/admin/dashboard" class="admin-back-link">
+      ← Tableau de bord
+    </a>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-page-header">
+      <div>
+        <p class="admin-eyebrow">Accès pilote</p>
+        <h1>Donner accès à Whatzabi</h1>
+        <p>
+          Créez l'espace du commerçant et générez son invitation
+          d'activation.
+        </p>
+      </div>
+    </section>
+
+    <section class="admin-form-card">
+      <form id="new-pilot-form">
+        <div
+          id="new-pilot-error"
+          class="admin-error"
+          hidden
+          role="alert"
+        ></div>
+
+        <div
+          id="new-pilot-success"
+          class="admin-success"
+          hidden
+          role="status"
+        ></div>
+
+        <div class="admin-form-grid">
+          <div class="admin-field admin-field-full">
+            <label for="merchant-name">Nom du commerce</label>
+            <input
+              id="merchant-name"
+              name="merchant_name"
+              type="text"
+              maxlength="150"
+              autocomplete="organization"
+              placeholder="Ex. Boutique Grâce Divine"
+              required
+            >
+          </div>
+
+          <div class="admin-field">
+            <label for="owner-name">Nom du propriétaire</label>
+            <input
+              id="owner-name"
+              name="owner_name"
+              type="text"
+              maxlength="150"
+              autocomplete="name"
+              placeholder="Ex. Aïcha Houngbédji"
+              required
+            >
+          </div>
+
+          <div class="admin-field">
+            <label for="whatsapp-number">Numéro WhatsApp</label>
+            <input
+              id="whatsapp-number"
+              name="whatsapp_number"
+              type="tel"
+              maxlength="30"
+              autocomplete="tel"
+              placeholder="+229 01 97 00 00 00"
+              required
+            >
+            <small>
+              Utilisez de préférence le format international.
+            </small>
+          </div>
+
+          <div class="admin-field">
+            <label for="country-code">Pays</label>
+            <select id="country-code" name="country_code" required>
+              <option value="BJ" selected>Bénin</option>
+              <option value="CI">Côte d'Ivoire</option>
+              <option value="TG">Togo</option>
+              <option value="SN">Sénégal</option>
+              <option value="CD">RD Congo</option>
+              <option value="FR">France</option>
+            </select>
+          </div>
+
+          <div class="admin-field">
+            <label for="currency-code">Devise</label>
+            <select id="currency-code" name="currency_code" required>
+              <option value="XOF" selected>Franc CFA (XOF)</option>
+              <option value="CDF">Franc congolais (CDF)</option>
+              <option value="EUR">Euro (EUR)</option>
+            </select>
+          </div>
+
+          <div class="admin-field">
+            <label for="duration-days">Durée du pilote</label>
+            <select id="duration-days" name="duration_days" required>
+              <option value="7">7 jours</option>
+              <option value="14">14 jours</option>
+              <option value="30" selected>30 jours</option>
+              <option value="60">60 jours</option>
+              <option value="90">90 jours</option>
+            </select>
+          </div>
+
+          <div class="admin-field">
+            <label for="invitation-hours">
+              Validité de l'invitation
+            </label>
+            <select
+              id="invitation-hours"
+              name="invitation_hours"
+              required
+            >
+              <option value="24">24 heures</option>
+              <option value="48" selected>48 heures</option>
+              <option value="72">72 heures</option>
+              <option value="168">7 jours</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-form-actions">
+          <a
+            href="/admin/dashboard"
+            class="admin-secondary-button"
+          >
+            Annuler
+          </a>
+
+          <button
+            id="create-pilot-submit"
+            type="submit"
+            class="admin-primary-button"
+          >
+            Donner accès
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section
+      id="invitation-result"
+      class="admin-form-card"
+      hidden
+    >
+      <p class="admin-eyebrow">Invitation créée</p>
+      <h2 id="created-merchant-name">Commerce créé</h2>
+
+      <p>
+        Le compte pilote est maintenant
+        <strong>en attente d'activation</strong>.
+      </p>
+
+
+      <div class="admin-form-actions" id="invitation-share-actions" hidden>
+        <button
+          id="send-invitation-whatsapp"
+          type="button"
+          class="admin-primary-button"
+        >
+          Envoyer via WhatsApp
+        </button>
+
+        <button
+          id="copy-invitation-link"
+          type="button"
+          class="admin-secondary-button"
+        >
+          Copier le lien
+        </button>
+      </div>
+
+      <p id="invitation-share-message"
+         role="status"
+         aria-live="polite"></p>
+
+      <div class="admin-form-actions">
+        <a
+          id="return-dashboard"
+          href="/admin/dashboard"
+          class="admin-primary-button"
+        >
+          Retour au tableau de bord
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <script src="/admin-web/admin.js"></script>
+  <script src="/admin-web/new-pilot.js"></script>
+</body>
+</html>

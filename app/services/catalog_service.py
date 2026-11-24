@@ -106,20 +106,62 @@ def update_product_purchase_price(action: dict[str, Any], db: Session) -> str:
 
 
 def update_product_stock(action: dict[str, Any], db: Session) -> str:
+    """Corrige l'inventaire et conserve la trace de l'écart constaté."""
+    from app.models.stock_movement import StockMovement
+    from app.services.shop_context_service import (
+        adjust_stock,
+        get_current_shop_id,
+        get_effective_stock,
+        record_shop_operation,
+    )
+
     product = _resolve_existing_product(str(action["product"]), db)
     new_stock = int(action.get("stock") or 0)
-    old_stock = product.stock
-    product.stock = new_stock
+
+    if new_stock < 0:
+        raise ValueError("Le stock ne peut pas être négatif.")
+
+    old_stock = get_effective_stock(product, db)
+    quantity_delta = new_stock - old_stock
+
+    if quantity_delta != 0:
+        adjust_stock(product, quantity_delta, db)
+
+        movement = StockMovement(
+            product_id=product.id,
+            movement_type="inventory_adjustment",
+            quantity=quantity_delta,
+            reference_type="inventory_adjustment",
+            reference_id=product.id,
+            note=f"Correction inventaire : {old_stock} → {new_stock}",
+        )
+        db.add(movement)
+        db.flush()
+
+        if get_current_shop_id(db) is not None:
+            record_shop_operation("stock_movement", movement.id, db)
+
     db.commit()
-    return f"✅ Stock de {product.name} mis à jour : {old_stock} → {new_stock} {product.unit}."
+
+    return (
+        f"✅ Stock de {product.name} mis à jour : "
+        f"{old_stock} → {new_stock} {product.unit}."
+    )
 
 
 def update_product_threshold(action: dict[str, Any], db: Session) -> str:
+    from app.services.shop_context_service import (
+        get_effective_threshold,
+        set_shop_threshold,
+    )
+
     product = _resolve_existing_product(str(action["product"]), db)
     new_threshold = int(action.get("threshold") or 0)
-    old_threshold = product.threshold
-    product.threshold = new_threshold
+    old_threshold = get_effective_threshold(product, db)
+
+    set_shop_threshold(product, new_threshold, db)
     db.commit()
+
     return (
         f"✅ Seuil d'alerte de {product.name} mis à jour : "
         f"{old_threshold} → {new_threshold} {product.unit}."
@@ -147,12 +189,20 @@ def low_stock_warnings_for_sale(sale_id: int, db: Session) -> list[str]:
         .filter(SaleItem.sale_id == sale_id)
         .all()
     )
+    from app.services.shop_context_service import (
+        get_effective_stock,
+        get_effective_threshold,
+    )
+
     warnings = []
     for product in products:
-        if product.threshold and product.threshold > 0 and product.stock <= product.threshold:
+        stock = get_effective_stock(product, db)
+        threshold = get_effective_threshold(product, db)
+
+        if threshold > 0 and stock <= threshold:
             warnings.append(
-                f"⚠️ Stock bas : {product.name} — {product.stock} {product.unit} "
-                f"restant(s) (seuil {product.threshold})."
+                f"⚠️ Stock bas : {product.name} — {stock} {product.unit} "
+                f"restant(s) (seuil {threshold})."
             )
     return warnings
 
@@ -183,11 +233,18 @@ def render_stock_overview(db: Session) -> str:
     if not products:
         return "Aucun produit au catalogue pour l'instant."
 
+    from app.services.shop_context_service import (
+        get_effective_stock,
+        get_effective_threshold,
+    )
+
     rows = []
     low_stock_names = []
     for product in products:
         initial = product.initial_stock or 0
-        diff = product.stock - initial
+        stock = get_effective_stock(product, db)
+        threshold = get_effective_threshold(product, db)
+        diff = stock - initial
         mouvement = f"{diff:+d}" if diff != 0 else "0"
 
         # Feu tricolore basé sur le seuil d'alerte, quand il est
@@ -197,11 +254,11 @@ def render_stock_overview(db: Session) -> str:
         # s'affiche souvent en largeur double sur téléphone, ce qui
         # décalerait tout le reste de la ligne s'il était devant.
         icone = ""
-        if product.threshold and product.threshold > 0:
-            if product.stock <= product.threshold:
+        if threshold > 0:
+            if stock <= threshold:
                 icone = "🔴"
                 low_stock_names.append(product.name)
-            elif product.stock <= product.threshold * 2:
+            elif stock <= threshold * 2:
                 icone = "🟡"
             else:
                 icone = "🟢"
@@ -211,7 +268,7 @@ def render_stock_overview(db: Session) -> str:
             [
                 nom_tronque,
                 str(initial),
-                str(product.stock),
+                str(stock),
                 product.unit or "",
                 mouvement,
                 icone,

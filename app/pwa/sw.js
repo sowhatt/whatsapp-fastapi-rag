@@ -1,0 +1,90 @@
+const CACHE = 'whatzabi-pwa-v56-lot4-1';
+
+const ASSETS = [
+  '/auth/express-sale.css?v=2-cart-price-1',
+  '/auth/app',
+  '/auth/styles.css?v=29-exports-1-sale-photo-1',
+  '/auth/app.js?v=42-lot4-1',
+  '/auth/offline-sales.js?v=2',
+  '/auth/express-sale.js?v=13-cart-price-1',
+  '/auth/smart-catalog.js?v=46',
+  '/auth/purchases.js?v=7-lot4-1',
+  '/auth/manifest.webmanifest',
+  '/auth/icon.svg',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE)
+            .map((key) => caches.delete(key))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  if (
+    event.request.method !== 'GET' ||
+    url.pathname.startsWith('/pwa/') ||
+    url.pathname === '/auth/me'
+  ) {
+    return;
+  }
+
+  if (
+    url.pathname === '/auth/app' ||
+    url.pathname === '/auth/app.js' ||
+    url.pathname === '/auth/offline-sales.js' ||
+    url.pathname === '/auth/smart-catalog.js' ||
+    url.pathname === '/auth/purchases.js' ||
+    url.pathname === '/auth/styles.css'
+  ) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => {
+              cache.put(event.request, copy);
+            });
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+
+      return fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => {
+            cache.put(event.request, copy);
+          });
+        }
+        return response;
+      });
+    })
+  );
+});

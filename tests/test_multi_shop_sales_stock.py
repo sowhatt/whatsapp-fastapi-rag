@@ -1,0 +1,535 @@
+from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.db import schema as _schema  # noqa: F401
+from app.db.base import Base
+from app.db.tenant import set_current_merchant
+from app.models.customer import Customer
+from app.models.merchant import Merchant
+from app.models.payment import Payment
+from app.models.product import Product
+from app.models.sale import Sale
+from app.models.shop import Shop
+from app.models.shop_inventory import ShopInventory
+from app.routers.payments import create_payment
+from app.routers.sales import cancel_sale, create_sale, get_sale_items, get_sale_payments, list_sales
+from app.schemas.cancel_sale import CancelSalePayload
+from app.schemas.payment import PaymentCreate
+from app.schemas.sale import SaleCreate, SaleItemCreate
+from app.services.shop_context_service import set_initial_shop_stock
+
+
+def make_db():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def seed(db):
+    merchant = Merchant(whatsapp_number="22900000009", subscription_status="pilot")
+    db.add(merchant)
+    db.flush()
+    shop_one = Shop(merchant_id=merchant.id, name="Centre", code="centre")
+    shop_two = Shop(merchant_id=merchant.id, name="Nord", code="nord")
+    db.add_all([shop_one, shop_two])
+    db.flush()
+    customer = Customer(merchant_id=merchant.id, name="Awa", phone="2291", debt=0)
+    product = Product(
+        merchant_id=merchant.id,
+        name="Riz",
+        unit="sac",
+        stock=50,
+        threshold=2,
+        price=10000,
+        purchase_price=8000,
+    )
+    db.add_all([customer, product])
+    db.commit()
+    return merchant, shop_one, shop_two, customer, product
+
+
+def sale_payload(customer, product, quantity=3):
+    return SaleCreate(
+        customer_id=customer.id,
+        items=[SaleItemCreate(product_id=product.id, quantity=quantity)],
+        paid_amount=10000 * quantity,
+        payment_channel="cash",
+    )
+
+
+def test_sale_decrements_only_current_shop_inventory():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.flush()
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 20, db)
+    db.commit()
+
+    db.expire_all()
+    db.info["pwa_shop_id"] = shop_one.id
+    create_sale(sale_payload(customer, product), db)
+
+    rows = db.query(ShopInventory).order_by(ShopInventory.shop_id).all()
+    assert [row.stock for row in rows] == [7, 20]
+
+    db.info.pop("pwa_shop_id", None)
+    global_product = db.query(Product).filter(Product.id == product.id).one()
+    assert global_product.stock == 50
+
+
+def test_sales_are_listed_only_for_current_shop():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.flush()
+    sale_one = create_sale(sale_payload(customer, product, quantity=1), db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 20, db)
+    db.commit()
+    sale_two = create_sale(sale_payload(customer, product, quantity=2), db)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    assert [sale.id for sale in list_sales(db)] == [sale_one.id]
+
+    db.info["pwa_shop_id"] = shop_two.id
+    assert [sale.id for sale in list_sales(db)] == [sale_two.id]
+
+
+def test_cross_shop_sale_details_and_payments_are_hidden():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+    sale = create_sale(sale_payload(customer, product, quantity=1), db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    for reader in (get_sale_items, get_sale_payments):
+        try:
+            reader(sale.id, db)
+        except HTTPException as exc:
+            assert exc.status_code == 404
+        else:
+            raise AssertionError("Une vente d'une autre boutique ne doit pas être visible")
+
+
+def test_cross_shop_sale_cannot_be_cancelled_or_mutate_stock():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.flush()
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 20, db)
+    db.commit()
+
+    db.info["pwa_shop_id"] = shop_one.id
+    sale = create_sale(sale_payload(customer, product, quantity=3), db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    try:
+        cancel_sale(sale.id, CancelSalePayload(reason="test cross-shop"), db)
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    else:
+        raise AssertionError("Une vente d'une autre boutique ne doit pas pouvoir être annulée")
+
+    rows = db.query(ShopInventory).order_by(ShopInventory.shop_id).all()
+    assert [row.stock for row in rows] == [7, 20]
+
+
+
+def test_counter_sale_without_customer_is_fully_paid():
+    db = make_db()
+    merchant, shop_one, _, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+
+    sale = create_sale(
+        SaleCreate(
+            customer_id=None,
+            items=[
+                SaleItemCreate(
+                    product_id=product.id,
+                    quantity=2,
+                )
+            ],
+            paid_amount=20000,
+            payment_channel="cash",
+        ),
+        db,
+    )
+
+    assert sale.customer_id is None
+    assert sale.total_amount == 20000
+    assert sale.paid_amount == 20000
+    assert sale.remaining_amount == 0
+    assert sale.status == "paid"
+
+    payment = (
+        db.query(Payment)
+        .filter(Payment.sale_id == sale.id)
+        .one()
+    )
+    assert payment.customer_id is None
+    assert payment.amount == 20000
+
+    db.refresh(customer)
+    assert customer.debt == 0
+
+    inventory = (
+        db.query(ShopInventory)
+        .filter(
+            ShopInventory.shop_id == shop_one.id,
+            ShopInventory.product_id == product.id,
+        )
+        .one()
+    )
+    assert inventory.stock == 8
+
+
+def test_counter_sale_without_customer_cannot_leave_credit():
+    db = make_db()
+    merchant, shop_one, _, _, product = seed(db)
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+
+    try:
+        create_sale(
+            SaleCreate(
+                customer_id=None,
+                items=[
+                    SaleItemCreate(
+                        product_id=product.id,
+                        quantity=1,
+                    )
+                ],
+                paid_amount=0,
+                payment_channel="cash",
+            ),
+            db,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == (
+            "Un client est obligatoire pour une vente à crédit ou partiellement payée"
+        )
+    else:
+        raise AssertionError(
+            "Une vente comptoir non payée doit être refusée"
+        )
+
+
+def test_identified_customer_sale_still_supports_credit():
+    db = make_db()
+    merchant, shop_one, _, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+
+    sale = create_sale(
+        SaleCreate(
+            customer_id=customer.id,
+            items=[
+                SaleItemCreate(
+                    product_id=product.id,
+                    quantity=1,
+                )
+            ],
+            paid_amount=4000,
+            payment_channel="cash",
+            due_date="2026-12-31",
+        ),
+        db,
+    )
+
+    assert sale.customer_id == customer.id
+    assert sale.total_amount == 10000
+    assert sale.paid_amount == 4000
+    assert sale.remaining_amount == 6000
+    assert sale.status == "partial"
+
+    db.refresh(customer)
+    assert customer.debt == 6000
+
+
+
+def test_cross_shop_payment_cannot_modify_sale():
+    db = make_db()
+    merchant, shop_one, shop_two, customer, product = seed(db)
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+
+    sale = create_sale(
+        SaleCreate(
+            customer_id=customer.id,
+            items=[
+                SaleItemCreate(
+                    product_id=product.id,
+                    quantity=1,
+                )
+            ],
+            paid_amount=4000,
+            payment_channel="cash",
+            due_date="2026-12-31",
+        ),
+        db,
+    )
+
+    original_paid = sale.paid_amount
+    original_remaining = sale.remaining_amount
+    original_debt = customer.debt
+
+    db.info["pwa_shop_id"] = shop_two.id
+
+    try:
+        create_payment(
+            PaymentCreate(
+                sale_id=sale.id,
+                customer_id=customer.id,
+                amount=1000,
+                channel="cash",
+            ),
+            db,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "Vente introuvable"
+    else:
+        raise AssertionError(
+            "Une boutique ne doit pas pouvoir payer une vente d'une autre boutique"
+        )
+
+    db.expire_all()
+
+    refreshed_sale = db.query(Sale).filter(Sale.id == sale.id).one()
+    refreshed_customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer.id)
+        .one()
+    )
+
+    assert refreshed_sale.paid_amount == original_paid
+    assert refreshed_sale.remaining_amount == original_remaining
+    assert refreshed_customer.debt == original_debt
+
+
+# ============================================================
+# P1-E — Catalogue partagé / stock spécifique par boutique
+# ============================================================
+
+
+def test_same_product_catalog_is_shared_but_stock_is_shop_specific():
+    from app.routers.products import list_products
+
+    db = make_db()
+    merchant, shop_one, shop_two, _, product = seed(db)
+
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 3, db)
+
+    db.commit()
+    db.expire_all()
+
+    db.info["pwa_shop_id"] = shop_one.id
+    products_shop_one = list_products(category_id=None, db=db)
+
+    assert len(products_shop_one) == 1
+    assert products_shop_one[0].id == product.id
+    assert products_shop_one[0].name == "Riz"
+    assert products_shop_one[0].stock == 10
+
+    db.expire_all()
+
+    db.info["pwa_shop_id"] = shop_two.id
+    products_shop_two = list_products(category_id=None, db=db)
+
+    assert len(products_shop_two) == 1
+    assert products_shop_two[0].id == product.id
+    assert products_shop_two[0].name == "Riz"
+    assert products_shop_two[0].stock == 3
+
+    assert (
+        products_shop_one[0].id
+        == products_shop_two[0].id
+    )
+
+
+def test_catalog_update_is_shared_without_overwriting_other_shop_stock():
+    from app.routers.products import list_products, update_product
+    from app.schemas.product import ProductUpdate
+
+    db = make_db()
+    merchant, shop_one, shop_two, _, product = seed(db)
+
+    set_current_merchant(db, merchant.id)
+
+    db.info["pwa_shop_id"] = shop_one.id
+    set_initial_shop_stock(product, 10, db)
+
+    db.info["pwa_shop_id"] = shop_two.id
+    set_initial_shop_stock(product, 3, db)
+
+    db.commit()
+    db.expire_all()
+
+    # Modification du catalogue depuis Boutique A.
+    db.info["pwa_shop_id"] = shop_one.id
+
+    updated = update_product(
+        product_id=product.id,
+        payload=ProductUpdate(
+            name="Riz Premium",
+            price=11000,
+        ),
+        db=db,
+    )
+
+    assert updated.id == product.id
+    assert updated.name == "Riz Premium"
+    assert updated.price == 11000
+    assert updated.stock == 10
+
+    # Boutique B voit les mêmes métadonnées catalogue,
+    # mais conserve son stock propre.
+    db.expire_all()
+    db.info["pwa_shop_id"] = shop_two.id
+
+    products_shop_two = list_products(category_id=None, db=db)
+
+    assert len(products_shop_two) == 1
+
+    product_shop_two = products_shop_two[0]
+
+    assert product_shop_two.id == product.id
+    assert product_shop_two.name == "Riz Premium"
+    assert product_shop_two.price == 11000
+    assert product_shop_two.stock == 3
+
+
+# Tests du prix negocie dans le panier
+import pytest
+from app.models.sale_item import SaleItem
+
+
+@pytest.fixture
+def negotiated_sale_context():
+    db = make_db()
+    merchant, shop, _, _, product = seed(db)
+    set_current_merchant(db, merchant.id)
+    db.info["pwa_shop_id"] = shop.id
+    set_initial_shop_stock(product, 10, db)
+    db.commit()
+    try:
+        yield db, shop, product
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("offline_id", [None, "cart-negotiated-price-test"])
+def test_negotiated_price_is_saved_without_changing_catalog(
+    negotiated_sale_context, offline_id
+):
+    db, shop, product = negotiated_sale_context
+    product_id = product.id
+    shop_id = shop.id
+
+    sale = create_sale(
+        SaleCreate(
+            items=[
+                SaleItemCreate(
+                    product_id=product_id,
+                    quantity=2,
+                    unit_price=9000,
+                )
+            ],
+            paid_amount=18000,
+            offline_sale_id=offline_id,
+        ),
+        db,
+    )
+    sale_id = sale.id
+    db.expire_all()
+
+    saved = db.query(Sale).filter(Sale.id == sale_id).one()
+    line = db.query(SaleItem).filter(SaleItem.sale_id == sale_id).one()
+    catalog = db.query(Product).filter(Product.id == product_id).one()
+    inventory = db.query(ShopInventory).filter(
+        ShopInventory.shop_id == shop_id,
+        ShopInventory.product_id == product_id,
+    ).one()
+
+    assert saved.total_amount == 18000
+    assert saved.paid_amount == 18000
+    assert saved.remaining_amount == 0
+    assert saved.offline_sale_id == offline_id
+    assert line.unit_price == 9000
+    assert line.line_total == 18000
+    assert line.quantity == 2
+    assert catalog.price == 10000
+    assert inventory.stock == 8
+
+
+@pytest.mark.parametrize(
+    "price, supplied_total",
+    [(0, None), (-100, None), (9000, 1)],
+)
+def test_invalid_negotiated_price_or_total_creates_no_sale(
+    negotiated_sale_context, price, supplied_total
+):
+    db, shop, product = negotiated_sale_context
+
+    with pytest.raises(HTTPException) as error:
+        create_sale(
+            SaleCreate(
+                items=[
+                    SaleItemCreate(
+                        product_id=product.id,
+                        quantity=2,
+                        unit_price=price,
+                        line_total=supplied_total,
+                    )
+                ],
+                paid_amount=0,
+            ),
+            db,
+        )
+
+    assert error.value.status_code == 400
+    assert db.query(Sale).count() == 0
+    assert db.query(SaleItem).count() == 0
+    assert db.query(Payment).count() == 0
+
+    db.refresh(product)
+    assert product.price == 10000
+    inventory = db.query(ShopInventory).filter(
+        ShopInventory.shop_id == shop.id,
+        ShopInventory.product_id == product.id,
+    ).one()
+    assert inventory.stock == 10

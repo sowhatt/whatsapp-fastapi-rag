@@ -7,7 +7,10 @@ from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.shop_operation import ShopOperation
 from app.schemas.payment import PaymentCreate, PaymentRead
+from app.rbac import require_permission
+from app.services.shop_context_service import get_current_shop_id
 
 router = APIRouter(tags=["paiements clients"])
 
@@ -33,10 +36,29 @@ def add_event(
     )
 
 
-@router.post("/payments", response_model=PaymentRead)
+@router.post(
+    "/payments",
+    response_model=PaymentRead,
+    dependencies=[Depends(require_permission("payment.create"))],
+)
 def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     """Enregistre un paiement client et l’impute en FIFO sur les lignes de vente."""
-    sale = db.query(Sale).filter(Sale.id == payload.sale_id).first()
+    sale_query = db.query(Sale)
+    shop_id = get_current_shop_id(db)
+
+    if shop_id is not None:
+        sale_query = (
+            sale_query
+            .join(
+                ShopOperation,
+                (ShopOperation.entity_type == "sale")
+                & (ShopOperation.entity_id == Sale.id),
+            )
+            .filter(ShopOperation.shop_id == shop_id)
+        )
+
+    sale = sale_query.filter(Sale.id == payload.sale_id).first()
+
     if not sale:
         raise HTTPException(status_code=404, detail="Vente introuvable")
 
@@ -45,6 +67,27 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
 
     if payload.amount > sale.remaining_amount:
         raise HTTPException(status_code=400, detail="Le montant du paiement dépasse le reste dû")
+
+    customer = None
+
+    if payload.customer_id is not None:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.id == payload.customer_id)
+            .first()
+        )
+
+        if customer is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Client introuvable",
+            )
+
+        if sale.customer_id != customer.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Le client ne correspond pas à la vente",
+            )
 
     payment = Payment(
         sale_id=payload.sale_id,
@@ -100,10 +143,11 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     else:
         sale.status = "partial"
 
-    if payload.customer_id:
-        customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
-        if customer:
-            customer.debt = max(0, customer.debt - payload.amount)
+    if customer is not None:
+        customer.debt = max(
+            0,
+            customer.debt - payload.amount,
+        )
 
     add_event(
         db,

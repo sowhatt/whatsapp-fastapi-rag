@@ -14,6 +14,11 @@ class Sale(Base):
             "sale_number",
             name="uq_sales_merchant_sale_number",
         ),
+        UniqueConstraint(
+            "merchant_id",
+            "offline_sale_id",
+            name="uq_sales_merchant_offline_sale_id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -22,6 +27,19 @@ class Sale(Base):
     # `id` reste la clé technique globale.
     sale_number: Mapped[int | None] = mapped_column(
         Integer,
+        nullable=True,
+    )
+
+    # UUID client d'une vente créée hors ligne.
+    # Nullable afin de préserver toutes les ventes online existantes.
+    offline_sale_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+    )
+
+    # Empreinte canonique du contenu de la vente offline.
+    offline_payload_hash: Mapped[str | None] = mapped_column(
+        String(64),
         nullable=True,
     )
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)

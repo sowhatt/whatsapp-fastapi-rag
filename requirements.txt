@@ -13,3 +13,4 @@ openai
 pywebpush==2.5.0
 py-vapid==1.9.6
 urllib3>=2,<3
+PyJWT>=2.9,<3

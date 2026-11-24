@@ -39,7 +39,7 @@ def test_vente_a_credit_sans_montant_fixe_le_bon_reste_du():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    result = send("Vends deux sacs de riz parfumé à Awa à crédit", fake=lambda t, d: _to_business_action(
+    result = send("Vends deux sacs de riz parfumé à Awa à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Awa", product="Riz parfumé", unit="Sac", quantity=2, payment="credit", confidence=0.9)
     ))
     assert "Reste dû : 110 000 FCFA" in result["reply_text"]
@@ -66,7 +66,7 @@ def test_vente_a_credit_multi_produits_sans_montant():
             mo.detect_intent = fake
         return mo.process_incoming_message(channel="whatsapp", sender_id=SENDER, message_type="text", text=text, db=db)
 
-    result = send("Vends trois sacs de riz et trois cartons de tomates à Fatima à crédit", fake=lambda t, d: _to_business_action(
+    result = send("Vends trois sacs de riz et trois cartons de tomates à Fatima à crédit, échéance dans 15 jours", fake=lambda t, d: _to_business_action(
         AIIntent(type="sale", customer="Fatima", payment="credit", confidence=0.9, items=[
             AIIntentItem(product="Riz", unit="Sac", quantity=3),
             AIIntentItem(product="Tomate", unit="Carton", quantity=3),

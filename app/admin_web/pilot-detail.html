@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pilote | Whatzabi Admin</title>
+  <link rel="stylesheet" href="/admin-web/admin.css">
+  <link rel="stylesheet" href="/admin-web/tokens.css">
+  <link rel="stylesheet" href="/admin-web/components.css">
+  <link rel="stylesheet" href="/admin-web/layout.css">
+</head>
+
+<body>
+  <main class="admin-shell">
+    <header class="admin-topbar">
+      <div>
+        <a href="/admin/dashboard" class="back-link">← Pilotes</a>
+        <h1 id="pilot-title">Pilote Whatzabi</h1>
+        <p id="pilot-subtitle">Chargement...</p>
+      </div>
+
+      <div id="pilot-status"></div>
+    </header>
+
+    <div id="pilot-message" class="form-message" hidden></div>
+
+    <section class="detail-grid">
+      <article class="admin-card">
+        <h2>Commerçant</h2>
+
+        <dl class="detail-list">
+          <div>
+            <dt>Boutique</dt>
+            <dd id="merchant-name">—</dd>
+          </div>
+
+          <div>
+            <dt>Propriétaire</dt>
+            <dd id="owner-name">—</dd>
+          </div>
+
+          <div>
+            <dt>WhatsApp</dt>
+            <dd id="merchant-phone">—</dd>
+          </div>
+
+          <div>
+            <dt>Pays</dt>
+            <dd id="country-code">—</dd>
+          </div>
+
+          <div>
+            <dt>Devise</dt>
+            <dd id="currency-code">—</dd>
+          </div>
+
+          <div>
+            <dt>Utilisateurs</dt>
+            <dd id="user-count">—</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="admin-card">
+        <h2>Abonnement pilote</h2>
+
+        <dl class="detail-list">
+          <div>
+            <dt>État</dt>
+            <dd id="subscription-status">—</dd>
+          </div>
+
+          <div>
+            <dt>Créé le</dt>
+            <dd id="created-at">—</dd>
+          </div>
+
+          <div>
+            <dt>Fin d'accès</dt>
+            <dd id="subscription-ends-at">—</dd>
+          </div>
+        </dl>
+
+        <div class="detail-action-row">
+          <select id="extend-days" aria-label="Durée de prolongation">
+            <option value="7">+ 7 jours</option>
+            <option value="30" selected>+ 30 jours</option>
+            <option value="90">+ 90 jours</option>
+          </select>
+
+          <button id="extend-button" type="button" class="secondary-button">
+            Prolonger
+          </button>
+        </div>
+      </article>
+
+      <article class="admin-card">
+        <h2>Activation</h2>
+
+        <dl class="detail-list">
+          <div>
+            <dt>État</dt>
+            <dd id="activation-status">—</dd>
+          </div>
+
+          <div>
+            <dt>Invitation créée</dt>
+            <dd id="invited-at">—</dd>
+          </div>
+
+          <div>
+            <dt>Expiration invitation</dt>
+            <dd id="invitation-expires-at">—</dd>
+          </div>
+
+          <div>
+            <dt>Activé le</dt>
+            <dd id="activated-at">—</dd>
+          </div>
+        </dl>
+
+        <button id="reinvite-button" type="button" class="secondary-button" hidden>
+          Générer une nouvelle invitation
+        </button>
+      </article>
+
+      <article class="admin-card">
+        <h2>Boutique technique</h2>
+
+        <dl class="detail-list">
+          <div>
+            <dt>Nom</dt>
+            <dd id="shop-name">—</dd>
+          </div>
+
+          <div>
+            <dt>Code</dt>
+            <dd id="shop-code">—</dd>
+          </div>
+
+          <div>
+            <dt>État</dt>
+            <dd id="shop-status">—</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+
+
+    <section id="reinvite-share" class="admin-card"
+             hidden style="margin:24px 0">
+      <h2>Invitation prête à envoyer</h2>
+      <p>Le lien est personnel, temporaire et à usage unique.</p>
+      <div class="admin-form-actions">
+        <button id="share-reinvite-whatsapp"
+                type="button" class="primary-button">
+          Envoyer via WhatsApp
+        </button>
+        <button id="copy-reinvite-link"
+                type="button" class="admin-secondary-button">
+          Copier le lien
+        </button>
+      </div>
+      <p id="reinvite-share-status" role="status"></p>
+    </section>
+
+    <section class="admin-card danger-zone">
+      <div>
+        <h2>Administration de l'accès</h2>
+        <p id="access-action-description">
+          Suspendre ou réactiver l'accès du commerçant à Whatzabi.
+        </p>
+      </div>
+
+      <div>
+        <button id="suspend-button" type="button" class="danger-button" hidden>
+          Suspendre l'accès
+        </button>
+
+        <button id="reactivate-button" type="button" class="primary-button" hidden>
+          Réactiver l'accès
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/admin-web/admin.js"></script>
+  <script src="/admin-web/pilot-detail.js"></script>
+</body>
+</html>

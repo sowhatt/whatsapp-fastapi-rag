@@ -1,0 +1,290 @@
+/*
+ * WHATZABI ADMIN — COMPONENTS V1
+ * Compatible S4 / S5 / S6
+ */
+
+/* Typography */
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-base);
+  line-height: 1.5;
+}
+
+.page-heading h1,
+.admin-page-header h1 {
+  font-size: var(--font-xl);
+  line-height: 1.25;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.025em;
+}
+
+.panel-heading h2,
+.danger-zone h2 {
+  font-size: var(--font-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.metric-card strong {
+  font-size: var(--font-kpi);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons */
+.primary-button,
+.action-button,
+.admin-primary-button,
+.secondary-button,
+.admin-secondary-button,
+.danger-button {
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-base);
+  font-weight: var(--weight-semibold);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.primary-button,
+.action-button,
+.admin-primary-button {
+  background: var(--primary);
+  color: #fff;
+}
+
+.primary-button:hover,
+.action-button:hover,
+.admin-primary-button:hover {
+  background: var(--primary-hover);
+}
+
+.secondary-button,
+.admin-secondary-button {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.danger-button {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Form controls */
+#admin-login-form input,
+.pilot-search input,
+.admin-field input,
+.admin-field select,
+.detail-action-row select {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-base);
+}
+
+#admin-login-form input:focus,
+.pilot-search input:focus,
+.admin-field input:focus,
+.admin-field select:focus,
+.detail-action-row select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+/* Cards */
+.login-card,
+.metric-card,
+.pilots-panel,
+.admin-form-card,
+.admin-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tables */
+.pilots-table th {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.pilots-table td {
+  font-size: var(--font-base);
+}
+
+.pilots-table tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+/* Status */
+.status-badge {
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.status-active {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.status-pending {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.status-suspended {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.status-neutral {
+  background: var(--neutral-bg);
+  color: var(--neutral);
+}
+
+/* Messages */
+.admin-error,
+.form-message.error,
+.form-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.admin-success,
+.form-message.success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+/* Accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select {
+    transition: none;
+  }
+}
+
+/* =========================================================
+   WHATZABI ADMIN — S6 PILOT DETAIL LAYOUT
+   ========================================================= */
+
+.admin-shell {
+  width: min(1280px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 32px 0 64px;
+}
+
+.admin-shell > .admin-topbar {
+  position: static;
+  min-height: auto;
+  padding: 0 0 24px;
+  margin-bottom: 28px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+
+.admin-shell > .admin-topbar h1 {
+  margin: 10px 0 6px;
+  font-size: var(--font-xl);
+  line-height: 1.25;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.025em;
+}
+
+.admin-shell > .admin-topbar p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-base);
+}
+
+.admin-shell .detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 0;
+}
+
+.admin-shell .admin-card {
+  min-width: 0;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-shell .admin-card h2 {
+  margin: 0;
+  font-size: var(--font-lg);
+  line-height: 1.3;
+  font-weight: var(--weight-semibold);
+}
+
+.admin-shell .detail-list {
+  margin-top: 16px;
+}
+
+.admin-shell .detail-list > div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-shell .detail-list dt {
+  color: var(--muted);
+  font-size: var(--font-sm);
+}
+
+.admin-shell .detail-list dd {
+  color: var(--text);
+  font-size: var(--font-base);
+  font-weight: var(--weight-semibold);
+}
+
+.admin-shell > .danger-zone {
+  margin-top: 24px;
+}
+
+@media (max-width: 760px) {
+  .admin-shell {
+    width: calc(100% - 32px);
+    padding: 24px 0 48px;
+  }
+
+  .admin-shell > .admin-topbar {
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .admin-shell .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .admin-shell .admin-card {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 430px) {
+  .admin-shell > .admin-topbar {
+    flex-direction: column;
+  }
+}

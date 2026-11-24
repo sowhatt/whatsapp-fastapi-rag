@@ -194,3 +194,27 @@ def refresh_analytics(db: Session) -> None:
         )
 
     db.commit()
+
+
+SHOP_ANALYTICS_VIEWS = (
+    "mv_daily_business_metrics_by_shop",
+    "mv_product_profitability_by_shop",
+    "mv_stock_analytics_by_shop",
+    "mv_customer_financial_position_by_shop",
+    "mv_supplier_financial_position_by_shop",
+)
+
+
+def refresh_shop_analytics(db: Session) -> None:
+    """
+    Rafraîchit uniquement les vues matérialisées BI02 multi-boutiques.
+
+    Utilisé après une mutation financière PWA afin que le cockpit
+    de la boutique active reflète immédiatement la transaction.
+    """
+    for view_name in SHOP_ANALYTICS_VIEWS:
+        db.execute(
+            text(
+                f"REFRESH MATERIALIZED VIEW {view_name}"
+            )
+        )

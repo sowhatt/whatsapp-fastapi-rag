@@ -1,3 +1,4 @@
+from datetime import timezone
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -7,18 +8,22 @@ from app.models.purchase_item import PurchaseItem
 from app.models.supplier import Supplier
 from app.models.supplier_payment import SupplierPayment
 
+from app.rbac import require_permission
+from app.services.purchasing_integrity_service import suppliers_query, purchases_query
+
 router = APIRouter(tags=["ledger fournisseurs"])
 
 
 @router.get("/suppliers/{supplier_id}/ledger")
-def get_supplier_ledger(supplier_id: int, db: Session = Depends(get_db)):
+def get_supplier_ledger(supplier_id: int, db: Session = Depends(get_db),
+                        _allowed: None = Depends(require_permission("supplier.read"))):
     """Retourne le ledger complet d’un fournisseur : achats, paiements, dette et lignes ouvertes."""
-    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    supplier = suppliers_query(db).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Fournisseur introuvable")
 
     purchases = (
-        db.query(Purchase)
+        purchases_query(db)
         .filter(Purchase.supplier_id == supplier_id)
         .order_by(Purchase.id.asc())
         .all()
@@ -26,7 +31,7 @@ def get_supplier_ledger(supplier_id: int, db: Session = Depends(get_db)):
 
     supplier_payments = (
         db.query(SupplierPayment)
-        .filter(SupplierPayment.supplier_id == supplier_id)
+        .filter(SupplierPayment.supplier_id == supplier_id, SupplierPayment.purchase_id.in_([p.id for p in purchases]))
         .order_by(SupplierPayment.id.asc())
         .all()
     )
@@ -82,6 +87,7 @@ def get_supplier_ledger(supplier_id: int, db: Session = Depends(get_db)):
             "amount": payment.amount,
             "channel": payment.channel,
             "reference": payment.reference,
+            "paid_at": payment.paid_at.replace(tzinfo=timezone.utc),
         }
         for payment in supplier_payments
     ]

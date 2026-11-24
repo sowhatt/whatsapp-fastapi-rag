@@ -17,11 +17,27 @@ from app.services.table_utils import render_table
 
 from app.models.customer import Customer
 from app.models.financial_entry import FinancialEntry
+from app.models.shop_operation import ShopOperation
 from app.models.product import Product
 from app.models.purchase import Purchase
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.supplier import Supplier
+from app.services.shop_context_service import get_current_shop_id
+
+
+def _scope_financial_query_to_shop(query, db: Session):
+    """Limit a FinancialEntry query to the active shop when selected."""
+    shop_id = get_current_shop_id(db)
+
+    if shop_id is None:
+        return query
+
+    return query.join(
+        ShopOperation,
+        (ShopOperation.entity_type == "financial_entry")
+        & (ShopOperation.entity_id == FinancialEntry.id),
+    ).filter(ShopOperation.shop_id == shop_id)
 
 
 PERIOD_LABELS = {
@@ -177,8 +193,14 @@ def get_period_summary_data(
     )
 
     encashed_by_channel: dict[str, int] = {}
+    income_query = db.query(
+        FinancialEntry.channel,
+        func.coalesce(func.sum(FinancialEntry.amount), 0),
+    )
+    income_query = _scope_financial_query_to_shop(income_query, db)
+
     for channel, total in (
-        db.query(FinancialEntry.channel, func.coalesce(func.sum(FinancialEntry.amount), 0))
+        income_query
         .filter(
             FinancialEntry.entry_type == "income",
             *_date_conditions(FinancialEntry.created_at, since, until),
@@ -190,11 +212,15 @@ def get_period_summary_data(
 
     expenses_by_category: dict[str, int] = {}
     category_expr = func.coalesce(FinancialEntry.category, "autre")
+
+    expense_query = db.query(
+        category_expr,
+        func.coalesce(func.sum(FinancialEntry.amount), 0),
+    )
+    expense_query = _scope_financial_query_to_shop(expense_query, db)
+
     for category, total in (
-        db.query(
-            category_expr,
-            func.coalesce(func.sum(FinancialEntry.amount), 0),
-        )
+        expense_query
         .filter(
             FinancialEntry.entry_type == "expense",
             *_date_conditions(FinancialEntry.created_at, since, until),
@@ -249,12 +275,32 @@ def get_daily_summary_data(db: Session):
         "supplier_debt": db.query(func.coalesce(func.sum(Supplier.debt), 0)).scalar(),
     }
 
+    manual_income_query = db.query(
+        func.coalesce(func.sum(FinancialEntry.amount), 0)
+    )
+    manual_income_query = _scope_financial_query_to_shop(
+        manual_income_query, db
+    )
+
+    manual_expense_query = db.query(
+        func.coalesce(func.sum(FinancialEntry.amount), 0)
+    )
+    manual_expense_query = _scope_financial_query_to_shop(
+        manual_expense_query, db
+    )
+
     manual_cashflow = {
-        "manual_income": db.query(func.coalesce(func.sum(FinancialEntry.amount), 0))
-        .filter(FinancialEntry.entry_type == "income", FinancialEntry.origin_kind == "manual")
+        "manual_income": manual_income_query
+        .filter(
+            FinancialEntry.entry_type == "income",
+            FinancialEntry.origin_kind == "manual",
+        )
         .scalar(),
-        "manual_expense": db.query(func.coalesce(func.sum(FinancialEntry.amount), 0))
-        .filter(FinancialEntry.entry_type == "expense", FinancialEntry.origin_kind == "manual")
+        "manual_expense": manual_expense_query
+        .filter(
+            FinancialEntry.entry_type == "expense",
+            FinancialEntry.origin_kind == "manual",
+        )
         .scalar(),
     }
 

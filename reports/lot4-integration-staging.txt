@@ -1,0 +1,419 @@
+WHATZABI SHOP — LOT 4 : INTÉGRATION ET PRÉPARATION STAGING
+Date : 21 octobre 2026
+Verdict : NO-GO STAGING
+
+1. Décision et périmètre
+
+Les garanties transactionnelles des nouveaux parcours tiennent dans les tests
+isolés. En revanche, le démarrage de l'application est incompatible avec la
+migration fournisseurs, les indicateurs Finance ne sont pas tous actualisés
+après import papier et les données historiques nécessitent un rapprochement
+explicite. La suite complète conserve quatre échecs. Aucun feu vert staging.
+
+Ce lot livre un audit reproductible, des tests supplémentaires et un plan de
+recette/déploiement. Il ne corrige pas silencieusement les comportements métier
+préexistants et ne modifie aucun fichier applicatif ni les migrations auditées.
+Les tests de caractérisation nommés test_audit_reproduces_* passent précisément
+parce qu'ils reproduisent les défauts : ils ne sont pas des critères d'acceptation.
+
+Aucun accès à une base réelle, aucune modification des données Serigne Commerce,
+aucun commit, push ou déploiement. Aucun reset, stash ou clean. Auth V2 et
+Whatzabi Online inchangés. Les migrations ont été exécutées uniquement dans des
+bases synthétiques jetables. Les 339 fichiers préexistants empreintés avant
+l'ajout des livrables sont restés identiques ; git diff --check passe.
+
+2. Résultats et environnement
+
+Suite complète Shop : tous les tests de tests/, conformément à pytest.ini.
+Le sous-projet Whatzabi Online n'a pas été exécuté ni modifié.
+
+- Python final : 844 réussis, 4 échoués, 0 ignoré ; 5 sous-tests réussis.
+  Durée : 29,32 s. 953 avertissements, non bloquants mais à traiter séparément.
+  Parmi les succès : les 17 tests PostgreSQL existants des Lots 2/3 et les
+  21 nouveaux tests Lot 4, soit 38 tests PostgreSQL.
+- JavaScript : 40/40 réussis, aucun ignoré.
+- Syntaxe des 6 fichiers app/pwa/*.js : node --check réussi.
+- Suite Lot 4 dédiée : 21/21 réussis, 10,50 s avant la dernière exécution
+  complète, qui inclut aussi les contrôles supplémentaires des PK et FK.
+- Première exécution avec DATABASE_URL=sqlite:// : 784 réussis, 6 échecs,
+  20 erreurs de fixture, 17 tests PG ignorés, 5 sous-tests réussis.
+  Les erreurs et deux échecs HTTP supplémentaires provenaient du startup qui
+  exécute ALTER TABLE ... ADD COLUMN IF NOT EXISTS sur SQLite. Ils disparaissent
+  avec un moteur PostgreSQL isolé. Ce résultat initial n'est pas le verdict final.
+
+PostgreSQL : 16.15, aarch64 Alpine, conteneur postgres:16-alpine, sans volume,
+port aléatoire publié uniquement sur 127.0.0.1. Image :
+sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+
+DATABASE_URL a été explicitement remplacée dans les commandes de test : aucune
+connexion à la valeur du projet. Les nouveaux tests n'utilisent que
+PHOTO_TEST_POSTGRES_URL, refusent une cible autre que localhost/127.0.0.1 avec
+la base lot2_test, et créent/suppriment une base UUID distincte par scénario.
+Ce garde-fou ne dispense pas de lancer uniquement un conteneur jetable identifié.
+
+Commandes de référence, avec URL_TEST fournie par le conteneur jetable :
+  DATABASE_URL="$URL_TEST" PHOTO_TEST_POSTGRES_URL="$URL_TEST" \
+    .venv/bin/python -m pytest tests -q --disable-warnings --tb=short
+  DATABASE_URL="$URL_TEST" PHOTO_TEST_POSTGRES_URL="$URL_TEST" \
+    .venv/bin/python -m pytest tests/test_lot4_migrations_postgres.py \
+    -q --disable-warnings --tb=short
+  node --test tests/js/*.test.cjs
+  node --check <chacun des fichiers app/pwa/*.js>
+  git diff --check
+
+Les traces intégrales finales sont dans lot4-tests-python.log et
+lot4-tests-javascript.log ; la suite dédiée dans lot4-tests-migrations.log.
+
+3. Échecs complets et anomalies restantes
+
+B01 — BLOQUANT — Startup incompatible avec l'unicité fournisseurs du Lot 3.
+Source : app/main.py, ensure_catalog_schema(), bloc DO sur suppliers.
+Après la migration, ce bloc recherche une contrainte UNIQUE contenant name,
+supprime uq_suppliers_merchant_shop_name, puis crée
+uq_suppliers_merchant_name UNIQUE(merchant_id,name).
+Reproductions PostgreSQL dans tests/test_lot4_migrations_postgres.py :
+  test_audit_reproduces_startup_restoring_old_supplier_unique_constraint
+  test_audit_reproduces_startup_failure_with_same_supplier_name_in_two_shops
+Cas sans homonymes : le démarrage réussit mais détruit la règle par boutique.
+Cas avec deux fournisseurs homonymes légitimes dans deux boutiques : échec
+UniqueViolation au démarrage. La migration seule est donc insuffisante.
+Condition de levée : rendre le bootstrap compatible avec le schéma versionné,
+ne plus supprimer les contraintes courantes, tester deux démarrages consécutifs
+après migration et des créations homonymes dans deux boutiques. Examiner aussi
+les requêtes de catalogue sans filtre de schéma dans ce bootstrap.
+
+B02 — BLOQUANT — Fournisseurs historiques non rattachés après migration.
+La migration laisse volontairement suppliers.shop_id à NULL. Les endpoints
+scopés les excluent. Les achats conservent leurs ShopOperation et sont encore
+visibles, mais un règlement référant à un fournisseur non rattaché est bloqué.
+La dette affichée dans une liste fournisseurs peut donc différer de celle des
+achats/Finance. Aucun rattachement automatique n'a été ajouté ou exécuté.
+La fixture démontre : fournisseurs invisibles avant mapping, dettes rapprochées,
+puis paiement/rejeu réussi sans changement de stock après mapping explicite.
+Les cas multi-boutiques, sans opération, tenant incohérent et dette divergente
+sont détectés par scripts/lot4_historical_audit.sql.
+Condition de levée : inventaire historique validé, mapping revu, reprise testée
+sur copie anonymisée, aucun écart inexpliqué avant ouverture.
+
+B03 — BLOQUANT — Finance mélange des données fraîches et obsolètes.
+Source : financial_analysis_service.py + purchasing_finance_service.py ;
+les routes d'import papier ne rafraîchissent ni ne planifient les vues BI02.
+Le test intégré utilise les vraies vues de bi_02_shop_analytics.sql :
+  achat 5 000, versement initial 1 000, règlement ultérieur 1 000 ;
+  ventes papier sur deux jours : 18 000 + 18 000, stock historique inchangé ;
+  avant refresh BI : achats 5 000, décaissements 2 000, dette 3 000,
+  stock valorisé 15 000, mais ventes/encaissements 0, cash-flow -2 000 ;
+  après refresh BI explicite hors écriture : ventes/encaissements 36 000,
+  cash-flow 34 000. L'autre boutique reste à zéro.
+Les achats, paiements et stocks se mettent bien à jour ; un rafraîchissement
+HTTP côté mobile ne peut pas réparer à lui seul une vue matérialisée obsolète.
+Condition de levée : lectures cohérentes ou actualisation fiable après commit,
+avec reprise sur échec et état de fraîcheur visible. Aucune actualisation lourde
+au milieu de la transaction métier. Tester aussi dépenses et paiements clients.
+Les vues historiques agrègent sales.paid_amount à la date de vente : l'allocation
+temporelle des règlements clients différés reste à valider séparément.
+
+B04 — EXACTITUDE HISTORIQUE — Crédit fournisseur initial inconnu.
+La migration conserve initial_paid_amount=NULL pour les achats anciens. Le calcul
+live utilise alors paid_amount courant : achat 5 000, paiement initial 1 000,
+puis règlement 1 000 => crédit généré affiché 3 000 au lieu de 4 000 à l'origine.
+Le reste dû courant de 3 000 reste correct. Défaut reproduit par
+test_audit_reproduces_unknown_historical_initial_credit.
+Condition de levée : distinguer « inconnu » du crédit initial attesté, ou effectuer
+un backfill documenté uniquement lorsque les sources permettent de l'établir.
+La première date de paiement seule ne prouve pas un règlement à la création.
+
+B05 — ÉCHECS DE NON-RÉGRESSION CONVERSATIONNELLE (2).
+- tests/test_correction_montant_paiement.py::test_correction_montant_pendant_attente_paiement
+  Après correction à 2 000 000 et choix cash, réponse « Quand dois-tu payer
+  Soglo ? » au lieu du récapitulatif corrigé attendu.
+- tests/test_explicit_confirmation_guard.py::test_initial_purchase_message_never_writes
+  Achat déclaré cash : demande d'échéance au lieu de « Confirmer ».
+Ces deux échecs préexistaient aux ajouts Lot 4. Ne pas les assimiler à une preuve
+de double écriture : les assertions échouent avant ce contrôle. Le parcours cash
+et la conservation des montants dans l'orchestrateur doivent être corrigés/testés.
+
+B06 — DIVERGENCE TABLEAU DE BORD / TESTS (2).
+- test_home_low_stock_card_opens_critical_stock : attend le catalogue ;
+  la carte actuelle ouvre stockIntelligence et ne porte plus l'ancien ancrage.
+- test_critical_stock_uses_stock_and_threshold : attend une chaîne JS exacte ;
+  le code actuel utilise des variables et ajoute threshold > 0.
+Une partie de l'échec vient de tests structurels obsolètes ; l'exclusion des
+stocks à zéro avec seuil zéro constitue aussi une différence métier à arbitrer.
+Ne pas supprimer les assertions pour rendre la suite verte. Valider la navigation
+Stock 360 et la règle des ruptures, puis remplacer par des tests de comportement.
+
+4. Audit des migrations
+
+Fichiers audités sans modification :
+20261020_sale_photo_drafts.sql
+  SHA-256 e0d6dea6138fd9f15436c1755d0b1ea2ca6c2c8fe5770e58e0f6d2886708b86a
+20261021_purchasing_integrity.sql
+  SHA-256 afb5bce899d895ac2e2d5ccab85d51917b012f938605f506c345f8e842174cec
+
+Compatibilité démontrée : PostgreSQL 16.15, schéma historique synthétique construit
+en retirant exactement les ajouts Lot 2/3 du modèle courant. Présence préalable
+des tables merchants, merchant_users, shops, purchases, suppliers, ainsi que de
+uq_suppliers_merchant_name. Cela ne constitue pas une certification de toutes
+les anciennes versions, d'autres PostgreSQL, des permissions staging ni d'un
+dump réel du pilote, qui n'a pas été consulté.
+
+Lot 2 : nouvelle table sale_photo_drafts, index merchant/shop, FK et CHECK du reçu
+complet. La contrainte interdit une confirmation partielle ; test SQL réel réussi.
+Lot 3 : nouvelle colonne initial_paid_amount nullable, shop_id fournisseur
+nullable, remplacement de l'unicité, index unique partiel pour les non-rattachés,
+table purchasing_receipts avec PK(merchant_id,key), index boutique et FK.
+PK, FK, colonnes et nullabilité sont comparées au modèle sur les tables modifiées.
+Toutes les valeurs de toutes les colonnes historiques et les nombres de lignes
+restent identiques avant/après application des deux fichiers.
+
+Points opérationnels obligatoires :
+- Chaque fichier a son propre BEGIN/COMMIT. Ils ne forment pas ensemble une
+  transaction atomique. Si le Lot 3 échoue, le Lot 2 déjà commité reste appliqué.
+- Scripts non réentrants : un rejeu échoue « already exists », sans altérer
+  l'historique. Absence de registre de versions/checksums et de verrou de runner.
+- Le nom exact uq_suppliers_merchant_name est requis. Un nom différent fait
+  échouer le Lot 3 ; rollback complet de ses ajouts démontré.
+- Bootstrap avant migrations : create_all crée les nouvelles tables, puis les
+  migrations échouent sur les objets existants. Tester l'ordre avant le démarrage
+  du binaire, et traiter les schémas partiellement initialisés explicitement.
+- ALTER TABLE exige des verrous forts. Un lecteur actif bloque la migration ;
+  lock_timeout=100ms interrompt le test sans modification partielle, puis le rejeu
+  après libération réussit. Fixer lock_timeout et statement_timeout dans le runner,
+  dimensionner la fenêtre sur une copie représentative. Aucun test de charge fait.
+- Les FK simples ne garantissent pas à elles seules merchant_id/shop_id cohérents.
+  Les API les contrôlent ; les écritures SQL/legacy restent à auditer. Pas de RLS
+  ni de FK composite d'appartenance démontrée ici.
+- Aucune migration corrective ou down destructive ajoutée : les deux fichiers
+  restent préparés pour revue et sont insuffisants sans lever B01 et B02.
+
+5. Reprise historique des fournisseurs et dettes
+
+Procédure préparée, non exécutée sur des données réelles :
+1) Sur copie anonymisée autorisée, figer un snapshot cohérent et exécuter le
+   diagnostic SQL en REPEATABLE READ, READ ONLY après migration. Il ne contient
+   qu'un SELECT, sans mutation. Exporter les anomalies et la preuve de résolution.
+2) Pour chaque fournisseur, examiner toutes les opérations, y compris achats
+   payés/annulés, commerçant, boutique, auteurs, achats, paiements et allocations.
+   Les doublons de noms ne sont pas une preuve d'identité métier.
+3) Une seule boutique démontrée, aucun achat sans scope, aucun écart de dette :
+   proposer supplier_id -> shop_id avec preuves ; validation explicite du mapping.
+4) Plusieurs boutiques : préparer une scission documentée en fournisseurs par
+   boutique ; rattacher achats ET paiements de chaque groupe, conserver les IDs
+   d'opérations et la traçabilité ancien/nouveaux fournisseurs. Ne jamais fusionner
+   automatiquement. Tester la conservation des totaux et des allocations.
+5) Pas d'activité, achat sans boutique, tenant étranger ou dette d'ouverture sans
+   justificatif : aucune déduction automatique. Maintenir le dossier bloqué jusqu'à
+   décision du responsable métier et traitement séparé des soldes d'ouverture.
+6) Rapprocher, par commerçant et boutique :
+   - Supplier.debt = somme des Purchase.remaining_amount non annulés ;
+   - total achat = payé + restant ; sommes des lignes = montants de l'achat ;
+   - payé = somme des SupplierPayment ; chaque paiement = ses allocations ;
+   - allocations liées uniquement aux lignes de leur achat ;
+   - achats/paiements/fournisseurs/stocks/récépissés appartiennent au bon scope.
+7) Appliquer un futur mapping revu dans une transaction bornée avec contrôles
+   avant/après et rollback sur tout écart. Ce lot ne fournit aucun mapping pilote.
+
+Le diagnostic détecte les écarts ci-dessus et les refs de stocks/reçus hors scope.
+Un résultat vide est nécessaire mais non suffisant : il ne valide pas la provenance
+des soldes initiaux, toutes les règles de ventes clients ni la fraîcheur des vues.
+
+6. Intégrité, concurrence et effets sur les indicateurs
+
+Validé par les suites HTTP, PG et JS :
+- document papier multi-journées, dates conservées, rapprochement des totaux,
+  justification explicite, doublons métier malgré un hash différent ;
+- achat comptant sans fournisseur, crédit avec fournisseur et échéance,
+  paiements partiels/solde, dates réelles et limites de montants ;
+- même clé/même contenu : même reçu ; contenu différent ou autre boutique : refus ;
+- deux confirmations, deux règlements simultanés, refus de dépassement du reste dû,
+  achats concurrents cumulés et concurrence annulation/règlement ;
+- rollback après flush, refus de REPEATABLE READ pour les écritures achats/import,
+  sessions indépendantes et objets ORM préchargés avant verrou ;
+- scénario croisé sur schéma réellement migré : stock 10 + achat 5 - vente papier 2
+  = 13, dette fournisseur 4 000 ;
+- import historique sans impact stock : deux journées ajoutées sans décompter
+  le stock courant ; une déduction exige rôle et justification explicites ;
+- simple règlement fournisseur : stock inchangé ; impact trésorerie à paid_at ;
+- absence de REFRESH pendant les transactions de création du scénario intégré ;
+- corrections après erreur réseau, rejeu après réponse perdue, changement de
+  boutique et réponses tardives couverts par les tests JS existants.
+
+Limites : les tests HTTP utilisent aussi des contextes d'authentification simulés ;
+ils ne remplacent pas la recette réelle de session multi-boutique. Verrou marchand
+commun : sûr dans les scénarios testés mais débit et temps d'attente à mesurer.
+Les appels Python historiques sans clé n'offrent pas les garanties des nouveaux
+endpoints HTTP. La restauration d'un ancien binaire ne serait donc pas une preuve
+de maintien de l'idempotence.
+
+7. Recette mobile à exécuter — Safari iOS et Chrome Android
+
+NON EXÉCUTÉE sur appareils. Les tests Node ne prouvent ni le rendu ni les
+comportements caméra, clavier, suspension et stockage des navigateurs mobiles.
+Support proposé à valider : Safari en onglet et PWA écran d'accueil sur iPhone ;
+Chrome en onglet et PWA installée sur Android. Noter modèle, OS, navigateur,
+version PWA/service worker, heure/fuseau, rôle, boutique et build pour chaque cas.
+Choisir les versions réellement utilisées par Serigne Commerce et une version
+précédente supportée. Jeux synthétiques et identités de staging seulement.
+
+Préparation : commerçant A, boutiques A1/A2, commerçant B/B1 ; même nom de
+fournisseur dans A1/A2 ; produit Riz, stock A1=10, A2=7, coût=1 000, prix=1 500.
+Document synthétique deux jours : 2 unités à 1 500/jour, total 6 000.
+Capture de preuves sans photo personnelle ni jeton ; chaque cas est réinitialisé
+dans les seules données synthétiques ou possède un identifiant de jeu distinct.
+
+À cocher séparément sur chaque navigateur :
+[ ] Achat cash sans fournisseur, 5 unités, payé 5 000 : une opération, stock 15,
+    dette 0. Boutons accessibles, clavier numérique, aucun champ masqué.
+[ ] Achat crédit : 5 000, payé 1 000, fournisseur existant, échéance visible :
+    dette 4 000. Sans fournisseur ou sans échéance : refus lisible et panier gardé.
+[ ] Création rapide fournisseur dans le formulaire : panier et saisies conservés,
+    fournisseur sélectionné, même nom autorisé dans A2 après correction B01.
+[ ] Règlement 1 000 puis solde 3 000 : payé 5 000, reste 0, stock inchangé,
+    date locale saisie et instant UTC relu cohérents, historique visible.
+[ ] Double tap achat/paiement/import : un seul effet et même identifiant.
+[ ] Couper uniquement la réponse après commit via proxy de staging : recharger,
+    renvoyer la même clé/payload ; aucun doublon ni mouvement de stock en plus.
+[ ] Mode avion avant envoi puis reprise ; erreur 5xx et erreur de validation :
+    corrections préservées, message clair, absence d'achat fantôme.
+[ ] Changer A1 -> A2 pendant analyse photo/écriture/chargement indicateurs, puis
+    revenir A1 : aucune réponse tardive appliquée à A2, aucun reçu mal attribué.
+[ ] Deux appareils : règlements simultanés de 3 000 sur un reste de 4 000 :
+    un accepté, un refusé ; reste 1 000 et stock inchangé. Deux fois 2 000 : solde 0.
+[ ] Import des deux journées : dates distinctes conservées, total 6 000 rapproché ;
+    total erroné bloqué jusqu'à correction ou justification enregistrée.
+[ ] Nouvelle photo du même document : avertissement doublon malgré hash différent ;
+    vente réellement distincte possible uniquement par décision explicite.
+[ ] Import historique par défaut sans décompte courant ; règle de décompte validée
+    séparément. Annulation cohérente avec la règle initialement choisie.
+[ ] Rechargement, suspension iOS, fermeture/reprise PWA : récupération sûre dans
+    la session prévue ; aucune réutilisation sous autre boutique/connexion.
+    Pas de photo brute ni de jeton dans le stockage du brouillon. Si le navigateur
+    efface la session, informer de la limite plutôt que promettre la récupération.
+[ ] Rotation, zoom, écran étroit, grands caractères, clavier et lecteur d'écran :
+    totaux, payé, reste, échéance, erreurs et actions de confirmation lisibles.
+[ ] Accueil, Finance, liste achats, dettes et stock : mêmes montants après commit,
+    changement de période et retour arrière ; aucun chiffre obsolète silencieux.
+[ ] Carte Stock 360 : bonne destination, ruptures/seuils testés et expliqués.
+[ ] Actualisation service worker : nouvelle version installée sans perdre une
+    confirmation en attente et sans réémettre une écriture déjà confirmée.
+[ ] Tentatives de refs fournisseur/achat/produit A2 ou B1 depuis A1 refusées ;
+    vendeur sans permission ne peut ni importer hors règle ni régler un fournisseur.
+
+Pour chaque ligne : attendu / observé / PASS-FAIL / preuve / testeur / date.
+Tout écart d'argent, de stock, d'idempotence ou de scope bloque la recette.
+
+8. Sauvegarde, déploiement staging et rollback — plan non exécuté
+
+Répétition locale de sauvegarde réellement effectuée : pg_dump -Fc puis
+pg_restore --exit-on-error dans une autre base jetable, PostgreSQL 16.15.
+Jeu métier avec vente papier, achat, règlements, allocations, stocks et reçus.
+Comparaison de toutes les lignes des 35 tables et des 33 séquences : identiques.
+Rejeux achat, règlement et confirmation papier après restauration : reçus conservés,
+aucune mutation supplémentaire des données. Preuve : lot4-backup-restore.json.
+Il ne s'agit pas d'une restauration d'un backup pilote, ni d'un test de volumétrie,
+de chiffrement opérationnel, de RPO/RTO contractuels ou de PITR/WAL.
+
+Avant toute exécution staging, obtenir les validations métier/techniques et lever
+les conditions de GO de la section 9. Le plan ci-dessous n'est pas une autorisation
+de déployer dans cette session.
+
+Phase A — Préparer et figer
+- Identifier explicitement serveur, base, propriétaire, schéma et environnement ;
+  aucun secret/base du pilote dans les variables staging. Désactiver les envois
+  réels WhatsApp/SMS et utiliser des services externes de test.
+- Inventorier PostgreSQL, extensions, rôles/ACL, tables/contraintes/index, schéma
+  des vues BI et versions applicatives. Comparer au prérequis des scripts, vérifier
+  que les objets Lot 2/3 ne sont pas déjà présents ou partiellement créés.
+- Retester les patches de démarrage avant toute activation. Un démarrage peut
+  aussi modifier les anciens coûts, numéros et marchands par ses UPDATE historiques.
+  La migration seule ne décrit donc pas tous les effets du déploiement actuel.
+- Figer un artefact identifié (manifestes/checksums incluant les fichiers non
+  suivis nécessaires) sans commit dans ce lot. Pas de publication du répertoire
+  de travail contenant des changements non sélectionnés.
+- Tester sur données synthétiques puis copie anonymisée autorisée représentative,
+  avec le mapping fournisseurs validé et aucun accès au pilote en écriture.
+
+Phase B — Sauvegarder avant mutation
+- Arrêter les écritures et workers sur la seule instance staging, faire terminer
+  les transactions et noter l'instant de coupure. Objectif de cette fenêtre :
+  aucune nouvelle écriture acceptée entre snapshot et bascule.
+- pg_dump format custom avec version compatible ; exporter séparément schéma,
+  rôles/ACL nécessaires et configuration de déploiement sans exposer les secrets.
+  Inclure stocks, liens ShopOperation, allocations, audit et reçus d'idempotence.
+- Chiffrer, restreindre l'accès, consigner taille, horodatage et SHA-256 ; rétention
+  limitée selon la politique validée. Aucune photo sensible inutile dans le backup.
+- Restaurer dans une base distincte et vérifier les totaux, contraintes, séquences,
+  reçus et rejeux. Une réussite de pg_dump sans restauration ne suffit pas.
+- Fixer RPO/RTO avec le responsable ; les mesurer sur volumétrie représentative.
+
+Phase C — Migrer et vérifier avant ouverture
+- Un seul runner, verrou de migration, journal de versions/checksums et exécution
+  avec arrêt sur première erreur (psql ON_ERROR_STOP). lock_timeout et
+  statement_timeout bornés ; aucun retry automatique après résultat ambigu.
+- Appliquer Lot 2 puis Lot 3 uniquement au schéma historique compatible ; enregistrer
+  chaque commit séparément. Sur base neuve bootstrapée, ne pas rejouer aveuglément
+  les mêmes DDL : comparer le schéma et choisir une procédure d'initialisation revue.
+- Exécuter le futur mapping historique revu, comparer les snapshots et diagnostics,
+  recalculer les indicateurs après commit. Vérifier 0 anomalie non expliquée.
+- Démarrer un seul worker corrigé ; vérifier les contraintes AVANT/APRÈS démarrage,
+  puis redémarrer pour vérifier la stabilité. Pas d'ouverture si B01 réapparaît.
+- Smoke tests HTTP de permissions, achat/paiement/import, rejeu après perte de
+  réponse, stocks/dettes/Finance ; lancer ensuite plusieurs workers et les courses.
+- Exécuter la recette mobile et faire signer Serigne Commerce sur identités staging.
+  Observer taux de 4xx/5xx, latence, verrous, rejets de doublons et fraîcheur Finance,
+  avec identifiants de requêtes sans photos ni bearer tokens dans les journaux.
+
+Phase D — Revenir en arrière si nécessaire
+- Déclencheurs : écart de soldes/stock, fuite de scope, duplication, startup cassé,
+  migration incomplète, indicateurs incohérents ou taux d'erreurs incompatible.
+- Fermer immédiatement les écritures staging ; conserver le journal de la panne
+  et un snapshot post-échec pour analyse. Ne pas effacer les reçus d'idempotence.
+- Échec DDL avant commit : rollback du fichier concerné ; inspecter le schéma.
+  Le fichier précédent peut déjà être commité. Corriger en copie, pas par tâtonnement.
+- Avant toute nouvelle écriture acceptée : restaurer le snapshot testé dans une
+  AUTRE base, vérifier, puis basculer la connexion vers cette copie avec le binaire
+  compatible validé. Garder la base fautive isolée pour diagnostic.
+- Après des écritures acceptées : une restauration ancienne ferait perdre des
+  achats/paiements et leurs reçus. Préférer une correction en avant ; sinon préparer
+  une réconciliation explicite des écritures post-snapshot avant bascule. Ne jamais
+  rejouer aveuglément des achats pour reconstruire le stock.
+- Ne pas supprimer shop_id, initial_paid_amount ou les tables de reçus ; les noms
+  fournisseurs par boutique peuvent rendre l'ancien schéma/binaire incompatibles.
+- Après rollback : répétition des contrôles scopes/soldes/stock/rejeux et vérification
+  du cache PWA. Réouverture uniquement après validation et communication du résultat.
+
+9. Checklist de décision — responsable technique et Serigne Commerce
+
+[ ] B01 corrigé, migrations + démarrage + redémarrage testés sur historique.
+[ ] Même fournisseur nommé dans deux boutiques accepté, sans fuite entre elles.
+[ ] Mapping historique revu, dettes rapprochées et soldes d'ouverture justifiés.
+[ ] Crédit initial inconnu traité explicitement ; aucune valeur historique inventée.
+[ ] Finance/Accueil cohérents immédiatement ou fraîcheur explicite avec reprise fiable.
+[ ] Quatre échecs de suite corrigés ou spécifications arbitrées avec tests adaptés.
+[ ] Suite complète verte, courses PostgreSQL et tests HTTP/JS réussis sur l'artefact.
+[ ] Backup restauré et contrôlé avec données représentatives ; RPO/RTO validés.
+[ ] Recette Safari iOS et Chrome Android signée, y compris réseau perdu et deux appareils.
+[ ] Isolation réelle de sessions/rôles/boutiques validée ; secrets staging séparés.
+[ ] Procédure de rollback exécutée en répétition, responsabilités et fenêtre définies.
+[ ] Accord final Serigne Commerce pour une recette staging, sans écriture pilote.
+
+À ce stade : NO-GO STAGING. Les migrations SQL préservent les historiques
+synthétiques testés, mais leur intégration au démarrage et la reprise des historiques
+réels ne sont pas maîtrisées. Un GO serait prématuré malgré les garanties locales
+d'idempotence et de concurrence démontrées.
+
+10. Fichiers ajoutés par ce lot
+
+tests/test_lot4_migrations_postgres.py — 21 scénarios SQL/historiques/intégration.
+scripts/lot4_historical_audit.sql — diagnostic postmigration en lecture seule.
+reports/lot4-integration-staging.txt — présent rapport, recette et plans.
+reports/lot4-tests-python.log — sortie de la suite Python complète finale.
+reports/lot4-tests-javascript.log — sortie de la suite JavaScript complète.
+reports/lot4-tests-migrations.log — sortie de la suite PostgreSQL Lot 4 dédiée.
+reports/lot4-backup-restore.json — preuve de restauration et rejeux sans mutation.
+
+Aucun fichier préexistant modifié. Les deux migrations, le code applicatif et les
+travaux non commités existants sont conservés en l'état. Conteneur et bases de
+test supprimés à la fin ; les dumps synthétiques temporaires ne sont pas des
+livrables ni des sauvegardes du pilote.

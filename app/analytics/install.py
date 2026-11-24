@@ -7,6 +7,7 @@ SQL_FILES = [
     "app/analytics/sql/bi_01_materialized_views.sql",
     "app/analytics/sql/bi_01_financial_position.sql",
     "app/analytics/sql/bi_01_inventory_history.sql",
+    "app/analytics/sql/bi_02_shop_analytics.sql",
 ]
 
 

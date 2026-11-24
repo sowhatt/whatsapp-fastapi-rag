@@ -1,0 +1,1814 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Whatzabi</title>
+  <link rel="manifest" href="/auth/manifest.webmanifest">
+  <link rel="stylesheet" href="/auth/styles.css?v=29-exports-1-sale-photo-1">
+  <link rel="stylesheet" href="/auth/express-sale.css?v=2-cart-price-1">
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="card login-card">
+      <div class="brand">W</div>
+      <h1>Whatzabi</h1>
+      <p class="muted">Votre activité, partout.</p>
+      <form id="loginForm" class="stack">
+        <label>Numéro WhatsApp<input id="phone" autocomplete="username" placeholder="+336..." required></label>
+        <label>Mot de passe<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <button type="submit">Se connecter</button>
+      </form>
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="appView" hidden>
+      <header class="topbar">
+        <div>
+          <strong id="shopName">Whatzabi</strong>
+          <div id="merchantPhone" class="muted small"></div>
+        </div>
+        <button id="logoutBtn" class="ghost">Déconnexion</button>
+      </header>
+
+      <section id="identityCard" class="card identity-card">
+        <div>
+          <span class="eyebrow">Boutique active</span>
+          <strong id="activeShopName">Commerce principal</strong>
+          <label id="shopSelectorWrap" class="shop-selector" hidden>
+            Changer de boutique
+            <select id="shopSelector" aria-label="Changer de boutique"></select>
+          </label>
+        </div>
+        <div class="identity-meta">
+          <span id="userName">Compte commerçant</span>
+          <span id="roleBadge" class="badge">PROPRIÉTAIRE</span>
+          <span
+            id="offlineSyncBadge"
+            class="badge offline-sync-badge"
+            hidden
+          >
+            En ligne
+          </span>
+        </div>
+      </section>
+
+      <nav class="tabs bottom-nav" aria-label="Navigation principale">
+        <button data-tab="dashboard" class="active">
+          <span class="nav-icon">⌂</span>
+          <span>Accueil</span>
+        </button>
+        <button data-tab="sales">
+          <span class="nav-icon">🛒</span>
+          <span>Caisse</span>
+        </button>
+        <button id="voiceNavBtn" type="button" class="scanner-nav" aria-label="Assistant vocal">
+          <span>🎙️</span>
+        </button>
+        <button data-tab="activity">
+          <span class="nav-icon">▥</span>
+          <span>Activité</span>
+        </button>
+        <button data-tab="more">
+          <span class="nav-icon">☰</span>
+          <span>Plus</span>
+        </button>
+      </nav>
+
+      <section id="dashboard" class="panel active home-panel">
+        <article class="home-hero">
+          <div>
+            <span class="eyebrow home-eyebrow">Tableau de bord</span>
+            <h2>Bonjour 👋</h2>
+            <p>Prêt pour une nouvelle vente ?</p>
+          </div>
+        </article>
+
+        <div class="grid home-stats">
+          <article class="card home-stat">
+            <span>Chiffre d'affaires</span>
+            <strong id="statRevenue">0 FCFA</strong>
+            <small>Boutique active</small>
+          </article>
+
+          <button id="statSalesCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="sales" data-scroll-target="saleList">
+            <span>Ventes</span>
+            <strong id="statSales">0</strong>
+            <small>Dernières ventes ›</small>
+          </button>
+
+          <button id="statCustomerDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="customers" data-scroll-target="receivableList">
+            <span>Créances clients</span>
+            <strong id="statDebt">0 FCFA</strong>
+            <small><span id="statDebtCustomers">0 client</span> · Voir échéances ›</small>
+          </button>
+
+          <button
+            id="statExpensesCard"
+            type="button"
+            class="card home-stat home-stat-clickable"
+            data-open-tab="expenses"
+          >
+            <span>Dépenses</span>
+            <strong id="statExpenses">0 FCFA</strong>
+            <small>Ce mois · Voir détail ›</small>
+          </button>
+
+          <button
+            id="statLowStockCard"
+            type="button"
+            class="card home-stat home-stat-alert home-stat-clickable"
+            data-open-tab="stockIntelligence"
+          >
+            <span>Stock intelligent 360</span>
+            <strong id="statLowStock">—</strong>
+            <small id="statStockInsight">Analyse de la boutique…</small>
+          </button>
+
+          <button id="statSupplierDebtCard" type="button" class="card home-stat home-stat-clickable" data-open-tab="purchases" data-scroll-target="supplierPayablesList" hidden>
+            <span>Dettes fournisseurs</span>
+            <strong id="statSupplierDebt">0 FCFA</strong>
+            <small id="statSupplierDebtCount">0 fournisseur</small>
+          </button>
+        </div>
+
+        <section class="home-section">
+          <div class="home-section-heading">
+            <h2>Actions rapides</h2>
+          </div>
+
+          <div class="home-actions">
+            <button id="quickAddSale" data-open-tab="sales" class="home-action">
+              <span class="home-action-icon">🛒</span>
+              <span>Nouvelle vente</span>
+            </button>
+
+            <button id="quickAddPurchase" type="button" class="home-action">
+              <span class="home-action-icon">📦</span>
+              <span>Nouvel achat</span>
+            </button>
+
+            <button id="quickAddExpense" type="button" class="home-action">
+              <span class="home-action-icon">💸</span>
+              <span>Nouvelle dépense</span>
+            </button>
+
+            <button id="quickScanner" type="button" class="home-action">
+              <span class="home-action-icon">⌁</span>
+              <span>Scanner produit</span>
+            </button>
+
+            <button id="quickStock" data-open-tab="stockIntelligence" class="home-action">
+              <span class="home-action-icon">📊</span>
+              <span>Stock intelligent 360</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="home-section">
+          <div class="home-section-heading">
+            <h2>Activité récente</h2>
+            <button data-open-tab="activity" class="text-action">Voir tout</button>
+          </div>
+          <div id="recentActivity" class="card recent-activity"></div>
+        </section>
+      </section>
+
+
+      <section id="stockIntelligence"
+               class="panel stock-intelligence-panel">
+
+        <div class="stock-v2-header">
+          <div>
+            <span class="eyebrow">Pilotage des stocks</span>
+            <h2>Stock intelligent</h2>
+            <p class="muted small" id="stockIntelligenceShop">
+              Boutique active · 30 derniers jours
+            </p>
+          </div>
+
+          <button id="stockIntelligenceRefresh"
+                  type="button"
+                  class="stock-v2-refresh"
+                  aria-label="Actualiser">
+            ↻
+          </button>
+        </div>
+
+        <article id="stockPriorityCard"
+                 class="stock-priority-card">
+          <div class="stock-priority-icon">!</div>
+          <div class="stock-priority-copy">
+            <span>Priorité du jour</span>
+            <strong id="stockPriorityTitle">Analyse en cours…</strong>
+            <small id="stockPriorityText">
+              Whatzabi analyse le stock de cette boutique.
+            </small>
+          </div>
+        </article>
+
+        <div class="stock-v2-kpis">
+          <article>
+            <span>À traiter</span>
+            <strong id="stockIntelligenceToOrder">—</strong>
+          </article>
+
+          <article>
+            <span>Dormants</span>
+            <strong id="stockIntelligenceDormant">—</strong>
+          </article>
+
+          <article class="stock-v2-kpi-wide">
+            <span>Valeur du stock</span>
+            <strong id="stockIntelligenceValue">—</strong>
+          </article>
+        </div>
+
+        <section class="stock-360-section">
+          <div class="stock-360-heading">
+            <div>
+              <span class="eyebrow">Vue opérationnelle</span>
+              <h3>Stock 360</h3>
+              <small>
+                Stock initial, mouvements, niveau actuel et valeur
+              </small>
+            </div>
+          </div>
+
+          <div class="stock-360-kpis">
+            <article>
+              <span>Alertes stock</span>
+              <strong id="stock360Alerts">—</strong>
+              <small id="stock360AlertsDetail">
+                Analyse en cours…
+              </small>
+            </article>
+
+            <article>
+              <span>Valeur au coût</span>
+              <strong id="stock360CostValue">—</strong>
+              <small>Capital immobilisé</small>
+            </article>
+
+            <article>
+              <span>Valeur de vente</span>
+              <strong id="stock360RetailValue">—</strong>
+              <small>CA potentiel du stock</small>
+            </article>
+
+            <article>
+              <span>Marge potentielle</span>
+              <strong id="stock360Margin">—</strong>
+              <small>Si tout le stock est vendu</small>
+            </article>
+          </div>
+
+          <div class="stock-360-table-wrap">
+            <table class="stock-360-table">
+              <thead>
+                <tr>
+                  <th>Feu</th>
+                  <th>Produit</th>
+                  <th>Initial</th>
+                  <th>Entrées</th>
+                  <th>Ventes</th>
+                  <th>Autres sorties</th>
+                  <th>Ajust.</th>
+                  <th>Actuel</th>
+                  <th>Seuil</th>
+                  <th>Couverture</th>
+                  <th>Valeur</th>
+                </tr>
+              </thead>
+
+              <tbody id="stock360Body">
+                <tr>
+                  <td colspan="11">
+                    Chargement du stock…
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            id="stock360Toggle"
+            type="button"
+            class="ghost stock-360-toggle"
+            hidden
+          >
+            Voir les autres produits
+          </button>
+
+          <p id="stock360Note"
+             class="stock-360-note">
+            * Le stock initial V1 est reconstitué à partir
+            du stock actuel et des mouvements connus.
+          </p>
+        </section>
+
+        <div class="stock-intelligence-filters"
+             role="group"
+             aria-label="Filtrer les produits">
+          <button type="button"
+                  class="active"
+                  data-stock-filter="replenish">
+            À traiter
+          </button>
+          <button type="button"
+                  data-stock-filter="fast">
+            Rapides
+          </button>
+          <button type="button"
+                  data-stock-filter="slow">
+            Lents
+          </button>
+          <button type="button"
+                  data-stock-filter="dormant">
+            Dormants
+          </button>
+        </div>
+
+        <p id="stockIntelligenceStatus"
+           class="muted small"
+           role="status">Chargement…</p>
+
+        <div id="stockIntelligenceList"
+             class="stock-intelligence-list"></div>
+
+        <p class="stock-intelligence-note">
+          Recommandations calculées à partir de l'activité récente
+          de la boutique. À utiliser comme aide à la décision.
+        </p>
+      </section>
+
+      <section id="activity" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Activité</h2>
+          </div>
+        </div>
+
+        <div class="grid activity-stats">
+          <article class="card">
+            <span>CA ventes</span>
+            <strong id="activityRevenue">0 FCFA</strong>
+          </article>
+          <article class="card">
+            <span>Créances</span>
+            <strong id="activityDebt">0 FCFA</strong>
+          </article>
+        </div>
+
+        <article class="card">
+          <h2>Stock boutique</h2>
+          <div id="activityStock" class="list compact-list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Dernières ventes</h2>
+          <div id="activitySales" class="list compact-list"></div>
+        </article>
+      </section>
+
+      <section id="more" class="panel">
+        <article class="card more-menu">
+          <h2>Gestion</h2>
+
+          <button data-open-tab="products" class="more-menu-item">
+            <span class="more-menu-icon">📦</span>
+            <span>
+              <strong>Produits & stock</strong>
+              <small>Catalogue et gestion des produits</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button data-open-tab="customers" class="more-menu-item">
+            <span class="more-menu-icon">👥</span>
+            <span>
+              <strong>Clients</strong>
+              <small>Clients, dettes et historique</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button data-open-tab="suppliers" type="button" class="more-menu-item">
+            <span class="more-menu-icon">🚚</span>
+            <span>
+              <strong>Fournisseurs</strong>
+              <small>Achats et dettes fournisseurs</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreExpenses" data-open-tab="expenses" type="button" class="more-menu-item">
+            <span class="more-menu-icon">💸</span>
+            <span>
+              <strong>Dépenses</strong>
+              <small>Saisie et historique des dépenses</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button data-open-tab="purchases" type="button" class="more-menu-item">
+            <span class="more-menu-icon">📥</span>
+            <span>
+              <strong>Achats</strong>
+              <small>Réception et approvisionnement</small>
+            </span>
+            <span>›</span>
+          </button>
+        </article>
+
+        <article class="card more-menu">
+          <h2>Outils</h2>
+
+          <button id="moreSalePhoto" type="button" class="more-menu-item" hidden>
+  <span class="more-menu-icon" aria-hidden="true">↑</span>
+  <span><strong>Importer les ventes</strong><small>Photo du registre papier</small></span>
+  <span aria-hidden="true">›</span>
+</button>
+
+<button id="moreExports" type="button" class="more-menu-item" hidden>
+            <span class="more-menu-icon" aria-hidden="true">↓</span>
+            <span>
+              <strong>Export comptabilité</strong>
+              <small>Ventes, achats et dépenses en CSV</small>
+            </span>
+            <span aria-hidden="true">›</span>
+          </button>
+
+          <button id="moreFinancial" type="button" class="more-menu-item">
+            <span class="more-menu-icon">📈</span>
+            <span>
+              <strong>Analyse financière</strong>
+              <small>CA, marge et créances</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreCalculator" type="button" class="more-menu-item">
+            <span class="more-menu-icon">🧮</span>
+            <span>
+              <strong>Calculatrice</strong>
+              <small>Calcul rapide</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button data-open-tab="currencies" type="button" class="more-menu-item">
+            <span class="more-menu-icon">💱</span>
+            <span>
+              <strong>Devises & change</strong>
+              <small>Devise boutique et taux de change</small>
+            </span>
+            <span>›</span>
+          </button>
+
+          <button id="moreSettings" type="button" class="more-menu-item">
+            <span class="more-menu-icon">⚙️</span>
+            <span>
+              <strong>Paramètres</strong>
+              <small>Commerce et préférences</small>
+            </span>
+            <span>›</span>
+          </button>
+        </article>
+      </section>
+
+      <section id="settings" class="panel settings-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Configuration</span>
+            <h2>Paramètres</h2>
+            <small id="settingsShopName" class="muted">Boutique active</small>
+          </div>
+        </div>
+
+        <article class="card settings-card">
+          <div class="settings-card-heading">
+            <span class="settings-card-icon">🏪</span>
+            <div>
+              <h3>Mon commerce</h3>
+              <small>Identité et profil de ton activité</small>
+            </div>
+          </div>
+
+          <form id="commerceSettingsForm" class="settings-form">
+            <label>
+              <span>Nom du commerce</span>
+              <input
+                id="settingsBusinessName"
+                type="text"
+                maxlength="150"
+                autocomplete="organization"
+                required
+              >
+            </label>
+
+            <label>
+              <span>Secteur d'activité</span>
+              <select id="settingsBusinessType" required>
+                <option value="general_retail">Commerce général</option>
+                <option value="grocery">Alimentation / Supérette</option>
+                <option value="pharmacy">Pharmacie / Parapharmacie</option>
+                <option value="restaurant_bar">Restaurant / Bar</option>
+                <option value="fashion">Mode / Vêtements</option>
+                <option value="beauty">Beauté / Cosmétique</option>
+                <option value="hardware">Quincaillerie</option>
+                <option value="electronics">Électronique / Téléphonie</option>
+                <option value="other">Autre</option>
+              </select>
+              <small class="muted">
+                Whatzabi adaptera progressivement ses outils à ton activité.
+              </small>
+            </label>
+
+            <label>
+              <span>Pays</span>
+              <select id="settingsCountry" required>
+                <option value="">Choisir un pays</option>
+                <option value="BJ">Bénin</option>
+                <option value="CI">Côte d’Ivoire</option>
+                <option value="TG">Togo</option>
+                <option value="SN">Sénégal</option>
+                <option value="BF">Burkina Faso</option>
+                <option value="ML">Mali</option>
+                <option value="NE">Niger</option>
+                <option value="FR">France</option>
+                <option value="OTHER">Autre</option>
+              </select>
+            </label>
+
+            <div class="settings-readonly-grid">
+              <div class="settings-info">
+                <span>Boutique active</span>
+                <strong id="settingsActiveShop">—</strong>
+              </div>
+
+              <div class="settings-info">
+                <span>Devise</span>
+                <strong id="settingsCurrency">—</strong>
+              </div>
+            </div>
+
+            <label>
+              <span>WhatsApp</span>
+              <input
+                id="settingsWhatsapp"
+                type="text"
+                readonly
+              >
+            </label>
+
+            <label>
+              <span>Adresse de la boutique</span>
+              <input
+                id="settingsAddress"
+                type="text"
+                maxlength="255"
+                autocomplete="street-address"
+                placeholder="Ex. Cotonou, quartier..."
+              >
+            </label>
+
+            <p id="settingsStatus" class="muted" hidden></p>
+
+            <button
+              id="settingsSaveBtn"
+              class="primary settings-save"
+              type="submit"
+            >
+              Enregistrer les modifications
+            </button>
+          </form>
+        </article>
+
+        <article class="card settings-coming">
+          <h3>À venir</h3>
+          <div class="settings-coming-row">
+            <span>👥 Utilisateurs & rôles</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>📦 Préférences stock</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>🔔 Alertes</span>
+            <span>›</span>
+          </div>
+          <div class="settings-coming-row">
+            <span>✨ Whatzabi IA</span>
+            <span>›</span>
+          </div>
+        </article>
+      </section>
+
+      <section id="expenses" class="panel expenses-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Dépenses</h2>
+            <small id="expensesShopName" class="muted">—</small>
+          </div>
+
+          <button
+            id="expenseAddBtn"
+            type="button"
+            class="primary"
+          >
+            + Ajouter
+          </button>
+        </div>
+
+        <article class="card expense-hero">
+          <span>Dépenses du mois</span>
+          <strong id="expensesTotal">0 FCFA</strong>
+          <small id="expensesCount">0 dépense</small>
+        </article>
+
+        <div class="expense-periods" role="group" aria-label="Période des dépenses">
+          <button type="button" class="expense-period" data-expense-period="today">
+            Aujourd'hui
+          </button>
+          <button type="button" class="expense-period" data-expense-period="week">
+            Semaine
+          </button>
+          <button type="button" class="expense-period active" data-expense-period="month">
+            Mois
+          </button>
+          <button type="button" class="expense-period" data-expense-period="all">
+            Tout
+          </button>
+        </div>
+
+        <article class="card">
+          <div class="home-section-heading">
+            <h2>Historique</h2>
+            <button id="expensesRefreshBtn" type="button" class="text-action">
+              Actualiser
+            </button>
+          </div>
+
+          <div id="expensesList" class="expense-list">
+            <p class="muted empty-state">Aucune dépense.</p>
+          </div>
+        </article>
+
+        <article id="expenseFormCard" class="card expense-form-card" hidden>
+          <div class="home-section-heading">
+            <h2>Nouvelle dépense</h2>
+            <button id="expenseFormCloseBtn" type="button" class="ghost">
+              Fermer
+            </button>
+          </div>
+
+          <div class="expense-scan-box">
+            <div class="expense-scan-heading">
+              <div>
+                <strong>Ajouter depuis un justificatif</strong>
+                <small>Photographie un reçu ou une facture. Vérifie les informations avant d'enregistrer.</small>
+              </div>
+              <span aria-hidden="true">📷</span>
+            </div>
+
+            <div class="expense-scan-actions">
+              <label class="expense-scan-action primary">
+                📷 Prendre une photo
+                <input
+                  id="expenseScanCameraInput"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  hidden
+                >
+              </label>
+
+              <label class="expense-scan-action ghost">
+                🖼️ Photothèque
+                <input
+                  id="expenseScanGalleryInput"
+                  type="file"
+                  accept="image/*"
+                  hidden
+                >
+              </label>
+            </div>
+
+            <div id="expenseScanPreviewBox" class="expense-scan-preview" hidden>
+              <img
+                id="expenseScanPreview"
+                alt="Aperçu du justificatif"
+              >
+
+              <div class="expense-scan-preview-actions">
+                <button
+                  id="expenseScanAnalyzeBtn"
+                  type="button"
+                  class="primary"
+                >
+                  ✨ Analyser le justificatif
+                </button>
+
+                <button
+                  id="expenseScanClearBtn"
+                  type="button"
+                  class="ghost"
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+
+            <div
+              id="expenseScanStatus"
+              class="expense-scan-status"
+              role="status"
+              aria-live="polite"
+              hidden
+            ></div>
+          </div>
+
+          <form id="expenseForm" class="expense-form">
+            <label>
+              Montant
+              <input
+                id="expenseAmount"
+                name="amount"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                placeholder="5 000"
+                required
+              >
+            </label>
+
+            <label>
+              Catégorie
+              <select id="expenseCategory" name="category">
+                <option value="transport">Transport</option>
+                <option value="loyer">Loyer</option>
+                <option value="electricite">Électricité</option>
+                <option value="salaire">Salaire</option>
+                <option value="carburant">Carburant</option>
+                <option value="livraison">Livraison</option>
+                <option value="fournitures">Fournitures</option>
+                <option value="taxes">Taxes</option>
+                <option value="autre" selected>Autre</option>
+              </select>
+            </label>
+
+            <label>
+              Libellé
+              <input
+                id="expenseLabel"
+                name="label"
+                maxlength="100"
+                placeholder="Ex. Livraison marchandises"
+                required
+              >
+            </label>
+
+            <label>
+              Paiement
+              <select id="expenseChannel" name="channel" required>
+                <option value="" selected>À préciser</option>
+                <option value="cash">Espèces</option>
+                <option value="mtn_momo">MTN MoMo</option>
+                <option value="moov_money">Moov Money</option>
+                <option value="bank">Banque</option>
+              </select>
+            </label>
+
+            <label>
+              Note
+              <textarea
+                id="expenseNote"
+                name="note"
+                maxlength="255"
+                rows="3"
+                placeholder="Facultatif"
+              ></textarea>
+            </label>
+
+            <button id="expenseSubmitBtn" type="submit" class="primary">
+              Enregistrer la dépense
+            </button>
+
+            <p id="expenseFormError" class="error"></p>
+          </form>
+        </article>
+      </section>
+
+      <section id="finance" class="panel finance-panel">
+        <div class="panel-heading finance-heading">
+          <div>
+            <span class="eyebrow">Boutique active</span>
+            <h2>Analyse financière</h2>
+            <small id="financeShopName" class="muted">—</small>
+          </div>
+
+          <button id="financeRefreshBtn"
+                  type="button"
+                  class="ghost finance-refresh"
+                  aria-label="Actualiser l'analyse financière">
+            ↻
+          </button>
+        </div>
+
+        <div class="finance-periods"
+             role="group"
+             aria-label="Période d'analyse">
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="today">
+            Aujourd'hui
+          </button>
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="week">
+            Semaine
+          </button>
+          <button type="button"
+                  class="finance-period active"
+                  data-finance-period="month">
+            Mois
+          </button>
+          <button type="button"
+                  class="finance-period"
+                  data-finance-period="all">
+            Tout
+          </button>
+        </div>
+
+        <div id="financeStatus"
+             class="card finance-status"
+             hidden>
+        </div>
+
+        <article class="card finance-hero">
+          <span>Chiffre d'affaires</span>
+          <strong id="financeRevenue">0</strong>
+          <small id="financePeriodLabel">
+            Ce mois
+          </small>
+        </article>
+
+        <div class="finance-grid">
+          <article class="card finance-metric">
+            <span>Marge brute</span>
+            <strong id="financeGrossMargin">0</strong>
+            <small>
+              <span id="financeMarginRate">0 %</span>
+              de marge
+            </small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Encaissé</span>
+            <strong id="financeSalesPaid">0</strong>
+            <small>Ventes encaissées</small>
+          </article>
+
+          <article class="card finance-metric finance-alert-card">
+            <span>Créances clients</span>
+            <strong id="financeReceivables">0</strong>
+            <small id="financeOverdue">
+              0 en retard
+            </small>
+          </article>
+
+          <article class="card finance-metric">
+            <span>Dettes fournisseurs</span>
+            <strong id="financePayables">0</strong>
+            <small>Reste à payer</small>
+          </article>
+
+          <button
+            id="financeExpensesCard"
+            type="button"
+            class="card finance-metric finance-metric-button"
+            data-open-tab="expenses"
+          >
+            <span>Dépenses</span>
+            <strong id="financeExpenses">0</strong>
+            <small>Sur la période · Voir détail ›</small>
+          </button>
+
+          <article class="card finance-metric">
+            <span>Flux net</span>
+            <strong id="financeCashflow">0</strong>
+            <small>Trésorerie estimée</small>
+          </article>
+        </div>
+
+        <article class="card finance-section-card">
+          <div class="finance-section-title">
+            <div>
+              <span class="eyebrow">Marchandises</span>
+              <h2>Stock</h2>
+            </div>
+            <span>📦</span>
+          </div>
+
+          <div class="finance-lines">
+            <div>
+              <span>Valeur du stock</span>
+              <strong id="financeStockValue">0</strong>
+            </div>
+
+            <div>
+              <span>Potentiel de vente</span>
+              <strong id="financePotentialSales">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="card finance-section-card">
+          <div class="finance-section-title">
+            <div>
+              <span class="eyebrow">Situation estimée</span>
+              <h2>Position financière</h2>
+            </div>
+            <span>📊</span>
+          </div>
+
+          <div class="finance-lines">
+            <div>
+              <span>Actifs</span>
+              <strong id="financeAssets">0</strong>
+            </div>
+
+            <div>
+              <span>Passifs</span>
+              <strong id="financeLiabilities">0</strong>
+            </div>
+
+            <div class="finance-net-line">
+              <span>Position nette</span>
+              <strong id="financeNetPosition">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <p class="finance-disclaimer">
+          Indicateurs de pilotage de la boutique active.
+          Ils ne constituent pas une comptabilité réglementaire.
+        </p>
+      </section>
+
+      <section id="suppliers" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Approvisionnement</span>
+            <h2>Fournisseurs</h2>
+          </div>
+        </div>
+
+        <div class="grid supplier-stats">
+          <article class="card">
+            <span>Fournisseurs</span>
+            <strong id="supplierCount">0</strong>
+          </article>
+          <article class="card">
+            <span>Dettes fournisseurs</span>
+            <strong id="supplierDebtTotal">0</strong>
+          </article>
+        </div>
+
+        <article id="supplierCreateCard" class="card">
+          <h2>Nouveau fournisseur</h2>
+          <form id="supplierForm" class="form-grid">
+            <input id="supplierName" placeholder="Nom du fournisseur" required>
+            <input id="supplierPhone" placeholder="Téléphone">
+            <button type="submit">Ajouter le fournisseur</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Mes fournisseurs</h2>
+          <div id="supplierList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="purchases" class="panel purchase-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Approvisionnement</span>
+            <h2>Nouvel achat</h2>
+          </div>
+        </div>
+
+        <article class="card purchase-builder">
+          <label class="field">
+            <span>Fournisseur</span>
+            <select id="purchaseSupplier"></select>
+          </label>
+
+          <p id="purchaseSupplierHint" class="muted small">
+            Fournisseur facultatif pour un achat comptant, obligatoire pour une dette.
+          </p>
+
+          <div id="purchaseQuickSupplier" hidden>
+            <label>Nouveau fournisseur<input id="purchaseQuickSupplierName" maxlength="100" placeholder="Nom du fournisseur"></label>
+            <label>Téléphone<input id="purchaseQuickSupplierPhone" maxlength="30" type="tel"></label>
+            <button id="purchaseQuickSupplierBtn" type="button">Créer et sélectionner</button>
+          </div>
+          <p id="purchasingStatus" role="status" aria-live="polite"></p>
+          <button id="purchasingRefreshBtn" type="button">Actualiser les achats</button>
+          <div id="purchaseDetails">
+          <div class="purchase-add-line">
+            <label class="field">
+              <span>Produit</span>
+              <select id="purchaseProduct"></select>
+            </label>
+            <label class="field">
+              <span>Quantité</span>
+              <input id="purchaseQty" type="number" min="1" value="1">
+            </label>
+            <label class="field">
+              <span>Coût unitaire</span>
+              <input id="purchaseUnitCost" type="number" min="0" value="0">
+            </label>
+            <button id="purchaseAddLineBtn" type="button">Ajouter la ligne</button>
+          </div>
+
+          <div id="purchaseCart" class="purchase-cart"></div>
+          <div class="purchase-total">
+            <span>Total achat</span>
+            <strong id="purchaseTotal">0</strong>
+          </div>
+
+          <p>Payé : <strong id="purchasePaidSummary">0</strong> · Reste dû : <strong id="purchaseRemaining">0</strong></p>
+          <label class="field">
+            <span>Montant payé maintenant</span>
+            <input id="purchasePaidAmount" type="number" min="0" value="0">
+          </label>
+
+          <label class="field">
+            <span>Mode de paiement</span>
+            <select id="purchasePaymentChannel">
+              <option value="cash">Espèces</option>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="card">Carte</option>
+              <option value="bank_transfer">Virement</option>
+            </select>
+          </label>
+
+          <div id="purchaseDueWrap" class="express-credit-fields">
+            <label>
+              <span>Échéance si reste à payer</span>
+              <input id="purchaseDueDate" type="date">
+            </label>
+            <div class="express-due-presets">
+              <button type="button" data-purchase-due-days="7">+7 j</button>
+              <button type="button" data-purchase-due-days="15">+15 j</button>
+              <button type="button" data-purchase-due-days="30">+30 j</button>
+            </div>
+          </div>
+
+          <button id="purchaseSubmitBtn" type="button" class="primary-action">
+            Enregistrer l’achat
+          </button>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="panel-heading">
+            <div>
+              <h2>Dettes fournisseurs</h2>
+              <p class="muted small">Achats non soldés et échéances.</p>
+            </div>
+          </div>
+          <div id="supplierPayablesList" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Derniers achats</h2>
+          <div id="purchaseList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="currencies" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Outils</span>
+            <h2>Devises & change</h2>
+          </div>
+        </div>
+
+        <article class="card">
+          <h2>Devise de la boutique</h2>
+          <p class="muted">
+            Cette devise est utilisée pour les prix, les achats et les conversions de factures.
+          </p>
+          <label class="field">
+            <span>Devise active</span>
+            <select id="shopCurrencySelect"></select>
+          </label>
+          <p id="currencyShopStatus" class="muted small"></p>
+        </article>
+
+        <article class="card">
+          <div class="panel-heading">
+            <div>
+              <h2>Taux de change</h2>
+              <p class="muted small">Source publique : Frankfurter. Les taux sont historisés dans Whatzabi.</p>
+            </div>
+            <button id="currencyRefreshBtn" type="button" class="ghost">↻ Actualiser</button>
+          </div>
+          <div id="currencyRatesList" class="list compact-list">
+            <p class="muted empty-state">Chargement des taux…</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="products" class="panel">
+        <article id="productCreateCard" class="card">
+          <h2 id="productFormTitle">Ajouter un produit</h2>
+          <form id="productForm" class="product-form">
+            <label class="field field-wide">
+              <span>Nom du produit</span>
+              <input id="productName" placeholder="Ex. Riz parfumé 5 kg" required>
+            </label>
+
+            <label class="field">
+              <span>Prix de vente</span>
+              <div class="input-with-suffix">
+                <input id="productPrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0" required>
+                <span id="productPriceCurrency">FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Prix d'achat</span>
+              <div class="input-with-suffix">
+                <input id="productPurchasePrice" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+                <span id="productPurchaseCurrency">FCFA</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Stock initial</span>
+              <input id="productStock" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+            </label>
+
+            <label class="field">
+              <span>Unité</span>
+              <input id="productUnit" placeholder="Ex. unité, kg, sac" value="unité" required>
+            </label>
+
+            <input id="productType" type="hidden">
+            <input id="productBrand" type="hidden">
+            <input id="productVariant" type="hidden">
+            <input id="productPackaging" type="hidden">
+
+            <p id="catalogScanStatus" class="muted small" hidden></p>
+
+            <label class="field field-wide">
+              <span>Seuil d'alerte</span>
+              <input id="productThreshold" type="number" min="0" inputmode="decimal" placeholder="0" value="0">
+              <small>Whatzabi vous alertera quand le stock atteindra ce niveau.</small>
+            </label>
+
+            <button id="productSubmitBtn" type="submit" class="primary-action">Ajouter le produit</button>
+            <button id="productCancelEditBtn" type="button" class="ghost" hidden>Annuler la modification</button>
+          </form>
+        </article>
+
+        <article id="productRestockCard" class="card" hidden>
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Stock</span>
+              <h2 id="productRestockTitle">Réapprovisionner</h2>
+            </div>
+            <button
+              id="productRestockCloseBtn"
+              type="button"
+              class="ghost"
+            >
+              Fermer
+            </button>
+          </div>
+
+          <p id="productRestockCurrent" class="muted small"></p>
+
+          <form id="productRestockForm" class="product-form">
+            <label class="field">
+              <span>Quantité à ajouter</span>
+              <input
+                id="productRestockQuantity"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                value="1"
+                required
+              >
+            </label>
+
+            <label class="field">
+              <span>Prix d'achat unitaire</span>
+              <div class="input-with-suffix">
+                <input
+                  id="productRestockPurchasePrice"
+                  type="number"
+                  min="0"
+                  inputmode="decimal"
+                  value="0"
+                >
+                <span id="productRestockCurrency">FCFA</span>
+              </div>
+            </label>
+
+            <label class="field field-wide">
+              <span>Note</span>
+              <input
+                id="productRestockNote"
+                maxlength="255"
+                placeholder="Ex. Réassort fournisseur"
+              >
+            </label>
+
+            <button
+              id="productRestockSubmitBtn"
+              type="submit"
+              class="primary-action"
+            >
+              Ajouter au stock
+            </button>
+          </form>
+        </article>
+
+        <button
+          id="productStockIntelligenceLink"
+          type="button"
+          class="card product-stock-intelligence-link"
+        >
+          <div>
+            <span class="eyebrow">Recommandations Whatzabi</span>
+            <strong>Stock intelligent</strong>
+            <small>
+              Voir les produits à traiter, rapides, lents et dormants
+            </small>
+          </div>
+
+          <span class="product-stock-intelligence-arrow">›</span>
+        </button>
+
+        <section id="criticalStockList" class="card">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Seuil manuel</span>
+              <h3>Alertes de stock</h3>
+            </div>
+            <strong id="criticalStockCount">0 produit</strong>
+          </div>
+          <div id="criticalStockItems" class="list"></div>
+        </section>
+
+        <article class="card product-stock-search-card">
+          <div class="product-stock-search-head">
+            <div>
+              <span class="eyebrow">Catalogue</span>
+              <h3>Rechercher dans le stock</h3>
+            </div>
+            <strong id="productSearchCount">0 produit</strong>
+          </div>
+
+          <input
+            id="productSearch"
+            type="search"
+            placeholder="Nom, marque, variante, conditionnement…"
+            autocomplete="off"
+          >
+        </article>
+
+        <div id="productList" class="list"></div>
+      </section>
+
+      <section id="customers" class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Clients</span>
+            <h2>Créances clients</h2>
+          </div>
+        </div>
+
+        <div class="grid receivable-stats">
+          <article class="card">
+            <span>Encours total</span>
+            <strong id="receivableTotal">0</strong>
+          </article>
+          <article class="card receivable-alert">
+            <span>En retard</span>
+            <strong id="receivableOverdue">0</strong>
+          </article>
+          <article class="card">
+            <span>Échéance aujourd’hui</span>
+            <strong id="receivableToday">0</strong>
+          </article>
+          <article class="card">
+            <span>À venir</span>
+            <strong id="receivableUpcoming">0</strong>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="panel-heading">
+            <div>
+              <h2>Créances ouvertes</h2>
+              <p class="muted small">Ventes à crédit et paiements partiels non soldés.</p>
+            </div>
+          </div>
+          <div id="receivableList" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Nouveau client</h2>
+          <form id="customerForm" class="form-grid">
+            <input id="customerName" placeholder="Nom" required>
+            <input id="customerPhone" placeholder="Téléphone">
+            <button type="submit">Ajouter</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Clients</h2>
+          <div id="customerList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="sales" class="panel express-sale-panel">
+
+        <div class="express-heading">
+          <div>
+            <span class="eyebrow">Vente Express</span>
+            <h2>Que vendez-vous ?</h2>
+          </div>
+
+          <div class="express-tools">
+            <button id="expressVoice" type="button" class="ghost">
+              🎙️ Parler
+            </button>
+            <button id="expressScan" type="button" class="ghost">
+              ▦ Scanner
+            </button>
+          </div>
+        </div>
+
+        <p class="express-voice-hint">
+          🎙️ Dites « Coca » pour rechercher ou
+          « 2 Coca et 1 Fanta » pour ajouter au panier.
+        </p>
+
+        <div id="expressCatalogStep" class="express-catalog-step">
+
+        <input
+          id="expressSearch"
+          class="express-search"
+          type="search"
+          placeholder="Rechercher un produit"
+          autocomplete="off"
+        >
+
+        <div
+          id="expressSuggestions"
+          class="express-suggestions"
+          hidden
+        ></div>
+
+        <section id="expressFrequentSection" hidden>
+          <div class="express-section-title">
+            <strong>Top 10 produits</strong>
+            <small>Vos produits les plus vendus</small>
+          </div>
+          <div id="expressFrequentGrid" class="express-product-grid express-frequent-grid"></div>
+
+          <button
+            id="expressFrequentMore"
+            type="button"
+            class="ghost express-frequent-more"
+            hidden
+          >
+            Voir plus
+          </button>
+        </section>
+
+        <section id="expressAllProductsSection" hidden>
+          <div class="express-section-title">
+            <strong>Produits</strong>
+            <small>Boutique active</small>
+          </div>
+          <div id="expressProductGrid" class="express-product-grid"></div>
+        </section>
+
+        </div>
+
+        <button id="expressCartBar" type="button"
+          class="express-cart-bar" hidden>
+          <span class="express-cart-bar-main">
+            <span class="express-cart-bar-icon">🛒</span>
+            <span>
+              <strong id="expressCartBarCount">0 produit</strong>
+              <small id="expressCartBarUnits">0 unité</small>
+            </span>
+          </span>
+          <span class="express-cart-bar-end">
+            <strong id="expressCartBarTotal">0 FCFA</strong>
+            <small>Voir panier →</small>
+          </span>
+        </button>
+
+        <article id="expressCartStep"
+          class="card express-cart-card" hidden>
+
+          <button id="expressBackToProducts" type="button"
+            class="express-back-button">
+            ← Ajouter des produits
+          </button>
+
+          <div class="express-cart-heading">
+            <div>
+              <span class="eyebrow">Vente Express</span>
+              <h2>Panier</h2>
+            </div>
+            <strong id="expressTotal"
+              class="express-total">0 FCFA</strong>
+          </div>
+
+          <div id="expressCart" class="express-cart"></div>
+
+          <div class="express-cart-summary">
+            <span id="expressCartSummary">0 unité</span>
+            <strong id="expressCartSummaryTotal">0 FCFA</strong>
+          </div>
+
+          <button id="expressValidateCart" type="button"
+            class="express-validate-cart" disabled>
+            Panier vide
+          </button>
+        </article>
+
+        <article id="expressPaymentStep"
+          class="card express-payment-card" hidden>
+
+          <button id="expressBackToCart" type="button"
+            class="express-back-button">
+            ← Retour au panier
+          </button>
+
+          <div class="express-payment-heading">
+            <span class="eyebrow">Finalisation</span>
+            <h2>Paiement</h2>
+            <strong id="expressPaymentTotal">0 FCFA</strong>
+          </div>
+
+          <label class="express-payment-field">
+            <span>Client</span>
+            <select id="expressCustomer">
+              <option value="">Vente comptoir — sans client</option>
+            </select>
+          </label>
+
+          <label class="express-payment-field">
+            <span>Mode de paiement</span>
+            <select id="expressChannel">
+              <option value="cash">Espèces</option>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="credit">Crédit client</option>
+              <option value="partial">Paiement partiel</option>
+            </select>
+          </label>
+
+          <div id="expressCreditFields"
+            class="express-credit-fields" hidden>
+            <label>
+              <span>Échéance de paiement</span>
+              <input id="expressDueDate" type="date">
+            </label>
+
+            <div class="express-due-presets">
+              <button type="button" data-due-days="7">+7 j</button>
+              <button type="button" data-due-days="15">+15 j</button>
+              <button type="button" data-due-days="30">+30 j</button>
+            </div>
+
+            <small class="muted">
+              Client + échéance obligatoires pour crédit ou paiement partiel.
+            </small>
+          </div>
+
+          <button id="expressCheckout" type="button"
+            class="express-checkout" disabled>
+            Panier vide
+          </button>
+        </article>
+
+        <details class="legacy-sale">
+          <summary>Vente classique</summary>
+
+        <article class="card">
+          <h2>Nouvelle vente</h2>
+          <form id="saleForm" class="form-grid">
+            <select id="saleCustomer">
+              <option value="">Vente comptoir — sans client</option>
+            </select>
+            <select id="saleProduct" required><option value="">Produit</option></select>
+            <input id="saleQty" type="number" min="1" value="1" required>
+            <input id="salePaid" type="number" min="0" value="0" placeholder="Montant payé">
+            <select id="saleChannel"><option value="cash">Espèces</option><option value="mobile_money">Mobile Money</option><option value="card">Carte</option></select>
+            <button type="submit">Enregistrer la vente</button>
+          </form>
+        </article>
+        </details>
+
+        <div id="saleList" class="list"></div>
+      </section>
+
+
+      <div id="toast" class="toast" hidden></div>
+    </section>
+  </main>
+  <script src="/auth/app.js?v=42-lot4-1" defer></script>
+  <script src="/auth/offline-sales.js?v=2" defer></script>
+  <script src="/auth/smart-catalog.js?v=46" defer></script>
+  <script src="/auth/express-sale.js?v=13-cart-price-1" defer></script>
+  <script src="/auth/purchases.js?v=7-lot4-1" defer></script>
+
+
+  <div id="catalogSheet" class="catalog-sheet" hidden>
+    <div class="catalog-sheet-card" role="dialog" aria-modal="true" aria-labelledby="catalogTitle">
+
+      <div class="catalog-sheet-head">
+        <div>
+          <span class="eyebrow">Smart Catalog</span>
+          <h2 id="catalogTitle">Scanner un produit</h2>
+        </div>
+        <button id="catalogCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+      </div>
+
+      <p class="muted">Whatzabi reconnaît le produit sans créer automatiquement une fiche.</p>
+
+      <div id="catalogModes" class="catalog-modes">
+        <button type="button" data-catalog-source="product">
+          <span>📦</span>
+          <strong>Photo produit</strong>
+          <small>Nom, marque et format</small>
+        </button>
+
+        <button type="button" data-catalog-source="invoice">
+          <span>📄</span>
+          <strong>Facture</strong>
+          <small>Plusieurs produits</small>
+        </button>
+
+        <button type="button" data-catalog-source="barcode">
+          <span>▦</span>
+          <strong>Code-barres</strong>
+          <small>EAN / GTIN</small>
+        </button>
+      </div>
+
+      <div id="catalogCapture" hidden>
+        <div id="catalogPreviewWrap" class="catalog-preview" hidden>
+          <img id="catalogPreview" alt="Aperçu du produit">
+        </div>
+
+        <p id="catalogCaptureHint" class="muted"></p>
+
+        <div class="catalog-actions">
+
+          <label class="catalog-file-button">
+            📷 Prendre une photo
+
+            <input
+              id="catalogCameraInput"
+              class="catalog-native-file"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onchange="window.whatzabiReceiveCatalogImage(this)"
+            >
+          </label>
+
+          <label class="catalog-file-button ghost">
+            🖼️ Galerie
+
+            <input
+              id="catalogGalleryInput"
+              class="catalog-native-file"
+              type="file"
+              accept="image/*"
+              onchange="window.whatzabiReceiveCatalogImage(this)"
+            >
+          </label>
+
+        </div>
+
+        <button
+          id="catalogAnalyzeBtn"
+          type="button"
+          class="catalog-analyze"
+          onclick="return window.whatzabiAnalyzeCatalogImage(event)"
+          disabled
+        >
+          ✨ Analyser avec Whatzabi
+        </button>
+
+        <p id="catalogStatus" class="muted small"></p>
+      </div>
+
+      <div id="catalogResults" hidden>
+        <div class="catalog-result-head">
+          <strong id="catalogResultCount"></strong>
+          <button id="catalogRestartBtn" type="button" class="ghost">Recommencer</button>
+        </div>
+
+        <p class="muted small">
+          Vérifie la proposition. Rien n'est créé automatiquement.
+        </p>
+
+        <div id="catalogCandidateList" class="catalog-candidates"></div>
+
+        <button id="catalogPrepareBtn" type="button" class="catalog-analyze">
+          ✓ Valider
+        </button>
+      </div>
+
+
+    </div>
+  </div>
+
+
+<div id="saleActionSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card sale-action-card" role="dialog" aria-modal="true" aria-labelledby="saleActionTitle">
+    <button id="saleActionCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Vente</span>
+    <h2 id="saleActionTitle">Vente</h2>
+    <p id="saleActionMeta" class="muted"></p>
+
+    <div class="sale-action-buttons">
+      <button id="saleReceiptBtn" type="button" class="primary">
+        🧾 Générer le reçu
+      </button>
+      <button id="saleCancelBtn" type="button" class="danger-action">
+        ↩ Annuler la vente
+      </button>
+    </div>
+
+    <p class="muted small">
+      Le reçu est un justificatif de vente. La facture normalisée/fiscale sera branchée
+      séparément lorsque le module réglementaire sera disponible.
+    </p>
+  </div>
+</div>
+
+<div id="receivablePaymentSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card receivable-payment-card" role="dialog" aria-modal="true" aria-labelledby="receivablePaymentTitle">
+    <button id="receivablePaymentCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Créance client</span>
+    <h2 id="receivablePaymentTitle">Enregistrer un paiement</h2>
+    <p id="receivablePaymentMeta" class="muted"></p>
+
+    <label class="field">
+      <span>Montant encaissé</span>
+      <input id="receivablePaymentAmount" type="number" min="1" inputmode="numeric">
+    </label>
+
+    <label class="field">
+      <span>Mode de paiement</span>
+      <select id="receivablePaymentChannel">
+        <option value="cash">Espèces</option>
+        <option value="mobile_money">Mobile Money</option>
+        <option value="card">Carte</option>
+        <option value="bank_transfer">Virement</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Référence (optionnel)</span>
+      <input id="receivablePaymentReference" placeholder="Ex. référence Mobile Money">
+    </label>
+
+    <button id="receivablePaymentSubmitBtn" type="button" class="primary">
+      Enregistrer le paiement
+    </button>
+  </div>
+</div>
+
+<div id="supplierPaymentSheet" class="voice-sheet" hidden>
+  <div class="voice-sheet-card receivable-payment-card" role="dialog" aria-modal="true">
+    <button id="supplierPaymentCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+    <span class="eyebrow">Dette fournisseur</span>
+    <h2 id="supplierPaymentTitle">Enregistrer un paiement</h2>
+    <p id="supplierPaymentMeta" class="muted"></p>
+
+    <label class="field">
+      <span>Montant payé</span>
+      <input id="supplierPaymentAmount" type="number" min="1">
+    </label>
+    <label class="field">
+      <span>Mode de paiement</span>
+      <select id="supplierPaymentChannel">
+        <option value="cash">Espèces</option>
+        <option value="mobile_money">Mobile Money</option>
+        <option value="card">Carte</option>
+        <option value="bank_transfer">Virement</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Référence (optionnel)</span>
+      <input id="supplierPaymentReference" placeholder="Référence">
+    </label>
+    <label>Date réelle du paiement<input id="supplierPaymentDate" type="datetime-local" required></label>
+    <button id="supplierPaymentSubmitBtn" type="button" class="primary">Enregistrer le paiement</button>
+  </div>
+</div>
+
+<div id="voiceSheet" class="voice-sheet" hidden>
+        <div class="voice-sheet-card" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
+          <button id="voiceCloseBtn" class="voice-close" type="button" aria-label="Fermer">×</button>
+
+          <div class="voice-orb" id="voiceOrb">🎙️</div>
+
+          <h2 id="voiceTitle">Assistant Whatzabi</h2>
+
+          <p id="voiceStatus" class="voice-status">
+            Appuie sur le micro et parle naturellement.
+          </p>
+
+          <div id="voiceTranscriptBox" class="voice-transcript" hidden>
+            <small>J’ai compris</small>
+            <p id="voiceTranscript"></p>
+          </div>
+
+          <button id="voiceRecordBtn" type="button" class="primary voice-record-btn">
+            🎙️ Commencer
+          </button>
+
+          <div id="voiceReviewActions" class="voice-review-actions" hidden>
+            <button id="voiceCancelBtn" type="button">Annuler</button>
+            <button id="voiceRetryBtn" type="button">Recommencer</button>
+            <button id="voiceContinueBtn" type="button" class="primary">Continuer</button>
+          </div>
+        </div>
+      </div>
+
+  <dialog id="accountingExportDialog" class="accounting-export-dialog"
+          aria-labelledby="accountingExportTitle">
+    <div class="accounting-export-heading">
+      <h2 id="accountingExportTitle">Export comptabilité</h2>
+      <button id="accountingExportClose" type="button" class="ghost"
+              aria-label="Fermer">Fermer</button>
+    </div>
+    <p id="accountingExportShop" class="muted"></p>
+    <form id="accountingExportForm">
+      <div class="accounting-export-dates">
+        <label>Du
+          <input id="accountingExportSince" type="date" required>
+        </label>
+        <label>Au
+          <input id="accountingExportUntil" type="date" required>
+        </label>
+      </div>
+      <small class="muted">Les dates suivent les dates UTC des opérations.</small>
+      <label class="accounting-export-field">
+        Contenu des ventes et achats
+        <select id="accountingExportMode">
+          <option value="summary">Récapitulatif par vente ou achat</option>
+          <option value="details">Détail des produits</option>
+        </select>
+      </label>
+      <label class="accounting-export-checkbox">
+        <input id="accountingExportCancelled" type="checkbox">
+        Inclure les ventes et achats annulés
+      </label>
+      <p class="muted">
+        Les montants payés et restants correspondent à leur état actuel.
+        Les dépenses sont exportées une par ligne.
+      </p>
+      <div class="accounting-export-actions">
+        <button type="submit" name="kind" value="sales" class="primary">
+          Exporter les ventes
+        </button>
+        <button type="submit" name="kind" value="purchases">
+          Exporter les achats
+        </button>
+        <button type="submit" name="kind" value="expenses">
+          Exporter les dépenses
+        </button>
+      </div>
+      <p id="accountingExportStatus" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+</body>
+</html>

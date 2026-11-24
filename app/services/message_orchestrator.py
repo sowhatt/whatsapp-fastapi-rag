@@ -861,6 +861,86 @@ def advance_workflow(
             "action": action,
         }
 
+    # S2.2 — Normaliser le paiement partiel AVANT la règle d'échéance.
+    #
+    # Si l'IntentAgent fournit déjà le moyen de paiement (cash/Moov/MTN)
+    # ainsi que paid_amount, le workflow ne passe pas par
+    # operation_payment. Il faut donc calculer ici le reste dû.
+    #
+    # Exemple achat :
+    # total 50 000, payé 30 000 -> reste 20 000.
+    if action.get("type") in {"sale", "purchase"}:
+        total_amount = int(action.get("amount") or 0)
+        intent_paid_amount = action.get("paid_amount")
+        intent_remaining = action.get("remaining")
+
+        if intent_paid_amount is not None:
+            paid_amount = int(intent_paid_amount)
+            paid_amount = max(0, min(paid_amount, total_amount))
+
+            action["paid_amount"] = paid_amount
+            action["remaining"] = total_amount - paid_amount
+
+        elif (
+            intent_remaining is not None
+            and int(intent_remaining) > 0
+            and int(intent_remaining) < total_amount
+        ):
+            remaining_amount = int(intent_remaining)
+
+            action["remaining"] = remaining_amount
+            action["paid_amount"] = total_amount - remaining_amount
+
+        elif action.get("payment") == "credit":
+            action["paid_amount"] = 0
+            action["remaining"] = total_amount
+
+        elif action.get("payment") in {"cash", "moov", "mtn", "bank"}:
+            # Compatibilité avec le comportement historique :
+            # si un moyen de paiement immédiat est explicitement connu
+            # mais qu'aucun montant partiel n'est fourni, l'opération
+            # est considérée comme intégralement payée.
+            action["paid_amount"] = total_amount
+            action["remaining"] = 0
+
+    # S2.1/S2.2 — Une opération laissant un solde dû doit avoir une échéance
+    # avant de pouvoir être présentée à la confirmation.
+    if (
+        action.get("type") in {"sale", "purchase"}
+        and int(action.get("remaining") or 0) > 0
+        and not action.get("due_date")
+    ):
+        action["_awaiting"] = "operation_due_date"
+        set_pending_action(sender_id, action)
+
+        entity = (
+            action.get("customer")
+            if action.get("type") == "sale"
+            else action.get("supplier")
+        )
+
+        if action.get("type") == "sale":
+            question = (
+                f"📅 Quand {entity} doit-il payer ?"
+                if entity
+                else "📅 Quand le client doit-il payer ?"
+            )
+        else:
+            question = (
+                f"📅 Quand dois-tu payer {entity} ?"
+                if entity
+                else "📅 Quand dois-tu payer le fournisseur ?"
+            )
+
+        return {
+            "status": "reply",
+            "reply_text": (
+                (prefix + "\n\n" if prefix else "")
+                + question
+            ),
+            "action": action,
+        }
+
     mark_ready_for_confirmation(action)
     set_pending_action(sender_id, action)
     return {
@@ -1521,6 +1601,44 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
                 set_pending_action(sender_id, pending)
                 return {"status": "reply", "reply_text": "Cash, crédit, Moov ou MTN ?", "action": pending}
 
+    # S2.1 — Réponse à la question d'échéance d'une vente/achat
+    # à crédit ou partiellement payé.
+    if pending and pending.get("_awaiting") == "operation_due_date":
+        due_date = _extract_due_date_from_text(text)
+
+        # Ici le contexte est déjà connu : Whatzabi attend une échéance.
+        # Une réponse naturelle comme "dans 15 jours" est donc équivalente
+        # à "échéance dans 15 jours".
+        if due_date is None:
+            due_date = _extract_due_date_from_text(f"échéance {text}")
+
+        if due_date is None:
+            due_date = _extract_natural_due_date(text)
+
+        if due_date is None:
+            return {
+                "status": "reply",
+                "reply_text": (
+                    "Je n’ai pas compris la date d’échéance. "
+                    "Tu peux répondre par exemple : « dans 15 jours », "
+                    "« demain », « vendredi » ou donner une date précise."
+                ),
+                "action": pending,
+            }
+
+        pending["due_date"] = (
+            due_date.isoformat()
+            if hasattr(due_date, "isoformat")
+            else str(due_date)
+        )
+        pending.pop("_awaiting", None)
+
+        return advance_workflow(
+            sender_id,
+            pending,
+            db,
+        )
+
     if pending and pending.get("_awaiting") == "operation_payment":
         payment = normalize_payment_answer(text)
         if payment is None:
@@ -1597,15 +1715,18 @@ def process_incoming_message(*, channel: str, sender_id: str, message_type: str,
             pending["remaining"] = 0
 
         pending.pop("_awaiting", None)
-        mark_ready_for_confirmation(pending)
-        set_pending_action(sender_id, pending)
-        return {
-            "status": "reply",
-            "reply_text": (
-                build_confirmation_message(pending)
-            ),
-            "action": pending,
-        }
+
+        # Repasser systématiquement par le workflow central :
+        # - solde restant > 0 -> demander l'échéance si absente ;
+        # - opération soldée -> préparer normalement la confirmation.
+        #
+        # Cela évite que la réponse "crédit" contourne les règles
+        # métier appliquées dans advance_workflow().
+        return advance_workflow(
+            sender_id,
+            pending,
+            db,
+        )
 
     if lower in {"oui", "ok", "confirmer", "valider"}:
         if not pending:

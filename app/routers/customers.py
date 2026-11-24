@@ -3,19 +3,27 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.customer import Customer
+from app.rbac import require_permission
 from app.schemas.customer import CustomerCreate, CustomerRead
 
 router = APIRouter(tags=["clients"])
 
 
 @router.get("/customers", response_model=list[CustomerRead])
-def list_customers(db: Session = Depends(get_db)):
+def list_customers(
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("customer.read")),
+):
     """Liste tous les clients."""
     return db.query(Customer).all()
 
 
 @router.post("/customers", response_model=CustomerRead)
-def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
+def create_customer(
+    payload: CustomerCreate,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("customer.create")),
+):
     """Crée un client avec son téléphone et son encours éventuel."""
     customer = Customer(
         name=payload.name,
@@ -29,13 +37,20 @@ def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/customers/debtors")
-def list_customer_debtors(db: Session = Depends(get_db)):
+def list_customer_debtors(
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("customer.read")),
+):
     """Retourne uniquement les clients qui ont une dette en cours."""
     return db.query(Customer).filter(Customer.debt > 0).all()
 
 
 @router.get("/customers/{customer_id}/debt")
-def get_customer_debt(customer_id: int, db: Session = Depends(get_db)):
+def get_customer_debt(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    _allowed: None = Depends(require_permission("customer.read")),
+):
     """Retourne la dette totale d’un client précis."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
