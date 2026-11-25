@@ -150,3 +150,20 @@ def test_recherche_commercant_admin(env):
     assert found[0]["has_online_store"] is True
     assert "whatsapp" not in str(found).lower()
     assert client.get("/online-admin/merchants?q=x", headers=ADMIN).status_code == 422
+
+
+def test_origine_publique_configuree_derriere_un_proxy(env, monkeypatch):
+    """Derrière un proxy TLS la requête paraît en http : l'origine attendue vient de ONLINE_PUBLIC_BASE_URL."""
+    monkeypatch.setenv("ONLINE_PUBLIC_BASE_URL", "https://online.example.test")
+    db, client = env
+    row, _ = merchant(db)
+    token = _link(client, row.id)
+    assert "https://online.example.test/merchant/connexion?t=" in client.post(f"/online-admin/merchants/{row.id}/login-link", headers=ADMIN).json()["url"]
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    assert client.post("/merchant/connexion", content=f"t={token}", headers={**form, "origin": "http://testserver"}).status_code == 403
+    ok = client.post("/merchant/connexion", content=f"t={token}", headers={**form, "origin": "https://online.example.test"}, follow_redirects=False)
+    assert ok.status_code == 303 and "secure" in ok.headers["set-cookie"].lower()
+    value = ok.headers["set-cookie"].split(";")[0].split("=", 1)[1]
+    client.cookies.clear(); client.cookies.set("wz_merchant", value)  # le client de test est en http : il ne renverrait pas un cookie Secure
+    change = client.post("/merchant-api/catalog/publish-all", json={}, headers={"origin": "https://online.example.test", "x-merchant-request": "1"})
+    assert change.status_code == 200

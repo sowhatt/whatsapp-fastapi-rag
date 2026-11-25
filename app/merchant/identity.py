@@ -1,5 +1,7 @@
 """Auth V2 integration seam. No browser input is an identity credential."""
+import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -7,6 +9,16 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
 from app.shared.tenancy.rls import apply_rls_context
+
+
+def expected_origin(request: Request) -> str:
+    """Origine publique du service : ONLINE_PUBLIC_BASE_URL si définie (derrière un proxy TLS), sinon celle de la requête."""
+    configured = (os.getenv("ONLINE_PUBLIC_BASE_URL") or "").strip()
+    if configured:
+        parts = urlsplit(configured)
+        if parts.scheme in {"http", "https"} and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}"
+    return str(request.base_url).rstrip("/")
 
 
 @dataclass(frozen=True)
@@ -39,7 +51,7 @@ async def authorized_identity(
         raise HTTPException(403, "Accès commerçant requis.")
     if not identity.subject or type(identity.merchant_id) is not int or identity.merchant_id <= 0:
         raise HTTPException(401, "Connexion commerçant requise.")
-    origin = str(request.base_url).rstrip("/")
+    origin = expected_origin(request)
     if request.headers.get("origin") not in {None, origin} or request.headers.get("sec-fetch-site") not in {None, "same-origin", "none"}:
         raise HTTPException(403, "Origine de la requête refusée.")
     # Closed request contract: no tenant selector, including headers/body.

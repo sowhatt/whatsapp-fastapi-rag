@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.merchant.identity import expected_origin
 from app.merchant.session_service import COOKIE_NAME, SESSION_TTL, redeem_login_link, revoke_session
 
 router = APIRouter(tags=["merchant-login"])
@@ -29,7 +30,7 @@ def _page(body: str, status: int = 200) -> HTMLResponse:
 
 def _same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
-    return origin in {None, str(request.base_url).rstrip("/")}
+    return origin in {None, expected_origin(request)}
 
 
 @router.get("/merchant/connexion", include_in_schema=False)
@@ -51,7 +52,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
     session_secret = redeem_login_link(secret=(form.get("t") or [""])[0], db=db)
     if session_secret is None:
         return _page('<h1>Lien indisponible</h1><p>Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.</p>', 400)
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    secure = expected_origin(request).startswith("https://") or request.headers.get("x-forwarded-proto") == "https"
     response = RedirectResponse("/merchant", status_code=303, headers=HEADERS)
     response.set_cookie(COOKIE_NAME, session_secret, max_age=int(SESSION_TTL.total_seconds()), httponly=True,
                         secure=secure, samesite="lax", path="/")
