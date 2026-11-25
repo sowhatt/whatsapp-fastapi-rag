@@ -69,25 +69,28 @@ def settle_order_stock(
         shop_id = policies[product_id].shop_id
         label = names.get(product_id, product_id)
         if shop_id is not None:
-            inventory = (
-                db.query(ShopInventory)
+            # Colonnes explicites : Online ne dépend que de `stock`, jamais des colonnes que le
+            # Shop ajoute (ex. initial_stock), ce qui le rend déployable avant ou après le Shop.
+            row = (
+                db.query(ShopInventory.id, ShopInventory.stock)
                 .filter(
                     ShopInventory.merchant_id == merchant_id,
                     ShopInventory.shop_id == shop_id,
                     ShopInventory.product_id == product_id,
                 )
-                .populate_existing()
                 .with_for_update()
                 .first()
             )
-            on_hand = int(inventory.stock) if inventory is not None else 0
-            if inventory is None or on_hand < quantity:
+            on_hand = int(row.stock or 0) if row is not None else 0
+            if row is None or on_hand < quantity:
                 raise ValueError(
                     f"Stock boutique insuffisant pour {label} : "
                     f"{on_hand} en stock, {quantity} à sortir. Réapprovisionnez ou ajustez "
                     "le stock avant de terminer la commande."
                 )
-            inventory.stock = on_hand - quantity
+            db.query(ShopInventory).filter(ShopInventory.id == row.id).update(
+                {ShopInventory.stock: on_hand - quantity}, synchronize_session=False,
+            )
             note = f"Commande Online {order_reference} (boutique {shop_id})"
             done_shop.append(product_id)
         else:
