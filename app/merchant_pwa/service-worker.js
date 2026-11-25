@@ -1,11 +1,11 @@
-const CACHE = 'whatzabi-merchant-shell-v1';
+const CACHE = 'whatzabi-merchant-shell-v2';
 const STATIC = [
   '/merchant/assets/index.html', '/merchant/assets/offline.html', '/merchant/assets/styles.css',
   '/merchant/assets/app.js', '/merchant/assets/api.js', '/merchant/assets/store.js',
   '/merchant/assets/router.js', '/merchant/assets/push.js',
   '/merchant/assets/components/ui.js', '/merchant/assets/components/app-shell.js',
   '/merchant/assets/views/home.js', '/merchant/assets/views/orders.js',
-  '/merchant/assets/views/notifications.js', '/merchant/assets/views/module-placeholder.js',
+  '/merchant/assets/views/notifications.js', '/merchant/assets/views/catalog.js', '/merchant/assets/views/module-placeholder.js',
   '/merchant/assets/assets/icon.svg', '/merchant/assets/assets/icon-192.png', '/merchant/assets/assets/icon-512.png',
   '/merchant/manifest.webmanifest'
 ];

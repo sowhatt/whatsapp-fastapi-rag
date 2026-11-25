@@ -8,7 +8,7 @@ MODULES = {
     "home": ("Accueil", None, True, "Votre activité au quotidien."),
     "orders": ("Commandes", "checkout", True, "Suivez vos commandes et leurs paiements."),
     "stock": ("Stock", "catalog", False, "Suivez les quantités disponibles et les alertes."),
-    "catalog": ("Produits", "catalog", False, "Présentez et gérez votre catalogue."),
+    "catalog": ("Produits", "catalog", True, "Présentez et gérez votre catalogue."),
     "customers": ("Clients", "checkout", False, "Retrouvez vos relations clients."),
     "notifications": ("Notifications", "notifications", True, "Retrouvez les événements de votre boutique."),
     "kitchen": ("Cuisine", "checkout", False, "Organisez la préparation en cuisine."),

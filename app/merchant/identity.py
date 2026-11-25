@@ -52,7 +52,13 @@ async def authorized_identity(
             payload = await request.json()
         except ValueError:
             raise HTTPException(422, "Requête invalide.") from None
-        fields = {"endpoint", "keys"} if request.url.path.endswith("/push-subscriptions") else set()
+        path = request.url.path
+        if path.endswith("/push-subscriptions"):
+            fields = {"endpoint", "keys"}
+        elif path.startswith("/merchant-api/catalog/") and not path.endswith("/publish-all"):
+            fields = {"published", "stock_mode", "daily_quantity"}
+        else:
+            fields = set()
         if not isinstance(payload, dict) or set(payload) - fields:
             raise HTTPException(400, "Paramètres non autorisés.")
     return identity

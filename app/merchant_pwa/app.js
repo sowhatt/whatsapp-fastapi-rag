@@ -6,6 +6,7 @@ import {el, errorState} from './components/ui.js';
 import {home} from './views/home.js';
 import {orders} from './views/orders.js';
 import {notifications} from './views/notifications.js';
+import {catalogView} from './views/catalog.js';
 import {moduleView} from './views/module-placeholder.js';
 let revision = 0;
 async function render() {
@@ -29,7 +30,8 @@ async function render() {
       const page = Math.max(0, Math.min(10000, Number.parseInt(params.get('page') || '0') || 0));
       const query = id ? `?order_id=${encodeURIComponent(id)}` : `?limit=25&offset=${page*25}`;
       view = orders(await api(`/orders${query}`), page, !!id);
-    } else if (module?.enabled && module.key === 'notifications') view = notifications(await api('/notifications'), render);
+    } else if (module?.enabled && module.key === 'catalog') view = catalogView(await api('/catalog'));
+    else if (module?.enabled && module.key === 'notifications') view = notifications(await api('/notifications'), render);
     else view = moduleView(module, bootstrap);
     if (current !== revision) return;
     content.replaceChildren(view); content.removeAttribute('aria-busy');

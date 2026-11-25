@@ -12,7 +12,7 @@ def test_navigation(kind, labels):
     config = configuration(SimpleNamespace(business_type=kind, capabilities_json=None))
     assert [n['label'] for n in config['navigation'] if n['mobile']] == labels
     for item in config['navigation']:
-        if item['key'] in {'kitchen','calendar','bookings','catalog','menu','returns'}:
+        if item['key'] in {'kitchen','calendar','bookings','menu','returns'}:
             assert not item['enabled'] and item['reason'] == 'Module non activé'
 
 @pytest.mark.parametrize('caps', ['[]', '{}', 'invalid', '[123]'])
