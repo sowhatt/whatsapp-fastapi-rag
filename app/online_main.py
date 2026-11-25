@@ -14,6 +14,8 @@ from app.routers.online_public import router as online_public_router
 from app.routers.online_storefront_web import router as online_storefront_web_router
 from app.routers.merchant_pwa import router as merchant_pwa_router
 from app.routers.merchant_api import router as merchant_api_router
+from app.routers.merchant_login import router as merchant_login_router
+from app.merchant.session_models import install_merchant_session_schema
 from app.security import require_admin_token
 from app.shared.notifications.schema import install_online_notifications_schema
 from app.shared.notifications.push_schema import install_web_push_schema
@@ -51,6 +53,7 @@ def ensure_online_schema() -> None:
         install_online_cart_schema(connection)
         install_online_order_schema(connection)
         install_stock_reservation_schema(connection)
+        install_merchant_session_schema(connection)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +66,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(merchant_pwa_router)
 app.include_router(merchant_api_router)
+app.include_router(merchant_login_router)
 app.include_router(online_public_router)
 app.include_router(online_storefront_web_router)
 app.include_router(online_admin_web_router)

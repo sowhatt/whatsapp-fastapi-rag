@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,8 @@ from app.db.session import get_db
 from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
+from app.models.merchant import Merchant
+from app.merchant.session_service import issue_login_link, revoke_all_sessions
 from app.domains.core.public.stock import stock_position
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
 from app.domains.online.internal.order_service import cleanup_expired_order_reservations, get_order, list_orders, order_summary, revalidate_order_reservations, update_order_status
@@ -159,6 +163,24 @@ def create_online_store(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _store_payload(store)
+
+
+@router.post("/merchants/{merchant_id}/login-link", status_code=201)
+def create_merchant_login_link(merchant_id: int, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Lien de connexion à usage unique (24 h) à transmettre au commerçant, par exemple sur WhatsApp."""
+    response.headers["Cache-Control"] = "no-store"
+    if db.query(Merchant).filter(Merchant.id == merchant_id).first() is None:
+        raise HTTPException(404, "Commerçant introuvable.")
+    if db.query(OnlineStore).filter(OnlineStore.merchant_id == merchant_id).first() is None:
+        raise HTTPException(409, "Créez d'abord la boutique Online de ce commerçant.")
+    secret, expires = issue_login_link(merchant_id=merchant_id, db=db)
+    base = (os.getenv("ONLINE_PUBLIC_BASE_URL") or str(request.base_url)).strip().rstrip("/")
+    return {"url": f"{base}/merchant/connexion?t={secret}", "expires_at": expires.isoformat() + "Z"}
+
+
+@router.post("/merchants/{merchant_id}/sessions/revoke")
+def revoke_merchant_sessions(merchant_id: int, db: Session = Depends(get_db)):
+    return {"revoked": revoke_all_sessions(merchant_id=merchant_id, db=db)}
 
 
 @router.get("/merchants/{merchant_id}/store")

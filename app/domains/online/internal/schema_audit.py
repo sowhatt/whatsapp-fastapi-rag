@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 
 EXPECTED_TABLES: dict[str, set[str]] = {
+    "online_merchant_login_links": {"id", "merchant_id", "token_hash", "created_by", "created_at", "expires_at", "used_at"},
+    "online_merchant_sessions": {"id", "merchant_id", "session_hash", "created_at", "expires_at", "revoked_at"},
     "online_stores": {
         "id",
         "merchant_id",

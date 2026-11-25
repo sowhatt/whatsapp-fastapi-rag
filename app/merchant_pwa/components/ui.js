@@ -30,7 +30,7 @@ export function errorState(error, retry) {
   return el('section', {class:'empty error', role:'alert'}, icon('profile'),
     el('p', {class:'eyebrow'}, auth ? 'ESPACE SÉCURISÉ' : 'CONNEXION INTERROMPUE'),
     el('h1', {}, auth ? 'Votre boutique vous attend' : 'Impossible de charger cette page'),
-    el('p', {}, auth ? 'La connexion commerçant sécurisée n’est pas encore disponible dans cette version. Vos données restent protégées.' : error.message),
+    el('p', {}, auth ? 'Ouvrez le lien de connexion reçu par WhatsApp pour accéder à votre espace. Vos données restent protégées.' : error.message),
     el('button', {class:'primary', onclick:retry}, auth ? 'Vérifier la connexion' : 'Réessayer'));
 }
 export function orderCards(rows) {

@@ -17,10 +17,15 @@ class MerchantIdentity:
 
 
 class MerchantIdentityResolver:
-    """Replace with verified Auth V2 session resolution; override only in tests."""
+    """Session commerçant en cookie HttpOnly (lien à usage unique). Aucun jeton côté JavaScript."""
 
-    def __call__(self, request: Request) -> MerchantIdentity:
-        raise HTTPException(401, "Connexion commerçant requise.")
+    def __call__(self, request: Request, db: Session = Depends(get_db)) -> MerchantIdentity:
+        from app.merchant.session_service import COOKIE_NAME, resolve_session
+
+        row = resolve_session(secret=request.cookies.get(COOKIE_NAME), db=db)
+        if row is None:
+            raise HTTPException(401, "Connexion commerçant requise.")
+        return MerchantIdentity(merchant_id=row.merchant_id, subject=f"session-{row.id}")
 
 
 resolve_merchant_identity = MerchantIdentityResolver()
