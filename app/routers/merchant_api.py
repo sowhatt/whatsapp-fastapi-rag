@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 from app.merchant.identity import MerchantContext, merchant_context
 from app.merchant.verticals import configuration
-from app.domains.online.internal.order_service import get_order, list_orders, order_summary
+from app.domains.online.internal.order_service import get_order, list_orders, order_summary, update_order_status
+from app.domains.online.internal.payment_service import update_payment_status
 from app.domains.online.internal.order_models import OnlineOrder
 from app.domains.online.internal.catalog_service import publish_product, unpublish_product
 from app.domains.online.internal.stock_settings import (
@@ -25,6 +26,20 @@ STATUS = {"pending": "À confirmer", "confirmed": "Confirmée", "preparing": "En
           "ready": "Prête", "completed": "Terminée", "cancelled": "Annulée"}
 PAYMENT = {"paid": "Payée", "unpaid": "À payer", "cash_on_delivery": "À encaisser à la remise",
            "mobile_money_pending": "Paiement en attente", "failed": "Paiement échoué", "refunded": "Remboursée"}
+
+
+NEXT_ACTIONS = {
+    "pending": [("confirmed", "Confirmer la commande"), ("cancelled", "Refuser la commande")],
+    "confirmed": [("preparing", "Commencer la préparation"), ("cancelled", "Annuler la commande")],
+    "preparing": [("ready", "Marquer comme prête"), ("cancelled", "Annuler la commande")],
+    "ready": [("completed", "Remettre au client (terminée)"), ("cancelled", "Annuler la commande")],
+}
+PAYABLE = {"unpaid", "cash_on_delivery", "mobile_money_pending"}
+
+
+class OrderStatusBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: str
 
 
 def require_module(ctx, key):
@@ -99,6 +114,9 @@ def orders(limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
         if row is None:
             raise HTTPException(404, "Commande introuvable.")
         detail = order_projection(row)
+        detail["actions"] = [{"status": s, "label": l} for s, l in NEXT_ACTIONS.get(row["status"], [])]
+        detail["payment_actions"] = ([{"status": "paid", "label": "Marquer comme payée"}]
+                                      if row["payment_status"] in PAYABLE else [])
         try:
             detail["whatsapp_url"] = whatsapp_handoff_url(
                 recipient=row["customer_phone"], message=f'Bonjour, à propos de votre commande {row["reference"]}.')
@@ -221,3 +239,33 @@ def publish_all(ctx: MerchantContext = Depends(merchant_context)):
     for product_id in todo:
         publish_product(merchant_id=merchant_id, product_id=product_id, db=ctx.db)
     return {**catalog_view(ctx), "newly_published": len(todo)}
+
+
+def _order_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    return HTTPException(404 if "introuvable" in message.lower() else 409, message)
+
+
+@router.patch("/orders/{order_id}/status")
+def change_order_status(order_id: int, payload: OrderStatusBody, ctx: MerchantContext = Depends(merchant_context)):
+    """Le commerçant fait avancer sa commande ; la sortie de stock se fait à « terminée »."""
+    require_module(ctx, "orders")
+    try:
+        update_order_status(merchant_id=ctx.identity.merchant_id, order_id=order_id, status=payload.status, db=ctx.db)
+    except ValueError as exc:
+        ctx.db.rollback()
+        raise _order_error(exc) from None
+    return order_projection(get_order(merchant_id=ctx.identity.merchant_id, order_id=order_id, db=ctx.db))
+
+
+@router.patch("/orders/{order_id}/payment")
+def change_order_payment(order_id: int, payload: OrderStatusBody, ctx: MerchantContext = Depends(merchant_context)):
+    require_module(ctx, "orders")
+    if payload.status not in {"paid", "failed"}:
+        raise HTTPException(400, "Statut de paiement non autorisé.")
+    try:
+        update_payment_status(merchant_id=ctx.identity.merchant_id, order_id=order_id, status=payload.status, db=ctx.db)
+    except ValueError as exc:
+        ctx.db.rollback()
+        raise _order_error(exc) from None
+    return order_projection(get_order(merchant_id=ctx.identity.merchant_id, order_id=order_id, db=ctx.db))

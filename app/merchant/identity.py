@@ -60,6 +60,8 @@ async def authorized_identity(
         path = request.url.path
         if path.endswith("/push-subscriptions"):
             fields = {"endpoint", "keys"}
+        elif path.startswith("/merchant-api/orders/") and path.endswith(("/status", "/payment")):
+            fields = {"status"}
         elif path.startswith("/merchant-api/catalog/") and not path.endswith("/publish-all"):
             fields = {"published", "stock_mode", "daily_quantity"}
         else:
