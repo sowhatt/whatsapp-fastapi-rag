@@ -50,7 +50,9 @@ def login_page(request: Request):
 @router.post("/merchant/connexion", include_in_schema=False)
 async def login(request: Request, db: Session = Depends(get_db)):
     if not _same_origin(request):
-        raise HTTPException(403, "Origine de la requête refusée.")
+        # Valeurs publiques (origine reçue, origine attendue) : permettent de diagnostiquer un proxy ou un navigateur.
+        received = (request.headers.get("origin") or "")[:120]
+        raise HTTPException(403, f"Origine de la requête refusée. reçue={received!r} attendue={expected_origin(request)!r} referrer-policy=same-origin")
     form = parse_qs((await request.body())[:2000].decode("utf-8", "ignore"))
     session_secret = redeem_login_link(secret=(form.get("t") or [""])[0], db=db)
     if session_secret is None:
