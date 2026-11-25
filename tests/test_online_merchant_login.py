@@ -137,3 +137,16 @@ def test_abonnement_inactif_refuse(env):
     row.subscription_status = "cancelled"; db.commit()
     assert _open(client, _link(client, row.id)).status_code == 400
     assert db.query(MerchantSession).count() == 0
+
+
+def test_recherche_commercant_admin(env):
+    from app.models.shop import Shop
+    db, client = env
+    row, _ = merchant(db, name="Boutique test B")
+    db.add_all([Shop(merchant_id=row.id, name="Boutique A", code="A"), Shop(merchant_id=row.id, name="Boutique test B", code="B")]); db.commit()
+    assert client.get("/online-admin/merchants?q=test B").status_code == 403
+    found = client.get("/online-admin/merchants?q=test B", headers=ADMIN).json()
+    assert len(found) == 1 and found[0]["merchant_id"] == row.id and len(found[0]["shops"]) == 2
+    assert found[0]["has_online_store"] is True
+    assert "whatsapp" not in str(found).lower()
+    assert client.get("/online-admin/merchants?q=x", headers=ADMIN).status_code == 422

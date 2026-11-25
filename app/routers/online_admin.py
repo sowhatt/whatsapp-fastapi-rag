@@ -1,6 +1,6 @@
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.domains.online.internal.models import OnlineStore
 from app.domains.online.internal.store_service import get_or_create_store, get_store_capabilities, update_store
 from app.models.product import Product
 from app.models.merchant import Merchant
+from app.models.shop import Shop
 from app.merchant.session_service import issue_login_link, revoke_all_sessions
 from app.domains.core.public.stock import stock_position
 from app.domains.online.internal.catalog_service import add_product_image, publish_product, unpublish_product
@@ -163,6 +164,27 @@ def create_online_store(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _store_payload(store)
+
+
+@router.get("/merchants")
+def find_merchants(q: str = Query(min_length=2, max_length=60), db: Session = Depends(get_db)):
+    """Retrouve un commerçant par le nom de son commerce ou de l'une de ses boutiques (lecture seule)."""
+    like = f"%{q.strip()}%"
+    shops = db.query(Shop).filter(Shop.name.ilike(like)).all()
+    merchants = (
+        db.query(Merchant)
+        .filter((Merchant.shop_name.ilike(like)) | (Merchant.id.in_({s.merchant_id for s in shops} or {-1})))
+        .order_by(Merchant.id).limit(20).all()
+    )
+    result = []
+    for m in merchants:
+        own_shops = db.query(Shop).filter(Shop.merchant_id == m.id).order_by(Shop.id).all()
+        result.append({
+            "merchant_id": m.id, "shop_name": m.shop_name,
+            "shops": [{"shop_id": s.id, "name": s.name, "active": bool(s.is_active)} for s in own_shops],
+            "has_online_store": db.query(OnlineStore).filter(OnlineStore.merchant_id == m.id).first() is not None,
+        })
+    return result
 
 
 @router.post("/merchants/{merchant_id}/login-link", status_code=201)
