@@ -407,3 +407,34 @@ def test_migration_checksum_mismatch_is_fatal_without_data_changes(lab):
     finally:
         with lab.connect(cid) as c:
             c.execute("UPDATE schema_migrations SET sha256=%s WHERE version='001_baseline.sql'",(original,))
+
+
+def test_online_runtime_reads_shop_stock_under_rls_and_cannot_write(lab, pair):
+    """La vitrine lit shops / shop_inventories de son seul commercant ; aucune ecriture."""
+    a, b = pair
+    cid = lab.containers[0]
+    port = lab.assert_owned(cid)
+    admin = create_engine(f"postgresql+psycopg://postgres@127.0.0.1:{port}/{DB}")
+    try:
+        with admin.begin() as conn:  # arrangement synthetique, connexion admin
+            for tenant, stock in ((a[0], 7), (b[0], 11)):
+                product_id = conn.execute(text("SELECT min(id) FROM products WHERE merchant_id=:m"), {"m": tenant}).scalar()
+                shop_id = conn.execute(text("INSERT INTO shops (merchant_id,name,code) VALUES (:m,'Principale','A') RETURNING id"), {"m": tenant}).scalar()
+                conn.execute(text("INSERT INTO shop_inventories (merchant_id,shop_id,product_id,stock) VALUES (:m,:s,:p,:q)"),
+                             {"m": tenant, "s": shop_id, "p": product_id, "q": stock})
+    finally:
+        admin.dispose()
+    with lab.connect(cid, user="j43a_online_runtime") as c:
+        assert c.execute("SELECT count(*) FROM shop_inventories").fetchone()[0] == 0  # sans contexte
+        context(c, a[0])
+        assert [r[0] for r in c.execute("SELECT stock FROM shop_inventories")] == [7]
+        assert [r[0] for r in c.execute("SELECT merchant_id FROM shops")] == [a[0]]
+        for statement in ("UPDATE shop_inventories SET stock=0", "DELETE FROM shop_inventories",
+                          "INSERT INTO shops (merchant_id,name,code) VALUES (1,'x','x')"):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute(statement)
+            c.rollback()
+            context(c, a[0])
+        c.rollback()
+        context(c, b[0])
+        assert [r[0] for r in c.execute("SELECT stock FROM shop_inventories")] == [11]
