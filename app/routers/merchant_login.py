@@ -13,7 +13,10 @@ from app.merchant.session_service import COOKIE_NAME, SESSION_TTL, redeem_login_
 router = APIRouter(tags=["merchant-login"])
 HEADERS = {
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-    "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    # « same-origin » et non « no-referrer » : avec no-referrer, un formulaire envoie « Origin: null »
+    # et la vérification d'origine ne peut plus reconnaître notre propre site. Rien ne sort vers un autre site.
+    "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff",
 }
 PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Whatzabi — Mon espace</title><style>

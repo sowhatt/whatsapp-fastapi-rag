@@ -167,3 +167,15 @@ def test_origine_publique_configuree_derriere_un_proxy(env, monkeypatch):
     client.cookies.clear(); client.cookies.set("wz_merchant", value)  # le client de test est en http : il ne renverrait pas un cookie Secure
     change = client.post("/merchant-api/catalog/publish-all", json={}, headers={"origin": "https://online.example.test", "x-merchant-request": "1"})
     assert change.status_code == 200
+
+
+def test_page_de_lien_laisse_le_navigateur_envoyer_l_origine(env):
+    """Avec « no-referrer » un formulaire envoie « Origin: null » et la connexion échoue en réel."""
+    db, client = env
+    row, _ = merchant(db)
+    token = _link(client, row.id)
+    page = client.get(f"/merchant/connexion?t={token}")
+    assert page.headers["referrer-policy"] == "same-origin"
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    assert client.post("/merchant/connexion", content=f"t={token}", headers={**form, "origin": "null"}).status_code == 403
+    assert client.post("/merchant/connexion", content=f"t={token}", headers={**form, "origin": "http://testserver"}, follow_redirects=False).status_code == 303
