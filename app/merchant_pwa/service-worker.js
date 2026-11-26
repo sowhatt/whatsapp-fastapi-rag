@@ -1,4 +1,4 @@
-const CACHE = 'whatzabi-merchant-shell-v3';
+const CACHE = 'whatzabi-merchant-shell-v4';
 const STATIC = [
   '/merchant/assets/index.html', '/merchant/assets/offline.html', '/merchant/assets/styles.css',
   '/merchant/assets/app.js', '/merchant/assets/api.js', '/merchant/assets/store.js',
