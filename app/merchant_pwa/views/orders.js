@@ -11,7 +11,7 @@ function actions(order) {
   };
   const next = (order.actions || []).map((a, i) => el('button', {type:'button', class:i === 0 ? 'primary' : 'mode', onclick:run(`/orders/${order.id}/status`, a.status, CONFIRM[a.status])}, a.label));
   const pay = (order.payment_actions || []).map(a => el('button', {type:'button', class:'mode', onclick:run(`/orders/${order.id}/payment`, a.status)}, a.label));
-  return el('section', {class:'panel'}, el('h2', {}, 'Traiter la commande'), next.length || pay.length ? [next, pay] : el('p', {class:'muted'}, 'Aucune action disponible : cette commande est terminée ou annulée.'), feedback);
+  return el('section', {class:'panel'}, el('h2', {}, 'Traiter la commande'), next.length || pay.length ? [...next, ...pay] : el('p', {class:'muted'}, 'Aucune action disponible : cette commande est terminée ou annulée.'), feedback);
 }
 export function orders(data, page, detail) {
   if (detail) {
