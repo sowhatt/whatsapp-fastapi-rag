@@ -19,6 +19,7 @@ from app.domains.core.public.stock import settle_reservations
 from app.domains.online.internal.stock_policy import resolve_stock_policy
 from app.models.product import Product
 from app.models.shop_inventory import ShopInventory
+from app.models.shop_operation import ShopOperation
 from app.models.stock_movement import StockMovement
 
 MOVEMENT_TYPE = "online_sale_out"
@@ -111,17 +112,24 @@ def settle_order_stock(
             product.stock = on_hand - quantity
             note = f"Commande Online {order_reference}"
             done_legacy.append(product_id)
-        db.add(
-            StockMovement(
-                merchant_id=merchant_id,
-                product_id=product_id,
-                movement_type=MOVEMENT_TYPE,
-                quantity=-quantity,
-                reference_type=REFERENCE_TYPE,
-                reference_id=order_id,
-                note=note,
-            )
+        movement = StockMovement(
+            merchant_id=merchant_id,
+            product_id=product_id,
+            movement_type=MOVEMENT_TYPE,
+            quantity=-quantity,
+            reference_type=REFERENCE_TYPE,
+            reference_id=order_id,
+            note=note,
         )
+        db.add(movement)
+        if shop_id is not None:
+            # Rattache la sortie à sa boutique, comme le fait le Shop pour ses propres
+            # mouvements : sans cela, Stock 360 l'ignore et affiche un « écart » fantôme.
+            db.flush()
+            db.add(ShopOperation(
+                merchant_id=merchant_id, shop_id=shop_id,
+                entity_type="stock_movement", entity_id=movement.id,
+            ))
     settle_reservations(
         merchant_id=merchant_id, source_type="online_order", source_id=order_id, db=db,
     )

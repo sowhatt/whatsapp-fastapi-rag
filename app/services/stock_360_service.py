@@ -280,7 +280,7 @@ def get_stock_360(
             elif movement_type == "restock_in":
                 restock_in += max(quantity, 0)
 
-            elif movement_type == "sale_out":
+            elif movement_type in {"sale_out", "online_sale_out"}:
                 sale_out += abs(
                     min(quantity, 0)
                 )

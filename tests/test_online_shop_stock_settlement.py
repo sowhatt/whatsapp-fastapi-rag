@@ -13,10 +13,13 @@ from app.domains.online.internal.store_service import get_or_create_store
 from app.domains.online.public.cart import create_cart, set_cart_item
 from app.domains.online.public.checkout import checkout_cart
 from app.models.merchant import Merchant
+from app.models.merchant_user import MerchantUser  # noqa: F401  (FK de ShopOperation.user_id)
 from app.models.product import Product
 from app.models.shop import Shop
 from app.models.shop_inventory import ShopInventory
+from app.models.shop_operation import ShopOperation
 from app.models.stock_movement import StockMovement
+from app.services.stock_360_service import get_stock_360
 
 
 @pytest.fixture()
@@ -144,3 +147,31 @@ def test_seule_la_boutique_de_preparation_est_decrementee(db):
     _advance(db, merchant, order, "completed")
     assert _inventory(db, shop_a, product) == 8
     assert _inventory(db, shop_b, product) == 7
+
+
+def test_la_sortie_online_est_comptee_comme_vente_dans_stock_360(db, monkeypatch):
+    """Sans rattachement à la boutique, Stock 360 ignorait la sortie et affichait un écart fantôme."""
+    # La vue matérialisée des indicateurs de couverture n'existe qu'en PostgreSQL.
+    monkeypatch.setattr("app.services.stock_360_service.get_inventory_intelligence",
+                        lambda **kwargs: [])
+    merchant, shop, product, order, _ = _setup(db, "settle-360", shop_stock=10, qty=2)
+    _advance(db, merchant, order, "completed")
+
+    movement = db.query(StockMovement).filter_by(reference_type="online_order",
+                                                 reference_id=order.id).one()
+    operation = db.query(ShopOperation).filter_by(entity_type="stock_movement",
+                                                  entity_id=movement.id).one()
+    assert (operation.merchant_id, operation.shop_id) == (merchant.id, shop.id)
+
+    item = next(i for i in get_stock_360(merchant_id=merchant.id, shop_id=shop.id, db=db)
+                if i.product_id == product.id)
+    assert item.current_stock == 8
+    assert item.sale_out == 2
+    assert item.other_exits == 0
+    assert item.initial_stock == 10  # 8 + 2 : plus aucun écart non expliqué
+
+
+def test_commercant_sans_boutique_ne_cree_pas_de_rattachement(db):
+    merchant, _, _, order, _ = _setup(db, "settle-360-legacy", with_shop=False, qty=2)
+    _advance(db, merchant, order, "completed")
+    assert db.query(ShopOperation).filter_by(merchant_id=merchant.id).count() == 0
